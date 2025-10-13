@@ -25,14 +25,31 @@ connectDB();
 const app = express();
 
 // -------------------------
-// Middleware
+// CORS Configuration
 // -------------------------
+const allowedOrigins = [
+  "http://localhost:3000", // local dev
+  "https://horse-shipt.vercel.app", // production frontend
+];
+
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN || "*",
+    origin: function (origin, callback) {
+      // allow requests with no origin like Postman or curl
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.indexOf(origin) !== -1) {
+        callback(null, true);
+      } else {
+        callback(new Error("CORS policy: Origin not allowed"));
+      }
+    },
     credentials: true,
   })
 );
+
+// -------------------------
+// Body Parser Middleware
+// -------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -45,7 +62,7 @@ app.use(
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: false, // set true if using HTTPS
+      secure: process.env.NODE_ENV === "production", // HTTPS only in prod
       maxAge: 1000 * 60 * 60 * 24, // 1 day
     },
   })
