@@ -1,3 +1,5 @@
+// server.js
+
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
@@ -5,6 +7,7 @@ const path = require("path");
 const session = require("express-session");
 const passport = require("passport");
 const connectDB = require("./config/db");
+const fs = require("fs");
 
 // -------------------------
 // Load environment variables
@@ -35,7 +38,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // -------------------------
 // Session Middleware
-// ------------------------
+// -------------------------
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "mysecretkey",
@@ -60,33 +63,28 @@ app.use(passport.session());
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
 
-// ------------------------
+// -------------------------
 // Serve React frontend (production mode)
 // -------------------------
-const __dirname1 = path.resolve();
-const frontendBuildPath = path.join(
-  __dirname1,
-  "../horse-shipt-frontend/build"
-);
+const frontendBuildPath = path.join(__dirname, "build");
 
-// Only serve React if the build folder exists
-const fs = require("fs");
 if (fs.existsSync(frontendBuildPath)) {
   app.use(express.static(frontendBuildPath));
 
-  app.get(/.*/, (req, res) => {
+  // Send index.html for all non-API routes
+  app.get(/^\/(?!api).*/, (req, res) => {
     res.sendFile(path.join(frontendBuildPath, "index.html"));
   });
 } else {
   console.warn(
-    "⚠️  React build folder not found! Run `npm run build` in frontend."
+    "⚠️  React build folder not found! Make sure 'build' exists inside backend."
   );
 }
 
 // -------------------------
 // Default Route
 // -------------------------
-app.get("/", (req, res) => {
+app.get("/api", (req, res) => {
   res.send("🐎 Horse Shipt Backend API is running...");
 });
 

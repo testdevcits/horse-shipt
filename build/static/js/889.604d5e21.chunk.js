@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkhorse_shipt_frontend=self.webpackChunkhorse_shipt_frontend||[]).push([[889],{889:(s,e,t)=>{t.r(e),t.d(e,{default:()=>h});t(43);var r=t(579);const h=()=>(0,r.jsx)("div",{className:"text-xl font-bold",children:"Customer Dashboard"})}}]);
+//# sourceMappingURL=889.604d5e21.chunk.js.map
