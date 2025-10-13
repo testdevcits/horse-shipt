@@ -60,7 +60,7 @@ app.use(passport.session());
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
 
-// -------------------------
+// ------------------------
 // Serve React frontend (production mode)
 // -------------------------
 const __dirname1 = path.resolve();
