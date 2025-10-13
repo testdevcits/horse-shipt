@@ -1,6 +1,12 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+const loginHistorySchema = new mongoose.Schema({
+  deviceId: { type: String, default: null },
+  ip: { type: String, default: null },
+  loginAt: { type: Date, default: Date.now },
+});
+
 const customerSchema = new mongoose.Schema(
   {
     name: { type: String, required: false },
@@ -22,6 +28,9 @@ const customerSchema = new mongoose.Schema(
     isLogin: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     currentDevice: { type: String },
+
+    // Login history
+    loginHistory: [loginHistorySchema],
   },
   { timestamps: true }
 );
@@ -40,5 +49,4 @@ customerSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-const Customer = mongoose.model("Customer", customerSchema);
-module.exports = Customer;
+module.exports = mongoose.model("Customer", customerSchema);

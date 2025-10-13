@@ -18,7 +18,7 @@ const getModelAndError = (role) => {
 // ---------------- Email/Password Signup ----------------
 exports.signup = async (req, res) => {
   try {
-    const { role, email, password, name } = req.body;
+    const { role, email, password, name, profilePicture } = req.body;
 
     if (!role || !email || !password) {
       return res.status(400).json({
@@ -46,10 +46,13 @@ exports.signup = async (req, res) => {
       email,
       password,
       role,
+      profilePicture: profilePicture || null,
       isLogin: false,
       isActive: true,
       provider: "local",
+      loginHistory: [],
     });
+
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
@@ -63,6 +66,7 @@ exports.signup = async (req, res) => {
         role: user.role,
         provider: user.provider,
         providerId: user.providerId || null,
+        profilePicture: user.profilePicture,
         isLogin: user.isLogin,
         isActive: user.isActive,
         createdAt: user.createdAt,
@@ -114,8 +118,16 @@ exports.login = async (req, res) => {
       });
     }
 
+    // Save login info
     user.isLogin = true;
     user.currentDevice = deviceId || null;
+    user.loginHistory = user.loginHistory || [];
+    user.loginHistory.push({
+      deviceId: deviceId || null,
+      ip: req.ip,
+      loginAt: new Date(),
+    });
+
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
@@ -129,6 +141,7 @@ exports.login = async (req, res) => {
         role: user.role,
         provider: user.provider,
         providerId: user.providerId || null,
+        profilePicture: user.profilePicture,
         isLogin: user.isLogin,
         isActive: user.isActive,
         createdAt: user.createdAt,
@@ -194,6 +207,7 @@ exports.oauthLogin = async (req, res) => {
         rawProfile: profileData,
         isLogin: false,
         isActive: true,
+        loginHistory: [],
       });
     }
 
@@ -210,13 +224,24 @@ exports.oauthLogin = async (req, res) => {
       });
     }
 
+    // Save login info
     user.isLogin = true;
     user.currentDevice = deviceId || null;
+    user.loginHistory.push({
+      deviceId: deviceId || null,
+      ip: req.ip,
+      loginAt: new Date(),
+    });
+
+    // Save profile picture if updated
+    if (profileData.picture && profileData.picture !== user.profilePicture) {
+      user.profilePicture = profileData.picture;
+    }
+
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    // ✅ Return full user info including OAuth profile
     res.status(200).json({
       success: true,
       data: {

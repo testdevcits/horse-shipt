@@ -1,6 +1,12 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+const loginHistorySchema = new mongoose.Schema({
+  deviceId: { type: String, default: null },
+  ip: { type: String, default: null },
+  loginAt: { type: Date, default: Date.now },
+});
+
 const shipperSchema = new mongoose.Schema(
   {
     name: { type: String, required: false },
@@ -10,8 +16,8 @@ const shipperSchema = new mongoose.Schema(
 
     // OAuth provider info
     provider: { type: String }, // 'google', 'facebook', 'apple'
-    providerId: { type: String }, // OAuth provider ID
-    profilePicture: { type: String },
+    providerId: { type: String },
+    profilePicture: { type: String }, // store profile image URL
     firstName: { type: String },
     lastName: { type: String },
     locale: { type: String },
@@ -19,9 +25,12 @@ const shipperSchema = new mongoose.Schema(
     rawProfile: { type: Object },
 
     // Login control
-    isLogin: { type: Boolean, default: false }, // user currently logged in?
-    isActive: { type: Boolean, default: true }, // account active or blocked
-    currentDevice: { type: String }, // optional: store device info
+    isLogin: { type: Boolean, default: false },
+    isActive: { type: Boolean, default: true },
+    currentDevice: { type: String },
+
+    // Login history
+    loginHistory: [loginHistorySchema],
   },
   { timestamps: true }
 );
@@ -40,5 +49,4 @@ shipperSchema.methods.matchPassword = async function (enteredPassword) {
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
-const Shipper = mongoose.model("Shipper", shipperSchema);
-module.exports = Shipper;
+module.exports = mongoose.model("Shipper", shipperSchema);

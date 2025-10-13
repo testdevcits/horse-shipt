@@ -48,7 +48,7 @@ router.get(
     failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
     session: false,
   }),
-  (req, res) => {
+  function (req, res) {
     try {
       const { token, user } = req.user;
       if (!user || !user.isActive) {
@@ -59,7 +59,7 @@ router.get(
       const provider = user.provider;
       const email = user.email;
       const name = user.name;
-      const photo = user.photo || "";
+      const photo = user.profilePicture || "";
 
       res.redirect(
         `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${photo}`
@@ -89,7 +89,7 @@ router.get(
     failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
     session: false,
   }),
-  (req, res) => {
+  function (req, res) {
     try {
       const { token, user } = req.user;
       if (!user || !user.isActive) {
@@ -100,7 +100,7 @@ router.get(
       const provider = user.provider;
       const email = user.email;
       const name = user.name;
-      const photo = user.photo || "";
+      const photo = user.profilePicture || "";
 
       res.redirect(
         `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${photo}`
@@ -130,7 +130,7 @@ router.post(
     failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
     session: false,
   }),
-  (req, res) => {
+  function (req, res) {
     try {
       const { token, user } = req.user;
       if (!user || !user.isActive) {
@@ -141,7 +141,7 @@ router.post(
       const provider = user.provider;
       const email = user.email;
       const name = user.name;
-      const photo = user.photo || "";
+      const photo = user.profilePicture || "";
 
       res.redirect(
         `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${photo}`
