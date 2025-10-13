@@ -20,7 +20,7 @@ router.post("/oauth", oauthValidation, authController.oauthLogin);
 
 // -------------------------
 // Google OAuth Routes
-// -------------------------
+// -----------------------
 router.get(
   "/google",
   (req, res, next) => {
