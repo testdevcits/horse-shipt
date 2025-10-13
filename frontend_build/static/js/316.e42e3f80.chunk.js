@@ -1,2 +1,0 @@
-"use strict";(self.webpackChunkhorse_shipt_frontend=self.webpackChunkhorse_shipt_frontend||[]).push([[316],{316:(e,s,r)=>{r.r(s),r.d(s,{default:()=>p});r(43);var h=r(579);const p=()=>(0,h.jsxs)("div",{className:"p-4",children:[(0,h.jsx)("h1",{children:"Shipper Orders Page"}),(0,h.jsx)("p",{children:"This is the Orders page for Shipper."})]})}}]);
-//# sourceMappingURL=316.e42e3f80.chunk.js.map
