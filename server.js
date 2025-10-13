@@ -35,7 +35,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // -------------------------
 // Session Middleware
-// -------------------------
+// ------------------------
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "mysecretkey",
