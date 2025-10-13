@@ -7,7 +7,6 @@ const authController = require("../controllers/authController");
 const {
   signupValidation,
   loginValidation,
-  // Only Google OAuth
 } = require("../validations/authValidation");
 
 const frontendUrl =
@@ -25,11 +24,11 @@ const redirectWithUser = (res, user) => {
   return res.redirect(redirectUrl);
 };
 
-// ---------------- Email/Password Routes ----------------
+// ---------------- Email/Password ----------------
 router.post("/signup", signupValidation, authController.signup);
 router.post("/login", loginValidation, authController.login);
 
-// ---------------- Google OAuth Redirect Flow ----------------
+// ---------------- Google OAuth ----------------
 router.get(
   "/google",
   (req, res, next) => {
@@ -49,8 +48,9 @@ router.get(
     session: false,
   }),
   (req, res) => {
-    if (!req.user || !req.user.isActive)
+    if (!req.user || !req.user.isActive) {
       return res.redirect(`${frontendUrl}/login?error=account_blocked`);
+    }
     redirectWithUser(res, req.user);
   }
 );

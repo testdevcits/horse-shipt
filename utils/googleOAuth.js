@@ -23,6 +23,7 @@ passport.use(
           providerId: profile.id,
           provider: "google",
         });
+
         if (!user) {
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
@@ -33,13 +34,33 @@ passport.use(
             provider: "google",
             providerId: profile.id,
             role,
+            profilePicture: profile.photos?.[0]?.value || null,
+            firstName: profile.name?.givenName || null,
+            lastName: profile.name?.familyName || null,
+            locale: profile._json?.locale || null,
+            emailVerified: profile.emails?.[0]?.verified || false,
+            rawProfile: profile,
+            isLogin: false,
+            isActive: true,
+            loginHistory: [],
           });
         }
 
+        // Update profile picture if changed
+        if (
+          profile.photos?.[0]?.value &&
+          profile.photos[0].value !== user.profilePicture
+        ) {
+          user.profilePicture = profile.photos[0].value;
+        }
+
+        user.isLogin = true;
+        await user.save();
+
         const token = generateToken({ id: user._id, role: user.role });
-        const userInfo = { ...user.toObject(), token };
-        done(null, userInfo);
+        done(null, { ...user.toObject(), token });
       } catch (err) {
+        console.error("Google OAuth Error:", err);
         done(err, null);
       }
     }

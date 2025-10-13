@@ -15,7 +15,7 @@ const customerSchema = new mongoose.Schema(
     role: { type: String, default: "customer" },
 
     // OAuth provider info
-    provider: { type: String },
+    provider: { type: String }, // 'google', 'facebook', 'apple', 'local'
     providerId: { type: String },
     profilePicture: { type: String },
     firstName: { type: String },

@@ -1,5 +1,6 @@
 const { body, validationResult } = require("express-validator");
 
+// Middleware to handle validation errors
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -11,7 +12,7 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
-// Signup validation for email/password
+// ---------------- Signup Validation ----------------
 const signupValidation = [
   body("role")
     .notEmpty()
@@ -38,7 +39,7 @@ const signupValidation = [
   handleValidationErrors,
 ];
 
-// Login validation for email/password
+// ---------------- Login Validation ----------------
 const loginValidation = [
   body("role")
     .notEmpty()
@@ -55,7 +56,7 @@ const loginValidation = [
   handleValidationErrors,
 ];
 
-// Google OAuth validation
+// ---------------- Google OAuth Validation ----------------
 const googleOAuthValidation = [
   body("role")
     .notEmpty()
@@ -63,6 +64,11 @@ const googleOAuthValidation = [
     .isIn(["shipper", "customer"])
     .withMessage("Role must be either 'shipper' or 'customer'")
     .trim(),
+  body("profile")
+    .notEmpty()
+    .withMessage("Google profile is required")
+    .isObject()
+    .withMessage("Profile must be a valid object"),
   handleValidationErrors,
 ];
 

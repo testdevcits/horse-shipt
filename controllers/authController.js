@@ -9,15 +9,17 @@ const getModel = (role) => {
   return null;
 };
 
-// ---------------- Email/Password Signup ----------------
+// ---------------- Signup ----------------
 exports.signup = async (req, res) => {
   try {
     const { role, email, password, name, profilePicture } = req.body;
     if (!role || !email || !password)
-      return res.status(400).json({
-        success: false,
-        errors: ["Role, email, and password are required"],
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          errors: ["Role, email, and password are required"],
+        });
 
     const Model = getModel(role);
     if (!Model)
@@ -53,15 +55,17 @@ exports.signup = async (req, res) => {
   }
 };
 
-// ---------------- Email/Password Login ----------------
+// ---------------- Login ----------------
 exports.login = async (req, res) => {
   try {
     const { role, email, password, deviceId } = req.body;
     if (!role || !email || !password)
-      return res.status(400).json({
-        success: false,
-        errors: ["Role, email, and password are required"],
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          errors: ["Role, email, and password are required"],
+        });
 
     const Model = getModel(role);
     if (!Model)
@@ -95,76 +99,6 @@ exports.login = async (req, res) => {
   } catch (err) {
     console.error("Login Error:", err);
     res.status(500).json({ success: false, errors: ["Server Error"] });
-  }
-};
-
-// ---------------- Google OAuth Login/Signup ----------------
-exports.googleLogin = async (req, res) => {
-  try {
-    const { profile, role, deviceId } = req.body;
-    if (!role || !profile)
-      return res
-        .status(400)
-        .json({ success: false, errors: ["Role and profile are required"] });
-
-    const Model = getModel(role);
-    if (!Model)
-      return res.status(400).json({ success: false, errors: ["Invalid role"] });
-
-    let user = await Model.findOne({
-      providerId: profile.id,
-      provider: "google",
-    });
-
-    if (!user) {
-      const email = profile.email || `${profile.id}@google.fake`;
-      const name = profile.name || email.split("@")[0];
-
-      user = await Model.create({
-        name,
-        email,
-        provider: "google",
-        providerId: profile.id,
-        role,
-        profilePicture: profile.picture || null,
-        firstName: profile.firstName || null,
-        lastName: profile.lastName || null,
-        locale: profile.locale || null,
-        emailVerified: profile.emailVerified || false,
-        rawProfile: profile,
-        isLogin: false,
-        isActive: true,
-        loginHistory: [],
-      });
-    }
-
-    if (!user.isActive)
-      return res
-        .status(403)
-        .json({ success: false, errors: ["Account is blocked"] });
-
-    user.isLogin = true;
-    user.currentDevice = deviceId || null;
-    user.loginHistory.push({
-      deviceId: deviceId || null,
-      ip: req.ip,
-      loginAt: new Date(),
-    });
-
-    if (profile.picture && profile.picture !== user.profilePicture)
-      user.profilePicture = profile.picture;
-
-    await user.save();
-
-    const token = generateToken({ id: user._id, role: user.role });
-    res
-      .status(200)
-      .json({ success: true, data: { ...user.toObject(), token } });
-  } catch (err) {
-    console.error("Google OAuth Error:", err);
-    res
-      .status(500)
-      .json({ success: false, errors: ["Google OAuth login failed"] });
   }
 };
 
