@@ -1,83 +1,81 @@
 const { body, validationResult } = require("express-validator");
 
-// ==========================
-// Signup Validation
-// ==========================
+const handleValidationErrors = (req, res, next) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      errors: errors.array().map((err) => err.msg),
+    });
+  }
+  next();
+};
+
 const signupValidation = [
   body("role")
     .notEmpty()
     .withMessage("Role is required")
     .isIn(["shipper", "customer"])
-    .withMessage("Role must be either 'shipper' or 'customer'"),
-  // Remove name validation
-  body("email").isEmail().withMessage("Valid email is required"),
+    .withMessage("Role must be either 'shipper' or 'customer'")
+    .trim(),
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .trim()
+    .normalizeEmail(),
   body("password")
-    .isLength({ min: 6 })
-    .withMessage("Password must be at least 6 characters long"),
-  (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-    next();
-  },
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters")
+    .matches(/[A-Z]/)
+    .withMessage("Password must contain at least one uppercase letter")
+    .matches(/[a-z]/)
+    .withMessage("Password must contain at least one lowercase letter")
+    .matches(/\d/)
+    .withMessage("Password must contain at least one number")
+    .matches(/[@$!%*?&]/)
+    .withMessage("Password must contain at least one special character"),
+  handleValidationErrors,
 ];
 
-// ==========================
-// Login Validation
-// ==========================
 const loginValidation = [
   body("role")
     .notEmpty()
     .withMessage("Role is required")
     .isIn(["shipper", "customer"])
-    .withMessage("Role must be either 'shipper' or 'customer'"),
-  body("email").isEmail().withMessage("Valid email is required"),
+    .withMessage("Role must be either 'shipper' or 'customer'")
+    .trim(),
+  body("email")
+    .isEmail()
+    .withMessage("Valid email is required")
+    .trim()
+    .normalizeEmail(),
   body("password").notEmpty().withMessage("Password is required"),
-  (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
-    }
-    next();
-  },
+  handleValidationErrors,
 ];
 
-// ==========================
-// OAuth Validation (Google/Facebook)
-// ==========================
 const oauthValidation = [
   body("role")
     .notEmpty()
     .withMessage("Role is required")
     .isIn(["shipper", "customer"])
-    .withMessage("Role must be either 'shipper' or 'customer'"),
+    .withMessage("Role must be either 'shipper' or 'customer'")
+    .trim(),
   body("provider")
     .notEmpty()
     .withMessage("Provider is required")
-    .isIn(["google", "facebook"])
-    .withMessage("Provider must be 'google' or 'facebook'"),
-  body("profile").notEmpty().withMessage("Profile data is required"),
-  (req, res, next) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        errors: errors.array().map((err) => err.msg),
-      });
+    .isIn(["google", "facebook", "apple"])
+    .withMessage("Provider must be 'google', 'facebook', or 'apple'"),
+  body("profile").custom((value, { req }) => {
+    if (req.body.provider !== "apple" && !value) {
+      throw new Error("Profile data is required for Google/Facebook");
     }
-    next();
-  },
+    return true;
+  }),
+  body("idToken")
+    .if(body("provider").equals("apple"))
+    .notEmpty()
+    .withMessage("idToken is required for Apple login"),
+  handleValidationErrors,
 ];
 
-module.exports = {
-  signupValidation,
-  loginValidation,
-  oauthValidation,
-};
+module.exports = { signupValidation, loginValidation, oauthValidation };

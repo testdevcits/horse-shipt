@@ -7,13 +7,26 @@ const shipperSchema = new mongoose.Schema(
     email: { type: String, required: true, unique: true },
     password: { type: String },
     role: { type: String, default: "shipper" },
-    provider: { type: String }, // 'google' or 'facebook'
+
+    // OAuth provider info
+    provider: { type: String }, // 'google', 'facebook', 'apple'
     providerId: { type: String }, // OAuth provider ID
+    profilePicture: { type: String },
+    firstName: { type: String },
+    lastName: { type: String },
+    locale: { type: String },
+    emailVerified: { type: Boolean, default: false },
+    rawProfile: { type: Object },
+
+    // Login control
+    isLogin: { type: Boolean, default: false }, // user currently logged in?
+    isActive: { type: Boolean, default: true }, // account active or blocked
+    currentDevice: { type: String }, // optional: store device info
   },
   { timestamps: true }
 );
 
-// Hash password before saving (only if modified)
+// Hash password before saving
 shipperSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
   const salt = await bcrypt.genSalt(10);
