@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkhorse_shipt_frontend=self.webpackChunkhorse_shipt_frontend||[]).push([[147],{147:(e,s,t)=>{t.r(s),t.d(s,{default:()=>r});t(43);var n=t(579);const r=()=>(0,n.jsx)("div",{className:"text-xl font-bold",children:"Customer Settings"})}}]);
+//# sourceMappingURL=147.ee475621.chunk.js.map

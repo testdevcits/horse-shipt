@@ -1,0 +1,2 @@
+"use strict";(self.webpackChunkhorse_shipt_frontend=self.webpackChunkhorse_shipt_frontend||[]).push([[992],{992:(s,e,h)=>{h.r(e),h.d(e,{default:()=>t});h(43);var i=h(579);const t=()=>(0,i.jsxs)("div",{className:"p-4",children:[(0,i.jsx)("h1",{children:"Shipper Settings"}),(0,i.jsx)("p",{children:"This is the Shipper settings page."})]})}}]);
+//# sourceMappingURL=992.ad3158d1.chunk.js.map
