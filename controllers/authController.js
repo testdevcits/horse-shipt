@@ -4,6 +4,7 @@ const generateToken = require("../utils/generateToken");
 const verifyAppleToken = require("../utils/verifyAppleToken");
 const verifyFacebookToken = require("../utils/facebookOAuth");
 
+// Error messages
 const shipperErr = require("../utils/errorMessages/shipperError");
 const customerErr = require("../utils/errorMessages/customerError");
 
@@ -47,6 +48,7 @@ exports.signup = async (req, res) => {
       role,
       isLogin: false,
       isActive: true,
+      provider: "local",
     });
     await user.save();
 
@@ -59,7 +61,7 @@ exports.signup = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        provider: user.provider || "local",
+        provider: user.provider,
         providerId: user.providerId || null,
         isLogin: user.isLogin,
         isActive: user.isActive,
@@ -125,7 +127,7 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        provider: user.provider || "local",
+        provider: user.provider,
         providerId: user.providerId || null,
         isLogin: user.isLogin,
         isActive: user.isActive,
@@ -214,6 +216,7 @@ exports.oauthLogin = async (req, res) => {
 
     const token = generateToken({ id: user._id, role: user.role });
 
+    // ✅ Return full user info including OAuth profile
     res.status(200).json({
       success: true,
       data: {
