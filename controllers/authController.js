@@ -199,7 +199,7 @@ exports.oauthLogin = async (req, res) => {
         provider,
         providerId: profileData.id || profileData.appleId,
         role,
-        profilePicture: profileData.picture || null,
+        profilePicture: profileData.picture || null, // store profile picture
         firstName: profileData.firstName || null,
         lastName: profileData.lastName || null,
         locale: profileData.locale || null,
@@ -233,7 +233,7 @@ exports.oauthLogin = async (req, res) => {
       loginAt: new Date(),
     });
 
-    // Save profile picture if updated
+    // Update profile picture if it changed
     if (profileData.picture && profileData.picture !== user.profilePicture) {
       user.profilePicture = profileData.picture;
     }

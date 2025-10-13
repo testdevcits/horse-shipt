@@ -28,6 +28,25 @@ const frontendUrl =
   process.env.FRONTEND_URL || process.env.REACT_APP_FRONTEND_URL || "";
 
 // -------------------------
+// Helper to redirect with user info
+// -------------------------
+const redirectWithUser = (res, user) => {
+  const token = user.token || user.token; // already saved by OAuth controller
+  const role = user.role;
+  const providerId = user.providerId;
+  const provider = user.provider;
+  const email = user.email;
+  const name = user.name;
+  const photo = user.profilePicture || "";
+
+  const redirectUrl = `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${encodeURIComponent(
+    photo
+  )}`;
+
+  return res.redirect(redirectUrl);
+};
+
+// -------------------------
 // Google OAuth
 // -------------------------
 router.get(
@@ -48,22 +67,12 @@ router.get(
     failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
     session: false,
   }),
-  function (req, res) {
+  (req, res) => {
     try {
-      const { token, user } = req.user;
-      if (!user || !user.isActive) {
+      if (!req.user || !req.user.isActive)
         return res.redirect(`${frontendUrl}/login?error=account_blocked`);
-      }
-      const role = req.query.role || user.role;
-      const providerId = user.providerId;
-      const provider = user.provider;
-      const email = user.email;
-      const name = user.name;
-      const photo = user.profilePicture || "";
 
-      res.redirect(
-        `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${photo}`
-      );
+      redirectWithUser(res, req.user);
     } catch (err) {
       console.error("Google OAuth callback error:", err);
       res.redirect(`${frontendUrl}/login?error=oauth_failed`);
@@ -89,22 +98,12 @@ router.get(
     failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
     session: false,
   }),
-  function (req, res) {
+  (req, res) => {
     try {
-      const { token, user } = req.user;
-      if (!user || !user.isActive) {
+      if (!req.user || !req.user.isActive)
         return res.redirect(`${frontendUrl}/login?error=account_blocked`);
-      }
-      const role = req.query.role || user.role;
-      const providerId = user.providerId;
-      const provider = user.provider;
-      const email = user.email;
-      const name = user.name;
-      const photo = user.profilePicture || "";
 
-      res.redirect(
-        `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${photo}`
-      );
+      redirectWithUser(res, req.user);
     } catch (err) {
       console.error("Facebook OAuth callback error:", err);
       res.redirect(`${frontendUrl}/login?error=oauth_failed`);
@@ -130,22 +129,12 @@ router.post(
     failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
     session: false,
   }),
-  function (req, res) {
+  (req, res) => {
     try {
-      const { token, user } = req.user;
-      if (!user || !user.isActive) {
+      if (!req.user || !req.user.isActive)
         return res.redirect(`${frontendUrl}/login?error=account_blocked`);
-      }
-      const role = req.query.role || user.role;
-      const providerId = user.providerId;
-      const provider = user.provider;
-      const email = user.email;
-      const name = user.name;
-      const photo = user.profilePicture || "";
 
-      res.redirect(
-        `${frontendUrl}/oauth-success?token=${token}&role=${role}&providerId=${providerId}&provider=${provider}&email=${email}&name=${name}&photo=${photo}`
-      );
+      redirectWithUser(res, req.user);
     } catch (err) {
       console.error("Apple OAuth callback error:", err);
       res.redirect(`${frontendUrl}/login?error=oauth_failed`);
