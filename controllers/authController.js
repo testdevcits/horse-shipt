@@ -4,11 +4,9 @@ const generateToken = require("../utils/generateToken");
 const verifyAppleToken = require("../utils/verifyAppleToken");
 const verifyFacebookToken = require("../utils/facebookOAuth");
 
-// Error messages
 const shipperErr = require("../utils/errorMessages/shipperError");
 const customerErr = require("../utils/errorMessages/customerError");
 
-// ---------------- Helper: select model & error messages ----------------
 const getModelAndError = (role) => {
   if (role === "shipper") return { Model: Shipper, ERR: shipperErr };
   if (role === "customer") return { Model: Customer, ERR: customerErr };
@@ -19,13 +17,13 @@ const getModelAndError = (role) => {
 exports.signup = async (req, res) => {
   try {
     const { role, email, password, name, profilePicture } = req.body;
-
-    if (!role || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        errors: ["Role, email, and password are required"],
-      });
-    }
+    if (!role || !email || !password)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          errors: ["Role, email, and password are required"],
+        });
 
     const selection = getModelAndError(role);
     if (!selection)
@@ -33,13 +31,10 @@ exports.signup = async (req, res) => {
 
     const { Model, ERR } = selection;
 
-    const existingUser = await Model.findOne({ email });
-    if (existingUser) {
-      return res.status(409).json({
-        success: false,
-        errors: [ERR.EMAIL_REGISTERED],
-      });
-    }
+    if (await Model.findOne({ email }))
+      return res
+        .status(409)
+        .json({ success: false, errors: [ERR.EMAIL_REGISTERED] });
 
     const user = new Model({
       name: name || email.split("@")[0],
@@ -47,33 +42,18 @@ exports.signup = async (req, res) => {
       password,
       role,
       profilePicture: profilePicture || null,
+      provider: "local",
       isLogin: false,
       isActive: true,
-      provider: "local",
       loginHistory: [],
     });
 
     await user.save();
-
     const token = generateToken({ id: user._id, role: user.role });
 
-    res.status(201).json({
-      success: true,
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        provider: user.provider,
-        providerId: user.providerId || null,
-        profilePicture: user.profilePicture,
-        isLogin: user.isLogin,
-        isActive: user.isActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        token,
-      },
-    });
+    res
+      .status(201)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("Signup Error:", err);
     res.status(500).json({ success: false, errors: ["Server Error"] });
@@ -84,13 +64,13 @@ exports.signup = async (req, res) => {
 exports.login = async (req, res) => {
   try {
     const { role, email, password, deviceId } = req.body;
-
-    if (!role || !email || !password) {
-      return res.status(400).json({
-        success: false,
-        errors: ["Role, email, and password are required"],
-      });
-    }
+    if (!role || !email || !password)
+      return res
+        .status(400)
+        .json({
+          success: false,
+          errors: ["Role, email, and password are required"],
+        });
 
     const selection = getModelAndError(role);
     if (!selection)
@@ -98,75 +78,50 @@ exports.login = async (req, res) => {
 
     const { Model, ERR } = selection;
     const user = await Model.findOne({ email });
-
-    if (!user || !(await user.matchPassword(password))) {
+    if (!user || !(await user.matchPassword(password)))
       return res
         .status(401)
         .json({ success: false, errors: [ERR.INVALID_CREDENTIALS] });
-    }
-
-    if (!user.isActive) {
+    if (!user.isActive)
       return res
         .status(403)
         .json({ success: false, errors: ["Account is blocked"] });
-    }
+    if (user.isLogin && user.currentDevice !== deviceId)
+      return res
+        .status(403)
+        .json({
+          success: false,
+          errors: ["User already logged in on another device"],
+        });
 
-    if (user.isLogin && user.currentDevice !== deviceId) {
-      return res.status(403).json({
-        success: false,
-        errors: ["User already logged in on another device"],
-      });
-    }
-
-    // Save login info
     user.isLogin = true;
     user.currentDevice = deviceId || null;
-    user.loginHistory = user.loginHistory || [];
     user.loginHistory.push({
       deviceId: deviceId || null,
       ip: req.ip,
       loginAt: new Date(),
     });
-
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        provider: user.provider,
-        providerId: user.providerId || null,
-        profilePicture: user.profilePicture,
-        isLogin: user.isLogin,
-        isActive: user.isActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        token,
-      },
-    });
+    res
+      .status(200)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("Login Error:", err);
     res.status(500).json({ success: false, errors: ["Server Error"] });
   }
 };
 
-// ---------------- OAuth Login / Signup ----------------
+// ---------------- OAuth Login ----------------
 exports.oauthLogin = async (req, res) => {
   try {
     const { provider, profile, role, accessToken, idToken, deviceId } =
       req.body;
-
-    if (!role || !provider) {
-      return res.status(400).json({
-        success: false,
-        errors: ["Role and provider are required"],
-      });
-    }
+    if (!role || !provider)
+      return res
+        .status(400)
+        .json({ success: false, errors: ["Role and provider are required"] });
 
     const selection = getModelAndError(role);
     if (!selection)
@@ -174,19 +129,16 @@ exports.oauthLogin = async (req, res) => {
 
     const { Model } = selection;
 
-    // Get profile from provider
     let profileData = profile;
     if (provider === "apple") profileData = await verifyAppleToken(idToken);
     if (provider === "facebook")
       profileData = await verifyFacebookToken(accessToken);
 
-    // Check if user exists
     let user = await Model.findOne({
       providerId: profileData.id || profileData.appleId,
       provider,
     });
 
-    // If user does not exist, create new
     if (!user) {
       const email =
         profileData.email ||
@@ -199,7 +151,7 @@ exports.oauthLogin = async (req, res) => {
         provider,
         providerId: profileData.id || profileData.appleId,
         role,
-        profilePicture: profileData.picture || null, // store profile picture
+        profilePicture: profileData.picture || null,
         firstName: profileData.firstName || null,
         lastName: profileData.lastName || null,
         locale: profileData.locale || null,
@@ -211,20 +163,18 @@ exports.oauthLogin = async (req, res) => {
       });
     }
 
-    if (!user.isActive) {
+    if (!user.isActive)
       return res
         .status(403)
         .json({ success: false, errors: ["Account is blocked"] });
-    }
+    if (user.isLogin && user.currentDevice !== deviceId)
+      return res
+        .status(403)
+        .json({
+          success: false,
+          errors: ["User already logged in on another device"],
+        });
 
-    if (user.isLogin && user.currentDevice !== deviceId) {
-      return res.status(403).json({
-        success: false,
-        errors: ["User already logged in on another device"],
-      });
-    }
-
-    // Save login info
     user.isLogin = true;
     user.currentDevice = deviceId || null;
     user.loginHistory.push({
@@ -232,36 +182,15 @@ exports.oauthLogin = async (req, res) => {
       ip: req.ip,
       loginAt: new Date(),
     });
-
-    // Update profile picture if it changed
-    if (profileData.picture && profileData.picture !== user.profilePicture) {
+    if (profileData.picture && profileData.picture !== user.profilePicture)
       user.profilePicture = profileData.picture;
-    }
 
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
-
-    res.status(200).json({
-      success: true,
-      data: {
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        provider: user.provider,
-        providerId: user.providerId,
-        profilePicture: user.profilePicture,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        locale: user.locale,
-        isLogin: user.isLogin,
-        isActive: user.isActive,
-        createdAt: user.createdAt,
-        updatedAt: user.updatedAt,
-        token,
-      },
-    });
+    res
+      .status(200)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("OAuth Error:", err);
     res.status(500).json({ success: false, errors: ["OAuth login failed"] });
@@ -272,28 +201,22 @@ exports.oauthLogin = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
-
     const selection = getModelAndError(role);
     if (!selection)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
     const { Model } = selection;
     const user = await Model.findById(userId);
-
-    if (!user) {
+    if (!user)
       return res
         .status(404)
         .json({ success: false, errors: ["User not found"] });
-    }
 
     user.isLogin = false;
     user.currentDevice = null;
     await user.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Logged out successfully",
-    });
+    res.status(200).json({ success: true, message: "Logged out successfully" });
   } catch (err) {
     console.error("Logout Error:", err);
     res.status(500).json({ success: false, errors: ["Server Error"] });

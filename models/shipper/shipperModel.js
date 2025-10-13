@@ -15,9 +15,9 @@ const shipperSchema = new mongoose.Schema(
     role: { type: String, default: "shipper" },
 
     // OAuth provider info
-    provider: { type: String }, // 'google', 'facebook', 'apple'
+    provider: { type: String }, // 'google', 'facebook', 'apple', 'local'
     providerId: { type: String },
-    profilePicture: { type: String }, // store profile image URL
+    profilePicture: { type: String },
     firstName: { type: String },
     lastName: { type: String },
     locale: { type: String },
