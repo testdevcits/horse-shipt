@@ -1,17 +1,14 @@
 {
   "version": 2,
   "builds": [
-    { "src": "backend/server.js", "use": "@vercel/node" },
-    { "src": "frontend/package.json", "use": "@vercel/static-build" }
+    { "src": "horse-shipt-backend/server.js", "use": "@vercel/node" },
+    {
+      "src": "horse-shipt-frontend/package.json",
+      "use": "@vercel/static-build"
+    }
   ],
   "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/backend/server.js"
-    },
-    {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
-    }
+    { "src": "/api/(.*)", "dest": "horse-shipt-backend/server.js" },
+    { "src": "/(.*)", "dest": "horse-shipt-frontend/build/index.html" }
   ]
 }
