@@ -1,15 +1,11 @@
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
-const verifyAppleToken = require("../utils/verifyAppleToken");
-const verifyFacebookToken = require("../utils/facebookOAuth");
 
-const shipperErr = require("../utils/errorMessages/shipperError");
-const customerErr = require("../utils/errorMessages/customerError");
-
-const getModelAndError = (role) => {
-  if (role === "shipper") return { Model: Shipper, ERR: shipperErr };
-  if (role === "customer") return { Model: Customer, ERR: customerErr };
+// Select model by role
+const getModel = (role) => {
+  if (role === "shipper") return Shipper;
+  if (role === "customer") return Customer;
   return null;
 };
 
@@ -18,23 +14,20 @@ exports.signup = async (req, res) => {
   try {
     const { role, email, password, name, profilePicture } = req.body;
     if (!role || !email || !password)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          errors: ["Role, email, and password are required"],
-        });
+      return res.status(400).json({
+        success: false,
+        errors: ["Role, email, and password are required"],
+      });
 
-    const selection = getModelAndError(role);
-    if (!selection)
+    const Model = getModel(role);
+    if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    const { Model, ERR } = selection;
-
-    if (await Model.findOne({ email }))
+    const existingUser = await Model.findOne({ email });
+    if (existingUser)
       return res
         .status(409)
-        .json({ success: false, errors: [ERR.EMAIL_REGISTERED] });
+        .json({ success: false, errors: ["Email already registered"] });
 
     const user = new Model({
       name: name || email.split("@")[0],
@@ -65,34 +58,25 @@ exports.login = async (req, res) => {
   try {
     const { role, email, password, deviceId } = req.body;
     if (!role || !email || !password)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          errors: ["Role, email, and password are required"],
-        });
+      return res.status(400).json({
+        success: false,
+        errors: ["Role, email, and password are required"],
+      });
 
-    const selection = getModelAndError(role);
-    if (!selection)
+    const Model = getModel(role);
+    if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    const { Model, ERR } = selection;
     const user = await Model.findOne({ email });
     if (!user || !(await user.matchPassword(password)))
       return res
         .status(401)
-        .json({ success: false, errors: [ERR.INVALID_CREDENTIALS] });
+        .json({ success: false, errors: ["Invalid credentials"] });
+
     if (!user.isActive)
       return res
         .status(403)
         .json({ success: false, errors: ["Account is blocked"] });
-    if (user.isLogin && user.currentDevice !== deviceId)
-      return res
-        .status(403)
-        .json({
-          success: false,
-          errors: ["User already logged in on another device"],
-        });
 
     user.isLogin = true;
     user.currentDevice = deviceId || null;
@@ -101,6 +85,7 @@ exports.login = async (req, res) => {
       ip: req.ip,
       loginAt: new Date(),
     });
+
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
@@ -113,50 +98,40 @@ exports.login = async (req, res) => {
   }
 };
 
-// ---------------- OAuth Login ----------------
-exports.oauthLogin = async (req, res) => {
+// ---------------- Google OAuth Login/Signup ----------------
+exports.googleLogin = async (req, res) => {
   try {
-    const { provider, profile, role, accessToken, idToken, deviceId } =
-      req.body;
-    if (!role || !provider)
+    const { profile, role, deviceId } = req.body;
+    if (!role || !profile)
       return res
         .status(400)
-        .json({ success: false, errors: ["Role and provider are required"] });
+        .json({ success: false, errors: ["Role and profile are required"] });
 
-    const selection = getModelAndError(role);
-    if (!selection)
+    const Model = getModel(role);
+    if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    const { Model } = selection;
-
-    let profileData = profile;
-    if (provider === "apple") profileData = await verifyAppleToken(idToken);
-    if (provider === "facebook")
-      profileData = await verifyFacebookToken(accessToken);
-
     let user = await Model.findOne({
-      providerId: profileData.id || profileData.appleId,
-      provider,
+      providerId: profile.id,
+      provider: "google",
     });
 
     if (!user) {
-      const email =
-        profileData.email ||
-        `${profileData.id || profileData.appleId}@${provider}.fake`;
-      const name = profileData.name || email.split("@")[0];
+      const email = profile.email || `${profile.id}@google.fake`;
+      const name = profile.name || email.split("@")[0];
 
       user = await Model.create({
         name,
         email,
-        provider,
-        providerId: profileData.id || profileData.appleId,
+        provider: "google",
+        providerId: profile.id,
         role,
-        profilePicture: profileData.picture || null,
-        firstName: profileData.firstName || null,
-        lastName: profileData.lastName || null,
-        locale: profileData.locale || null,
-        emailVerified: profileData.emailVerified || false,
-        rawProfile: profileData,
+        profilePicture: profile.picture || null,
+        firstName: profile.firstName || null,
+        lastName: profile.lastName || null,
+        locale: profile.locale || null,
+        emailVerified: profile.emailVerified || false,
+        rawProfile: profile,
         isLogin: false,
         isActive: true,
         loginHistory: [],
@@ -167,13 +142,6 @@ exports.oauthLogin = async (req, res) => {
       return res
         .status(403)
         .json({ success: false, errors: ["Account is blocked"] });
-    if (user.isLogin && user.currentDevice !== deviceId)
-      return res
-        .status(403)
-        .json({
-          success: false,
-          errors: ["User already logged in on another device"],
-        });
 
     user.isLogin = true;
     user.currentDevice = deviceId || null;
@@ -182,8 +150,9 @@ exports.oauthLogin = async (req, res) => {
       ip: req.ip,
       loginAt: new Date(),
     });
-    if (profileData.picture && profileData.picture !== user.profilePicture)
-      user.profilePicture = profileData.picture;
+
+    if (profile.picture && profile.picture !== user.profilePicture)
+      user.profilePicture = profile.picture;
 
     await user.save();
 
@@ -192,8 +161,10 @@ exports.oauthLogin = async (req, res) => {
       .status(200)
       .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
-    console.error("OAuth Error:", err);
-    res.status(500).json({ success: false, errors: ["OAuth login failed"] });
+    console.error("Google OAuth Error:", err);
+    res
+      .status(500)
+      .json({ success: false, errors: ["Google OAuth login failed"] });
   }
 };
 
@@ -201,11 +172,10 @@ exports.oauthLogin = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
-    const selection = getModelAndError(role);
-    if (!selection)
+    const Model = getModel(role);
+    if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    const { Model } = selection;
     const user = await Model.findById(userId);
     if (!user)
       return res

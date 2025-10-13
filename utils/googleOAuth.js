@@ -4,6 +4,8 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("./generateToken");
 
+const getModel = (role) => (role === "shipper" ? Shipper : Customer);
+
 passport.use(
   new GoogleStrategy(
     {
@@ -14,8 +16,8 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        const role = req.session?.role || req.query.role || "shipper";
-        const Model = role === "shipper" ? Shipper : Customer;
+        const role = req.session?.role || "shipper";
+        const Model = getModel(role);
 
         let user = await Model.findOne({
           providerId: profile.id,
@@ -25,7 +27,6 @@ passport.use(
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
           const name = profile.displayName || email.split("@")[0];
-
           user = await Model.create({
             name,
             email,
@@ -37,9 +38,9 @@ passport.use(
 
         const token = generateToken({ id: user._id, role: user.role });
         const userInfo = { ...user.toObject(), token };
-        return done(null, userInfo);
+        done(null, userInfo);
       } catch (err) {
-        return done(err, null);
+        done(err, null);
       }
     }
   )

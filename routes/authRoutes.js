@@ -7,12 +7,13 @@ const authController = require("../controllers/authController");
 const {
   signupValidation,
   loginValidation,
-  oauthValidation,
+  // Only Google OAuth
 } = require("../validations/authValidation");
 
 const frontendUrl =
   process.env.FRONTEND_URL || process.env.REACT_APP_FRONTEND_URL || "";
 
+// Helper: redirect to frontend with user info & token
 const redirectWithUser = (res, user) => {
   const redirectUrl = `${frontendUrl}/oauth-success?token=${user.token}&role=${
     user.role
@@ -24,17 +25,15 @@ const redirectWithUser = (res, user) => {
   return res.redirect(redirectUrl);
 };
 
-// Email/Password
+// ---------------- Email/Password Routes ----------------
 router.post("/signup", signupValidation, authController.signup);
 router.post("/login", loginValidation, authController.login);
-router.post("/oauth", oauthValidation, authController.oauthLogin);
-router.post("/logout", authController.logout);
 
-// Google OAuth
+// ---------------- Google OAuth Redirect Flow ----------------
 router.get(
   "/google",
   (req, res, next) => {
-    req.session.role = req.query.role || "shipper";
+    req.session.role = req.query.role || "shipper"; // store role for OAuth
     next();
   },
   passport.authenticate("google", {
@@ -55,5 +54,8 @@ router.get(
     redirectWithUser(res, req.user);
   }
 );
+
+// ---------------- Logout ----------------
+router.post("/logout", authController.logout);
 
 module.exports = router;

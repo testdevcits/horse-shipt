@@ -11,6 +11,7 @@ const handleValidationErrors = (req, res, next) => {
   next();
 };
 
+// Signup validation for email/password
 const signupValidation = [
   body("role")
     .notEmpty()
@@ -37,6 +38,7 @@ const signupValidation = [
   handleValidationErrors,
 ];
 
+// Login validation for email/password
 const loginValidation = [
   body("role")
     .notEmpty()
@@ -53,29 +55,15 @@ const loginValidation = [
   handleValidationErrors,
 ];
 
-const oauthValidation = [
+// Google OAuth validation
+const googleOAuthValidation = [
   body("role")
     .notEmpty()
     .withMessage("Role is required")
     .isIn(["shipper", "customer"])
     .withMessage("Role must be either 'shipper' or 'customer'")
     .trim(),
-  body("provider")
-    .notEmpty()
-    .withMessage("Provider is required")
-    .isIn(["google", "facebook", "apple"])
-    .withMessage("Provider must be 'google', 'facebook', or 'apple'"),
-  body("profile").custom((value, { req }) => {
-    if (req.body.provider !== "apple" && !value) {
-      throw new Error("Profile data is required for Google/Facebook");
-    }
-    return true;
-  }),
-  body("idToken")
-    .if(body("provider").equals("apple"))
-    .notEmpty()
-    .withMessage("idToken is required for Apple login"),
   handleValidationErrors,
 ];
 
-module.exports = { signupValidation, loginValidation, oauthValidation };
+module.exports = { signupValidation, loginValidation, googleOAuthValidation };
