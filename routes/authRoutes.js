@@ -11,8 +11,7 @@ router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
 // ------------------------
-// Google OAuth
-// Step 1: Redirect user to Google for authentication
+// Google OAuth - Step 1
 // ------------------------
 router.get(
   "/google",
@@ -25,7 +24,7 @@ router.get(
 );
 
 // ------------------------
-// Step 2: Handle callback from Google
+// Google OAuth - Step 2
 // ------------------------
 router.get(
   "/google/callback",
@@ -35,14 +34,12 @@ router.get(
   }),
   (req, res) => {
     try {
-      const role = req.session.role || "shipper"; // fallback role
       const user = req.user;
-
       const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${
         user.token
-      }&role=${role}&email=${encodeURIComponent(
-        user.email
-      )}&name=${encodeURIComponent(user.name)}&photo=${encodeURIComponent(
+      }&id=${user._id}&role=${user.role}&name=${encodeURIComponent(
+        user.name
+      )}&email=${encodeURIComponent(user.email)}&photo=${encodeURIComponent(
         user.profilePicture || ""
       )}&provider=${user.provider}&providerId=${user.providerId}`;
 

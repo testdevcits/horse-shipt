@@ -25,17 +25,19 @@ passport.use(
         const role = req.session?.role || "shipper";
         const Model = getModel(role);
 
+        // Check if user exists
         let user = await Model.findOne({
           providerId: profile.id,
           provider: "google",
         });
 
+        // Create new user if not exists
         if (!user) {
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
           const name = profile.displayName || email.split("@")[0];
 
-          // Generate uniqueId for Shipper / Customer
+          // Generate uniqueId for user
           const prefix = role === "shipper" ? "HS" : "HC";
           let uniqueId;
           let exists = true;
@@ -68,19 +70,21 @@ passport.use(
           await user.save();
         }
 
+        // Generate JWT token
         const token = generateToken({ id: user._id, role: user.role });
 
-        const redirectUrl = `${
-          process.env.FRONTEND_URL
-        }/oauth-success?token=${token}&id=${user._id}&role=${
-          user.role
-        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
-          user.email
-        )}&photo=${user.profilePicture || ""}&provider=google&providerId=${
-          profile.id
-        }`;
-
-        done(null, { redirectUrl });
+        // Attach full user info + token to req.user
+        done(null, {
+          _id: user._id,
+          uniqueId: user.uniqueId,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          provider: user.provider,
+          providerId: user.providerId,
+          profilePicture: user.profilePicture,
+          token,
+        });
       } catch (err) {
         console.error("❌ Google OAuth Error:", err);
         done(err, null);
@@ -89,5 +93,5 @@ passport.use(
   )
 );
 
-passport.serializeUser((obj, done) => done(null, obj));
-passport.deserializeUser((obj, done) => done(null, obj));
+passport.serializeUser((user, done) => done(null, user));
+passport.deserializeUser((user, done) => done(null, user));
