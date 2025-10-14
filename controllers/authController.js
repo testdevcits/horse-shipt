@@ -103,12 +103,10 @@ exports.login = async (req, res) => {
         providerId: profile.sub,
       });
       if (!user)
-        return res
-          .status(404)
-          .json({
-            success: false,
-            errors: ["Google user not found. Please signup first."],
-          });
+        return res.status(404).json({
+          success: false,
+          errors: ["Google user not found. Please signup first."],
+        });
     } else {
       user = await Model.findOne({ email });
       if (!user || !(await user.matchPassword(password)))

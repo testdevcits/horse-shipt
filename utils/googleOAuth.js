@@ -2,7 +2,7 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
-const generateToken = require("./generateToken");
+const generateToken = require("../utils/generateToken");
 
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
@@ -11,10 +11,7 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL:
-        process.env.NODE_ENV === "production"
-          ? `${process.env.FRONTEND_URL}/auth/google/callback` // frontend callback URL
-          : "http://localhost:3000/auth/google/callback", // local frontend callback
+      callbackURL: `${process.env.BACKEND_URL}/api/auth/google/callback`, // backend callback
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
@@ -22,13 +19,11 @@ passport.use(
         const role = req.session?.role || "shipper"; // default role
         const Model = getModel(role);
 
-        // Find existing user by providerId
         let user = await Model.findOne({
           providerId: profile.id,
           provider: "google",
         });
 
-        // If user doesn't exist, create new
         if (!user) {
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
@@ -44,7 +39,7 @@ passport.use(
             firstName: profile.name?.givenName || null,
             lastName: profile.name?.familyName || null,
             locale: profile._json?.locale || null,
-            emailVerified: profile.emails?.[0]?.verified || false,
+            emailVerified: true,
             rawProfile: profile,
             isLogin: true,
             isActive: true,
@@ -52,7 +47,6 @@ passport.use(
           });
         }
 
-        // Update profile picture if changed
         if (
           profile.photos?.[0]?.value &&
           profile.photos[0].value !== user.profilePicture
@@ -63,10 +57,19 @@ passport.use(
         user.isLogin = true;
         await user.save();
 
-        // Generate JWT token
         const token = generateToken({ id: user._id, role: user.role });
 
-        done(null, { ...user.toObject(), token });
+        // redirect to frontend with token
+        const redirectUrl = `${
+          process.env.FRONTEND_URL
+        }/auth/google/callback?token=${token}&id=${user._id}&role=${
+          user.role
+        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
+          user.email
+        )}&photo=${user.profilePicture || ""}&provider=google&providerId=${
+          profile.id
+        }`;
+        done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
         done(err, null);
@@ -75,6 +78,5 @@ passport.use(
   )
 );
 
-// Serialize & deserialize user for sessions (optional)
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));

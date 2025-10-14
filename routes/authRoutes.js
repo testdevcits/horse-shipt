@@ -1,60 +1,30 @@
 const express = require("express");
-const router = express.Router();
 const passport = require("passport");
-require("../utils/googleOAuth");
-
+const router = express.Router();
 const authController = require("../controllers/authController");
-const {
-  signupValidation,
-  loginValidation,
-} = require("../validations/authValidation");
 
-const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
+// Local signup/login/logout
+router.post("/signup", authController.signup);
+router.post("/login", authController.login);
+router.post("/logout", authController.logout);
 
-// Helper: redirect to frontend with token and user info
-const redirectWithUser = (res, user) => {
-  const redirectUrl = `${frontendUrl}/oauth-success?token=${user.token}&role=${
-    user.role
-  }&provider=${user.provider}&providerId=${
-    user.providerId
-  }&email=${encodeURIComponent(user.email)}&name=${encodeURIComponent(
-    user.name
-  )}&photo=${encodeURIComponent(user.profilePicture || "")}`;
-  return res.redirect(redirectUrl);
-};
-
-// ---------------- Email/Password ----------------
-router.post("/signup", signupValidation, authController.signup);
-router.post("/login", loginValidation, authController.login);
-
-// ---------------- Google OAuth ----------------
+// Google OAuth
 router.get(
   "/google",
   (req, res, next) => {
-    req.session.role = req.query.role || "shipper";
+    const { role } = req.query;
+    req.session.role = role || "shipper";
     next();
   },
-  passport.authenticate("google", {
-    scope: ["profile", "email"],
-    session: false,
-  })
+  passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
 router.get(
   "/google/callback",
-  passport.authenticate("google", {
-    failureRedirect: `${frontendUrl}/login?error=oauth_failed`,
-    session: false,
-  }),
+  passport.authenticate("google", { session: false }),
   (req, res) => {
-    if (!req.user || !req.user.isActive) {
-      return res.redirect(`${frontendUrl}/login?error=account_blocked`);
-    }
-    redirectWithUser(res, req.user);
+    res.redirect(req.user.redirectUrl);
   }
 );
-
-// ---------------- Logout ----------------
-router.post("/logout", authController.logout);
 
 module.exports = router;
