@@ -70,6 +70,12 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 // -------------------------
+// Passport Google OAuth Config
+// -------------------------
+// Make sure this file sets up passport.use(GoogleStrategy)
+require("./config/passport"); // <-- update path if needed
+
+// -------------------------
 // API Routes
 // -------------------------
 const authRoutes = require("./routes/authRoutes");

@@ -1,11 +1,18 @@
+// controllers/authController.js
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
-// Utility to generate unique ID
+// ----------------- Utility Functions -----------------
+const getModel = (role) => {
+  if (role === "shipper") return Shipper;
+  if (role === "customer") return Customer;
+  return null;
+};
+
 const generateUniqueId = async (role) => {
   const prefix = role === "shipper" ? "HS" : "HC";
-  const Model = role === "shipper" ? Shipper : Customer;
+  const Model = getModel(role);
 
   let id;
   let exists = true;
@@ -19,17 +26,10 @@ const generateUniqueId = async (role) => {
   return id;
 };
 
-// Select model by role
-const getModel = (role) => {
-  if (role === "shipper") return Shipper;
-  if (role === "customer") return Customer;
-  return null;
-};
-
-// ---------------- Signup ----------------
+// ----------------- Signup -----------------
 exports.signup = async (req, res) => {
   try {
-    const { role, email, password, name, profilePicture, provider, profile } =
+    const { role, email, password, name, provider, profilePicture, profile } =
       req.body;
 
     if (!role || !email)
@@ -55,8 +55,8 @@ exports.signup = async (req, res) => {
       email,
       password: provider === "google" ? null : password,
       role,
-      profilePicture: profilePicture || (profile ? profile.picture : null),
       provider: provider || "local",
+      profilePicture: profilePicture || (profile ? profile.picture : null),
       providerId: profile ? profile.sub : null,
       firstName: profile ? profile.given_name : null,
       lastName: profile ? profile.family_name : null,
@@ -80,10 +80,10 @@ exports.signup = async (req, res) => {
   }
 };
 
-// ---------------- Login ----------------
+// ----------------- Login -----------------
 exports.login = async (req, res) => {
   try {
-    const { role, email, password, deviceId, provider, profile } = req.body;
+    const { role, email, password, provider, profile, deviceId } = req.body;
 
     if (!role || !email)
       return res
@@ -140,10 +140,11 @@ exports.login = async (req, res) => {
   }
 };
 
-// ---------------- Logout ----------------
+// ----------------- Logout -----------------
 exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
+
     const Model = getModel(role);
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
