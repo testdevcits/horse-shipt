@@ -9,10 +9,9 @@ const {
   loginValidation,
 } = require("../validations/authValidation");
 
-const frontendUrl =
-  process.env.FRONTEND_URL || process.env.REACT_APP_FRONTEND_URL || "";
+const frontendUrl = process.env.FRONTEND_URL || "";
 
-// Helper: redirect to frontend with user info & token
+// Helper: redirect to frontend with token and user info
 const redirectWithUser = (res, user) => {
   const redirectUrl = `${frontendUrl}/oauth-success?token=${user.token}&role=${
     user.role
@@ -32,7 +31,7 @@ router.post("/login", loginValidation, authController.login);
 router.get(
   "/google",
   (req, res, next) => {
-    req.session.role = req.query.role || "shipper"; // store role for OAuth
+    req.session.role = req.query.role || "shipper";
     next();
   },
   passport.authenticate("google", {

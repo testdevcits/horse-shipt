@@ -2,6 +2,23 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
+// Utility to generate unique ID
+const generateUniqueId = async (role) => {
+  const prefix = role === "shipper" ? "HS" : "HC";
+  const Model = role === "shipper" ? Shipper : Customer;
+
+  let id;
+  let exists = true;
+
+  while (exists) {
+    const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit
+    id = `${prefix}${randomNum}`;
+    const existing = await Model.findOne({ uniqueId: id });
+    if (!existing) exists = false;
+  }
+  return id;
+};
+
 // Select model by role
 const getModel = (role) => {
   if (role === "shipper") return Shipper;
@@ -12,14 +29,13 @@ const getModel = (role) => {
 // ---------------- Signup ----------------
 exports.signup = async (req, res) => {
   try {
-    const { role, email, password, name, profilePicture } = req.body;
-    if (!role || !email || !password)
+    const { role, email, password, name, profilePicture, provider, profile } =
+      req.body;
+
+    if (!role || !email)
       return res
         .status(400)
-        .json({
-          success: false,
-          errors: ["Role, email, and password are required"],
-        });
+        .json({ success: false, errors: ["Role and email are required"] });
 
     const Model = getModel(role);
     if (!Model)
@@ -31,13 +47,22 @@ exports.signup = async (req, res) => {
         .status(409)
         .json({ success: false, errors: ["Email already registered"] });
 
+    const uniqueId = await generateUniqueId(role);
+
     const user = new Model({
+      uniqueId,
       name: name || email.split("@")[0],
       email,
-      password,
+      password: provider === "google" ? null : password,
       role,
-      profilePicture: profilePicture || null,
-      provider: "local",
+      profilePicture: profilePicture || (profile ? profile.picture : null),
+      provider: provider || "local",
+      providerId: profile ? profile.sub : null,
+      firstName: profile ? profile.given_name : null,
+      lastName: profile ? profile.family_name : null,
+      locale: profile ? profile.locale : null,
+      emailVerified: provider === "google",
+      rawProfile: profile || null,
       isLogin: false,
       isActive: true,
       loginHistory: [],
@@ -58,24 +83,39 @@ exports.signup = async (req, res) => {
 // ---------------- Login ----------------
 exports.login = async (req, res) => {
   try {
-    const { role, email, password, deviceId } = req.body;
-    if (!role || !email || !password)
+    const { role, email, password, deviceId, provider, profile } = req.body;
+
+    if (!role || !email)
       return res
         .status(400)
-        .json({
-          success: false,
-          errors: ["Role, email, and password are required"],
-        });
+        .json({ success: false, errors: ["Role and email are required"] });
 
     const Model = getModel(role);
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    const user = await Model.findOne({ email });
-    if (!user || !(await user.matchPassword(password)))
-      return res
-        .status(401)
-        .json({ success: false, errors: ["Invalid credentials"] });
+    let user;
+
+    if (provider === "google" && profile) {
+      user = await Model.findOne({
+        email,
+        provider: "google",
+        providerId: profile.sub,
+      });
+      if (!user)
+        return res
+          .status(404)
+          .json({
+            success: false,
+            errors: ["Google user not found. Please signup first."],
+          });
+    } else {
+      user = await Model.findOne({ email });
+      if (!user || !(await user.matchPassword(password)))
+        return res
+          .status(401)
+          .json({ success: false, errors: ["Invalid credentials"] });
+    }
 
     if (!user.isActive)
       return res

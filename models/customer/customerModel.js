@@ -7,15 +7,27 @@ const loginHistorySchema = new mongoose.Schema({
   loginAt: { type: Date, default: Date.now },
 });
 
+const locationSchema = new mongoose.Schema({
+  latitude: { type: Number, default: null },
+  longitude: { type: Number, default: null },
+  updatedAt: { type: Date, default: Date.now },
+});
+
 const customerSchema = new mongoose.Schema(
   {
-    name: { type: String, required: false },
+    // Unique Customer ID
+    uniqueId: { type: String, required: true, unique: true },
+
+    // Basic Info
+    name: { type: String },
     email: { type: String, required: true, unique: true },
     password: { type: String },
+
+    // Role
     role: { type: String, default: "customer" },
 
-    // OAuth provider info
-    provider: { type: String }, // 'google', 'facebook', 'apple', 'local'
+    // OAuth fields (Google login)
+    provider: { type: String, enum: ["local", "google"], default: "local" },
     providerId: { type: String },
     profilePicture: { type: String },
     firstName: { type: String },
@@ -23,6 +35,9 @@ const customerSchema = new mongoose.Schema(
     locale: { type: String },
     emailVerified: { type: Boolean, default: false },
     rawProfile: { type: Object },
+
+    // Location (optional for future use)
+    currentLocation: locationSchema,
 
     // Login control
     isLogin: { type: Boolean, default: false },
@@ -35,15 +50,16 @@ const customerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Hash password before saving
+// ---------------- Password Hashing ----------------
+// Only hash if password changed AND account is local
 customerSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") || this.provider === "google") return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
-// Password verification
+// ---------------- Password Verification ----------------
 customerSchema.methods.matchPassword = async function (enteredPassword) {
   if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);

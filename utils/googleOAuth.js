@@ -40,7 +40,7 @@ passport.use(
             locale: profile._json?.locale || null,
             emailVerified: profile.emails?.[0]?.verified || false,
             rawProfile: profile,
-            isLogin: false,
+            isLogin: true,
             isActive: true,
             loginHistory: [],
           });

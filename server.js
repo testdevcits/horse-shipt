@@ -1,13 +1,9 @@
-// server.js
-
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
-const path = require("path");
 const session = require("express-session");
 const passport = require("passport");
 const connectDB = require("./config/db");
-const fs = require("fs");
 
 // -------------------------
 // Load environment variables
@@ -29,14 +25,13 @@ const app = express();
 // -------------------------
 const allowedOrigins = [
   "http://localhost:3000", // local dev
-  "https://horse-shipt.vercel.app", // production frontend
+  "https://horse-shipt-frontend.vercel.app", // frontend production
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // allow requests with no origin like Postman or curl
-      if (!origin) return callback(null, true);
+      if (!origin) return callback(null, true); // allow mobile apps/postman
       if (allowedOrigins.indexOf(origin) !== -1) {
         callback(null, true);
       } else {
@@ -62,7 +57,7 @@ app.use(
     resave: false,
     saveUninitialized: true,
     cookie: {
-      secure: process.env.NODE_ENV === "production", // HTTPS only in prod
+      secure: process.env.NODE_ENV === "production",
       maxAge: 1000 * 60 * 60 * 24, // 1 day
     },
   })
@@ -78,30 +73,17 @@ app.use(passport.session());
 // API Routes
 // -------------------------
 const authRoutes = require("./routes/authRoutes");
+const customerRoutes = require("./routes/customer/customerRoutes");
+const shipperRoutes = require("./routes/shipper/shipperRoutes");
+
 app.use("/api/auth", authRoutes);
-
-// -------------------------
-// Serve React frontend (production mode)
-// -------------------------
-const frontendBuildPath = path.join(__dirname, "build");
-
-if (fs.existsSync(frontendBuildPath)) {
-  app.use(express.static(frontendBuildPath));
-
-  // Send index.html for all non-API routes
-  app.get(/^\/(?!api).*/, (req, res) => {
-    res.sendFile(path.join(frontendBuildPath, "index.html"));
-  });
-} else {
-  console.warn(
-    "⚠️  React build folder not found! Make sure 'build' exists inside backend."
-  );
-}
+app.use("/api/customer", customerRoutes);
+app.use("/api/shipper", shipperRoutes);
 
 // -------------------------
 // Default Route
 // -------------------------
-app.get("/api", (req, res) => {
+app.get("/", (req, res) => {
   res.send("🐎 Horse Shipt Backend API is running...");
 });
 
