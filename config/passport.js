@@ -4,19 +4,37 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
+// ----------------- Helper Functions -----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
-// Use correct callback URL
+const generateUniqueId = async (role) => {
+  const prefix = role === "shipper" ? "HS" : "HC";
+  const Model = getModel(role);
+
+  let id;
+  let exists = true;
+
+  while (exists) {
+    const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit
+    id = `${prefix}${randomNum}`;
+    const existing = await Model.findOne({ uniqueId: id });
+    if (!existing) exists = false;
+  }
+  return id;
+};
+
+// ----------------- Callback URL -----------------
 const getCallbackURL = () => {
   const url =
     process.env.NODE_ENV === "production"
       ? process.env.GOOGLE_REDIRECT_URI_PROD
       : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
-  console.log("✅ Google OAuth Callback URL:", url);
+  console.log("Google OAuth Callback URL:", url);
   return url;
 };
 
+// ----------------- Google OAuth Strategy -----------------
 passport.use(
   new GoogleStrategy(
     {
@@ -36,11 +54,17 @@ passport.use(
         });
 
         if (!user) {
+          console.log("Creating new user for Google login");
+
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
           const name = profile.displayName || email.split("@")[0];
 
+          // Generate uniqueId
+          const uniqueId = await generateUniqueId(role);
+
           user = await Model.create({
+            uniqueId, // Add uniqueId
             name,
             email,
             provider: "google",
@@ -56,6 +80,10 @@ passport.use(
             isActive: true,
             loginHistory: [],
           });
+
+          console.log("New user created:", user._id);
+        } else {
+          console.log("🔹 Existing user found:", user._id);
         }
 
         user.isLogin = true;
@@ -73,14 +101,24 @@ passport.use(
           profile.id
         }`;
 
+        console.log("➡️ Redirecting to frontend:", redirectUrl);
+
         done(null, { redirectUrl });
       } catch (err) {
-        console.error("❌ Google OAuth Error:", err);
+        console.error("Google OAuth Error:", err);
         done(err, null);
       }
     }
   )
 );
 
-passport.serializeUser((obj, done) => done(null, obj));
-passport.deserializeUser((obj, done) => done(null, obj));
+// ----------------- Passport Serialize / Deserialize -----------------
+passport.serializeUser((obj, done) => {
+  console.log("serializeUser:", obj);
+  done(null, obj);
+});
+
+passport.deserializeUser((obj, done) => {
+  console.log("deserializeUser:", obj);
+  done(null, obj);
+});
