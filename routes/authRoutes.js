@@ -9,7 +9,7 @@ const {
   loginValidation,
 } = require("../validations/authValidation");
 
-const frontendUrl = process.env.FRONTEND_URL || "";
+const frontendUrl = process.env.FRONTEND_URL || "http://localhost:3000";
 
 // Helper: redirect to frontend with token and user info
 const redirectWithUser = (res, user) => {
