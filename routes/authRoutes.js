@@ -12,6 +12,7 @@ router.post("/logout", authController.logout);
 
 // ------------------------
 // Google OAuth
+// Step 1: Redirect user to Google for authentication
 // ------------------------
 router.get(
   "/google",
@@ -23,6 +24,9 @@ router.get(
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
+// ------------------------
+// Step 2: Handle callback from Google
+// ------------------------
 router.get(
   "/google/callback",
   passport.authenticate("google", {
@@ -30,7 +34,23 @@ router.get(
     failureRedirect: "/login",
   }),
   (req, res) => {
-    res.redirect(req.user.redirectUrl);
+    try {
+      const role = req.session.role || "shipper"; // fallback role
+      const user = req.user;
+
+      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${
+        user.token
+      }&role=${role}&email=${encodeURIComponent(
+        user.email
+      )}&name=${encodeURIComponent(user.name)}&photo=${encodeURIComponent(
+        user.profilePicture || ""
+      )}&provider=${user.provider}&providerId=${user.providerId}`;
+
+      res.redirect(redirectUrl);
+    } catch (err) {
+      console.error("OAuth redirect error:", err);
+      res.redirect(`${process.env.FRONTEND_URL}/login`);
+    }
   }
 );
 
