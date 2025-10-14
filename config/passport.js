@@ -6,10 +6,14 @@ const generateToken = require("../utils/generateToken");
 
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
+// Use correct callback URL based on environment
 const getCallbackURL = () => {
-  return process.env.NODE_ENV === "production"
-    ? process.env.GOOGLE_REDIRECT_URI_PROD
-    : process.env.GOOGLE_REDIRECT_URI_LOCAL;
+  const url =
+    process.env.NODE_ENV === "production"
+      ? process.env.GOOGLE_REDIRECT_URI_PROD
+      : process.env.GOOGLE_REDIRECT_URI_LOCAL;
+  console.log("✅ Google OAuth Callback URL:", url);
+  return url;
 };
 
 passport.use(
@@ -17,12 +21,16 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: getCallbackURL(), // dynamic redirect URL
+      callbackURL: getCallbackURL(),
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
+        console.log("🌐 Google OAuth Profile:", profile);
+
         const role = req.session?.role || "shipper"; // default role
+        console.log("🔹 Role from session:", role);
+
         const Model = getModel(role);
 
         let user = await Model.findOne({
@@ -31,6 +39,8 @@ passport.use(
         });
 
         if (!user) {
+          console.log("🆕 Creating new user for Google login");
+
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
           const name = profile.displayName || email.split("@")[0];
@@ -51,6 +61,10 @@ passport.use(
             isActive: true,
             loginHistory: [],
           });
+
+          console.log("✅ New user created:", user._id);
+        } else {
+          console.log("🔹 Existing user found:", user._id);
         }
 
         user.isLogin = true;
@@ -68,14 +82,23 @@ passport.use(
           profile.id
         }`;
 
+        console.log("➡️ Redirecting to frontend:", redirectUrl);
+
         done(null, { redirectUrl });
       } catch (err) {
-        console.error("Google OAuth Error:", err);
+        console.error("❌ Google OAuth Error:", err);
         done(err, null);
       }
     }
   )
 );
 
-passport.serializeUser((obj, done) => done(null, obj));
-passport.deserializeUser((obj, done) => done(null, obj));
+passport.serializeUser((obj, done) => {
+  console.log("📦 serializeUser:", obj);
+  done(null, obj);
+});
+
+passport.deserializeUser((obj, done) => {
+  console.log("📤 deserializeUser:", obj);
+  done(null, obj);
+});
