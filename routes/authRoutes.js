@@ -11,20 +11,22 @@ router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
 // ------------------------
-// Google OAuth - Step 1
+// Google OAuth
+// Step 1: Redirect user to Google for authentication
 // ------------------------
 router.get(
   "/google",
   (req, res, next) => {
+    // Get role from query param, default to shipper
     const { role } = req.query;
-    req.session.role = role || "shipper"; // Save role for callback
+    req.session.role = role || "shipper";
     next();
   },
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
 // ------------------------
-// Google OAuth - Step 2
+// Step 2: Handle callback from Google
 // ------------------------
 router.get(
   "/google/callback",
@@ -34,16 +36,8 @@ router.get(
   }),
   (req, res) => {
     try {
-      const user = req.user;
-      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${
-        user.token
-      }&id=${user._id}&role=${user.role}&name=${encodeURIComponent(
-        user.name
-      )}&email=${encodeURIComponent(user.email)}&photo=${encodeURIComponent(
-        user.profilePicture || ""
-      )}&provider=${user.provider}&providerId=${user.providerId}`;
-
-      res.redirect(redirectUrl);
+      // req.user.redirectUrl is set in GoogleStrategy
+      res.redirect(req.user.redirectUrl);
     } catch (err) {
       console.error("OAuth redirect error:", err);
       res.redirect(`${process.env.FRONTEND_URL}/login`);

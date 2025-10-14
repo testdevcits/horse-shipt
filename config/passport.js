@@ -4,14 +4,14 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
+// ---------------- Helper functions ----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
-
-const getCallbackURL = () => {
-  return process.env.NODE_ENV === "production"
+const getCallbackURL = () =>
+  process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
-};
 
+// ---------------- Google OAuth Strategy ----------------
 passport.use(
   new GoogleStrategy(
     {
@@ -31,13 +31,8 @@ passport.use(
           provider: "google",
         });
 
-        // Create new user if not exists
         if (!user) {
-          const email =
-            profile.emails?.[0]?.value || `${profile.id}@google.fake`;
-          const name = profile.displayName || email.split("@")[0];
-
-          // Generate uniqueId for user
+          // Generate uniqueId
           const prefix = role === "shipper" ? "HS" : "HC";
           let uniqueId;
           let exists = true;
@@ -48,10 +43,12 @@ passport.use(
             if (!existing) exists = false;
           }
 
+          // Create new user
           user = await Model.create({
             uniqueId,
-            name,
-            email,
+            name:
+              profile.displayName || profile.emails?.[0]?.value.split("@")[0],
+            email: profile.emails?.[0]?.value || `${profile.id}@google.fake`,
             provider: "google",
             providerId: profile.id,
             role,
@@ -60,12 +57,13 @@ passport.use(
             lastName: profile.name?.familyName || null,
             locale: profile._json?.locale || null,
             emailVerified: true,
-            rawProfile: profile,
             isLogin: true,
             isActive: true,
             loginHistory: [],
+            rawProfile: profile,
           });
         } else {
+          // Update login status
           user.isLogin = true;
           await user.save();
         }
@@ -73,18 +71,18 @@ passport.use(
         // Generate JWT token
         const token = generateToken({ id: user._id, role: user.role });
 
-        // Attach full user info + token to req.user
-        done(null, {
-          _id: user._id,
-          uniqueId: user.uniqueId,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          provider: user.provider,
-          providerId: user.providerId,
-          profilePicture: user.profilePicture,
-          token,
-        });
+        // Redirect URL to frontend
+        const redirectUrl = `${
+          process.env.FRONTEND_URL
+        }/oauth-success?token=${token}&id=${user._id}&role=${
+          user.role
+        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
+          user.email
+        )}&photo=${encodeURIComponent(
+          user.profilePicture || ""
+        )}&provider=google&providerId=${profile.id}`;
+
+        done(null, { redirectUrl });
       } catch (err) {
         console.error("❌ Google OAuth Error:", err);
         done(err, null);
@@ -93,5 +91,6 @@ passport.use(
   )
 );
 
-passport.serializeUser((user, done) => done(null, user));
-passport.deserializeUser((user, done) => done(null, user));
+// ---------------- Serialize / Deserialize ----------------
+passport.serializeUser((obj, done) => done(null, obj));
+passport.deserializeUser((obj, done) => done(null, obj));
