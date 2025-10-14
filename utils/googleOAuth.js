@@ -13,24 +13,27 @@ passport.use(
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL:
         process.env.NODE_ENV === "production"
-          ? `${process.env.BACKEND_URL}/api/auth/google/callback`
-          : "http://localhost:5000/api/auth/google/callback",
+          ? `${process.env.FRONTEND_URL}/auth/google/callback` // frontend callback URL
+          : "http://localhost:3000/auth/google/callback", // local frontend callback
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        const role = req.session?.role || "shipper";
+        const role = req.session?.role || "shipper"; // default role
         const Model = getModel(role);
 
+        // Find existing user by providerId
         let user = await Model.findOne({
           providerId: profile.id,
           provider: "google",
         });
 
+        // If user doesn't exist, create new
         if (!user) {
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
           const name = profile.displayName || email.split("@")[0];
+
           user = await Model.create({
             name,
             email,
@@ -60,7 +63,9 @@ passport.use(
         user.isLogin = true;
         await user.save();
 
+        // Generate JWT token
         const token = generateToken({ id: user._id, role: user.role });
+
         done(null, { ...user.toObject(), token });
       } catch (err) {
         console.error("Google OAuth Error:", err);
@@ -70,5 +75,6 @@ passport.use(
   )
 );
 
+// Serialize & deserialize user for sessions (optional)
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));
