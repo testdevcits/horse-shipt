@@ -31,12 +31,9 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow mobile apps/postman
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error("CORS policy: Origin not allowed"));
-      }
+      if (!origin) return callback(null, true); // allow Postman / mobile
+      if (allowedOrigins.indexOf(origin) !== -1) callback(null, true);
+      else callback(new Error("CORS policy: Origin not allowed"));
     },
     credentials: true,
   })
@@ -59,6 +56,7 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === "production",
       maxAge: 1000 * 60 * 60 * 24, // 1 day
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     },
   })
 );
@@ -72,8 +70,7 @@ app.use(passport.session());
 // -------------------------
 // Passport Google OAuth Config
 // -------------------------
-// Make sure this file sets up passport.use(GoogleStrategy)
-require("./config/passport"); // <-- update path if needed
+require("./config/passport"); // configure GoogleStrategy here
 
 // -------------------------
 // API Routes

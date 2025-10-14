@@ -12,7 +12,6 @@ router.post("/logout", authController.logout);
 
 // ------------------------
 // Google OAuth
-// Step 1: Redirect user to Google for authentication
 // ------------------------
 router.get(
   "/google",
@@ -24,9 +23,6 @@ router.get(
   passport.authenticate("google", { scope: ["profile", "email"] })
 );
 
-// ------------------------
-// Step 2: Handle callback from Google
-// ------------------------
 router.get(
   "/google/callback",
   passport.authenticate("google", {
@@ -34,9 +30,7 @@ router.get(
     failureRedirect: "/login",
   }),
   (req, res) => {
-    // Redirect user to frontend with token
-    const redirectUrl = req.user.redirectUrl;
-    res.redirect(redirectUrl);
+    res.redirect(req.user.redirectUrl);
   }
 );
 

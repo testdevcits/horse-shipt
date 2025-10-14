@@ -4,37 +4,14 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
-// ----------------- Helper Functions -----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
-const generateUniqueId = async (role) => {
-  const prefix = role === "shipper" ? "HS" : "HC";
-  const Model = getModel(role);
-
-  let id;
-  let exists = true;
-
-  while (exists) {
-    const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit
-    id = `${prefix}${randomNum}`;
-    const existing = await Model.findOne({ uniqueId: id });
-    if (!existing) exists = false;
-  }
-  return id;
-};
-
-// ----------------- Callback URL -----------------
 const getCallbackURL = () => {
-  const url =
-    process.env.NODE_ENV === "production"
-      ? process.env.GOOGLE_REDIRECT_URI_PROD
-      : process.env.GOOGLE_REDIRECT_URI_LOCAL;
-
-  console.log("Google OAuth Callback URL:", url);
-  return url;
+  return process.env.NODE_ENV === "production"
+    ? process.env.GOOGLE_REDIRECT_URI_PROD
+    : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 };
 
-// ----------------- Google OAuth Strategy -----------------
 passport.use(
   new GoogleStrategy(
     {
@@ -45,7 +22,7 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        const role = req.session?.role || "shipper"; // default role
+        const role = req.session?.role || "shipper";
         const Model = getModel(role);
 
         let user = await Model.findOne({
@@ -54,17 +31,23 @@ passport.use(
         });
 
         if (!user) {
-          console.log("Creating new user for Google login");
-
           const email =
             profile.emails?.[0]?.value || `${profile.id}@google.fake`;
           const name = profile.displayName || email.split("@")[0];
 
-          // Generate uniqueId
-          const uniqueId = await generateUniqueId(role);
+          // Generate uniqueId for Shipper / Customer
+          const prefix = role === "shipper" ? "HS" : "HC";
+          let uniqueId;
+          let exists = true;
+          while (exists) {
+            const randomNum = Math.floor(1000 + Math.random() * 9000);
+            uniqueId = `${prefix}${randomNum}`;
+            const existing = await Model.findOne({ uniqueId });
+            if (!existing) exists = false;
+          }
 
           user = await Model.create({
-            uniqueId, // Add uniqueId
+            uniqueId,
             name,
             email,
             provider: "google",
@@ -80,20 +63,16 @@ passport.use(
             isActive: true,
             loginHistory: [],
           });
-
-          console.log("New user created:", user._id);
         } else {
-          console.log("🔹 Existing user found:", user._id);
+          user.isLogin = true;
+          await user.save();
         }
-
-        user.isLogin = true;
-        await user.save();
 
         const token = generateToken({ id: user._id, role: user.role });
 
         const redirectUrl = `${
           process.env.FRONTEND_URL
-        }/login?token=${token}&id=${user._id}&role=${
+        }/oauth-success?token=${token}&id=${user._id}&role=${
           user.role
         }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
           user.email
@@ -101,24 +80,14 @@ passport.use(
           profile.id
         }`;
 
-        console.log("➡️ Redirecting to frontend:", redirectUrl);
-
         done(null, { redirectUrl });
       } catch (err) {
-        console.error("Google OAuth Error:", err);
+        console.error("❌ Google OAuth Error:", err);
         done(err, null);
       }
     }
   )
 );
 
-// ----------------- Passport Serialize / Deserialize -----------------
-passport.serializeUser((obj, done) => {
-  console.log("serializeUser:", obj);
-  done(null, obj);
-});
-
-passport.deserializeUser((obj, done) => {
-  console.log("deserializeUser:", obj);
-  done(null, obj);
-});
+passport.serializeUser((obj, done) => done(null, obj));
+passport.deserializeUser((obj, done) => done(null, obj));
