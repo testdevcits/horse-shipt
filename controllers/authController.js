@@ -1,6 +1,6 @@
-// controllers/authController.js
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
+const OAuthUser = require("../models/OAuthUser"); // New minimal OAuth model
 const generateToken = require("../utils/generateToken");
 
 // ----------------- Utility Functions -----------------
@@ -41,14 +41,20 @@ exports.signup = async (req, res) => {
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    const existingUser = await Model.findOne({ email });
-    if (existingUser)
-      return res
-        .status(409)
-        .json({ success: false, errors: ["Email already registered"] });
+    // ---------- Prevent duplicate emails across roles ----------
+    const existingShipper = await Shipper.findOne({ email });
+    const existingCustomer = await Customer.findOne({ email });
+
+    if (existingShipper || existingCustomer) {
+      return res.status(409).json({
+        success: false,
+        errors: ["Email already registered with another account/role"],
+      });
+    }
 
     const uniqueId = await generateUniqueId(role);
 
+    // ---------- Create main model user only for local signup ----------
     const user = new Model({
       uniqueId,
       name: name || email.split("@")[0],
@@ -65,10 +71,10 @@ exports.signup = async (req, res) => {
       rawProfile: profile || null,
       isLogin: false,
       isActive: true,
-      loginHistory: [],
     });
 
     await user.save();
+
     const token = generateToken({ id: user._id, role: user.role });
 
     res
@@ -97,38 +103,39 @@ exports.login = async (req, res) => {
     let user;
 
     if (provider === "google" && profile) {
-      user = await Model.findOne({
+      // ---------- Login via OAuth ----------
+      user = await OAuthUser.findOne({
         email,
         provider: "google",
         providerId: profile.sub,
       });
+
       if (!user)
         return res.status(404).json({
           success: false,
           errors: ["Google user not found. Please signup first."],
         });
+
+      user.isLogin = true;
+      user.lastLoginAt = new Date();
+      await user.save();
     } else {
+      // ---------- Normal login ----------
       user = await Model.findOne({ email });
       if (!user || !(await user.matchPassword(password)))
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
+
+      if (!user.isActive)
+        return res
+          .status(403)
+          .json({ success: false, errors: ["Account is blocked"] });
+
+      user.isLogin = true;
+      user.currentDevice = deviceId || null;
+      await user.save();
     }
-
-    if (!user.isActive)
-      return res
-        .status(403)
-        .json({ success: false, errors: ["Account is blocked"] });
-
-    user.isLogin = true;
-    user.currentDevice = deviceId || null;
-    user.loginHistory.push({
-      deviceId: deviceId || null,
-      ip: req.ip,
-      loginAt: new Date(),
-    });
-
-    await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
     res
@@ -145,11 +152,20 @@ exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
 
-    const Model = getModel(role);
-    if (!Model)
-      return res.status(400).json({ success: false, errors: ["Invalid role"] });
+    let user;
 
-    const user = await Model.findById(userId);
+    if (role === "shipper" || role === "customer") {
+      const Model = getModel(role);
+      if (!Model)
+        return res
+          .status(400)
+          .json({ success: false, errors: ["Invalid role"] });
+
+      user = await Model.findById(userId);
+    } else if (role === "oauth") {
+      user = await OAuthUser.findById(userId);
+    }
+
     if (!user)
       return res
         .status(404)

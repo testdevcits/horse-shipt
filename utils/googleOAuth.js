@@ -9,45 +9,73 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: getCallbackURL(), // use env-based URL
+      callbackURL: getCallbackURL(), // env-based URL
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
         const role = req.session?.role || "shipper";
+
+        // ---------- Determine main model ----------
         const Model = role === "shipper" ? Shipper : Customer;
 
-        let user = await Model.findOne({
+        // ---------- Get email ----------
+        const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
+
+        // ---------- Prevent duplicate across roles ----------
+        const existingShipper = await Shipper.findOne({ email });
+        const existingCustomer = await Customer.findOne({ email });
+
+        if (
+          (role === "shipper" && existingCustomer) ||
+          (role === "customer" && existingShipper)
+        ) {
+          return done(
+            new Error(
+              "This email is already registered with another role. Please login with that account."
+            ),
+            null
+          );
+        }
+
+        // ---------- Check if OAuthUser exists ----------
+        let oauthUser = await OAuthUser.findOne({
           providerId: profile.id,
           provider: "google",
         });
 
-        if (!user) {
-          user = await Model.create({
-            name: profile.displayName || profile.emails[0].value.split("@")[0],
-            email: profile.emails?.[0]?.value || `${profile.id}@google.fake`,
+        if (!oauthUser) {
+          // Create new minimal OAuthUser
+          oauthUser = await OAuthUser.create({
+            name: profile.displayName || email.split("@")[0],
+            email,
+            role,
             provider: "google",
             providerId: profile.id,
-            role,
             profilePicture: profile.photos?.[0]?.value || null,
-            emailVerified: true,
             isLogin: true,
-            isActive: true,
           });
+        } else {
+          // Update login status
+          oauthUser.isLogin = true;
+          oauthUser.lastLoginAt = new Date();
+          await oauthUser.save();
         }
 
-        user.isLogin = true;
-        await user.save();
+        // ---------- Generate JWT ----------
+        const token = generateToken({
+          id: oauthUser._id,
+          role: oauthUser.role,
+        });
 
-        const token = generateToken({ id: user._id, role: user.role });
-
+        // ---------- Redirect URL for frontend ----------
         const redirectUrl = `${
           process.env.FRONTEND_URL
-        }/login?token=${token}&id=${user._id}&role=${
-          user.role
-        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
-          user.email
-        )}&photo=${user.profilePicture || ""}&provider=google&providerId=${
+        }/login?token=${token}&id=${oauthUser._id}&role=${
+          oauthUser.role
+        }&name=${encodeURIComponent(oauthUser.name)}&email=${encodeURIComponent(
+          oauthUser.email
+        )}&photo=${oauthUser.profilePicture || ""}&provider=google&providerId=${
           profile.id
         }`;
 

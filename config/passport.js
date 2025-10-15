@@ -2,6 +2,7 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
+const OAuthUser = require("../models/OAuthUser"); // New minimal OAuth model
 const generateToken = require("../utils/generateToken");
 
 // ---------------- Helper functions ----------------
@@ -23,32 +24,37 @@ passport.use(
     async (req, accessToken, refreshToken, profile, done) => {
       try {
         const role = req.session?.role || "shipper";
-        const Model = getModel(role);
 
-        // Check if user exists
-        let user = await Model.findOne({
-          providerId: profile.id,
+        const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
+
+        // ---------- Prevent duplicate across roles ----------
+        const existingShipper = await Shipper.findOne({ email });
+        const existingCustomer = await Customer.findOne({ email });
+
+        if (
+          (role === "shipper" && existingCustomer) ||
+          (role === "customer" && existingShipper)
+        ) {
+          return done(
+            new Error(
+              "This email is already registered with another role. Please login with that account."
+            ),
+            null
+          );
+        }
+
+        // ---------- Check if OAuth user already exists ----------
+        let user = await OAuthUser.findOne({
+          email,
           provider: "google",
+          providerId: profile.id,
         });
 
         if (!user) {
-          // Generate uniqueId
-          const prefix = role === "shipper" ? "HS" : "HC";
-          let uniqueId;
-          let exists = true;
-          while (exists) {
-            const randomNum = Math.floor(1000 + Math.random() * 9000);
-            uniqueId = `${prefix}${randomNum}`;
-            const existing = await Model.findOne({ uniqueId });
-            if (!existing) exists = false;
-          }
-
-          // Create new user
-          user = await Model.create({
-            uniqueId,
-            name:
-              profile.displayName || profile.emails?.[0]?.value.split("@")[0],
-            email: profile.emails?.[0]?.value || `${profile.id}@google.fake`,
+          // Create minimal OAuth user
+          user = await OAuthUser.create({
+            name: profile.displayName || email.split("@")[0],
+            email,
             provider: "google",
             providerId: profile.id,
             role,
@@ -58,13 +64,12 @@ passport.use(
             locale: profile._json?.locale || null,
             emailVerified: true,
             isLogin: true,
-            isActive: true,
-            loginHistory: [],
             rawProfile: profile,
           });
         } else {
           // Update login status
           user.isLogin = true;
+          user.lastLoginAt = new Date();
           await user.save();
         }
 
@@ -84,7 +89,7 @@ passport.use(
 
         done(null, { redirectUrl });
       } catch (err) {
-        console.error("❌ Google OAuth Error:", err);
+        console.error("Google OAuth Error:", err);
         done(err, null);
       }
     }
