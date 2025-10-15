@@ -21,7 +21,15 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        const role = req.session?.role;
+        // --------------------------
+        // Read role from 'state' param
+        // --------------------------
+        const state = req.query.state;
+        if (!state) return done(new Error("Missing state parameter"), null);
+
+        const parsedState = JSON.parse(Buffer.from(state, "base64").toString());
+        const role = parsedState.role;
+
         if (!role || !["shipper", "customer"].includes(role)) {
           return done(new Error("Invalid role selected"), null);
         }

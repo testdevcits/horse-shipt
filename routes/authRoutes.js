@@ -23,8 +23,7 @@ router.get("/google", (req, res, next) => {
       .send("Role is required and must be 'shipper' or 'customer'");
   }
 
-  req.session.role = role; // store role for callback
-
+  // Encode role into state param to retrieve later
   passport.authenticate("google", {
     scope: ["profile", "email"],
     state: Buffer.from(JSON.stringify({ role })).toString("base64"),
@@ -42,11 +41,11 @@ router.get(
   }),
   (req, res) => {
     try {
+      // req.user.redirectUrl comes from your GoogleStrategy
       const redirectUrl = req.user?.redirectUrl;
       if (!redirectUrl)
         return res.redirect(`${process.env.FRONTEND_URL}/login`);
 
-      req.session.role = null; // clear session role
       res.redirect(redirectUrl);
     } catch (err) {
       console.error("OAuth redirect error:", err);
