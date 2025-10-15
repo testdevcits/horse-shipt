@@ -9,20 +9,25 @@ passport.use(
     {
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      callbackURL: getCallbackURL(), // env-based URL
+      callbackURL: getCallbackURL(),
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        const role = req.session?.role || "shipper";
+        const role = req.session?.role;
 
-        // ---------- Determine main model ----------
+        if (!role || !["shipper", "customer"].includes(role)) {
+          return done(new Error("Invalid role selected"), null);
+        }
+
         const Model = role === "shipper" ? Shipper : Customer;
+        const email = profile.emails?.[0]?.value;
 
-        // ---------- Get email ----------
-        const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
+        if (!email) {
+          return done(new Error("Google account has no email"), null);
+        }
 
-        // ---------- Prevent duplicate across roles ----------
+        // ---------- Prevent duplicates across roles ----------
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
 
@@ -38,49 +43,56 @@ passport.use(
           );
         }
 
-        // ---------- Check if OAuthUser exists ----------
-        let oauthUser = await OAuthUser.findOne({
+        // ---------- Check if user exists ----------
+        let user = await Model.findOne({
           providerId: profile.id,
           provider: "google",
         });
 
-        if (!oauthUser) {
-          // Create new minimal OAuthUser
-          oauthUser = await OAuthUser.create({
+        if (!user) {
+          // Create new user
+          const uniqueId =
+            role === "shipper"
+              ? `HS${Math.floor(1000 + Math.random() * 9000)}`
+              : `HC${Math.floor(1000 + Math.random() * 9000)}`;
+          user = new Model({
+            uniqueId,
             name: profile.displayName || email.split("@")[0],
             email,
-            role,
             provider: "google",
             providerId: profile.id,
+            role,
             profilePicture: profile.photos?.[0]?.value || null,
+            firstName: profile.name?.givenName || null,
+            lastName: profile.name?.familyName || null,
+            locale: profile._json?.locale || null,
+            emailVerified: true,
             isLogin: true,
+            isActive: true,
           });
+          await user.save();
         } else {
-          // Update login status
-          oauthUser.isLogin = true;
-          oauthUser.lastLoginAt = new Date();
-          await oauthUser.save();
+          user.isLogin = true;
+          user.lastLoginAt = new Date();
+          await user.save();
         }
 
         // ---------- Generate JWT ----------
-        const token = generateToken({
-          id: oauthUser._id,
-          role: oauthUser.role,
-        });
+        const token = generateToken({ id: user._id, role: user.role });
 
-        // ---------- Redirect URL for frontend ----------
         const redirectUrl = `${
           process.env.FRONTEND_URL
-        }/login?token=${token}&id=${oauthUser._id}&role=${
-          oauthUser.role
-        }&name=${encodeURIComponent(oauthUser.name)}&email=${encodeURIComponent(
-          oauthUser.email
-        )}&photo=${oauthUser.profilePicture || ""}&provider=google&providerId=${
-          profile.id
-        }`;
+        }/login?token=${token}&id=${user._id}&role=${
+          user.role
+        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
+          user.email
+        )}&photo=${encodeURIComponent(
+          user.profilePicture || ""
+        )}&provider=google&providerId=${profile.id}`;
 
         done(null, { redirectUrl });
       } catch (err) {
+        console.error("Google OAuth Error:", err);
         done(err, null);
       }
     }

@@ -1,8 +1,6 @@
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
-const session = require("express-session");
-const passport = require("passport");
 const connectDB = require("./config/db");
 
 // -------------------------
@@ -44,33 +42,6 @@ app.use(
 // -------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-
-// -------------------------
-// Session Middleware
-// -------------------------
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET || "mysecretkey",
-    resave: false,
-    saveUninitialized: true,
-    cookie: {
-      secure: process.env.NODE_ENV === "production",
-      maxAge: 1000 * 60 * 60 * 24, // 1 day
-      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    },
-  })
-);
-
-// -------------------------
-// Passport Initialization
-// -------------------------
-app.use(passport.initialize());
-app.use(passport.session());
-
-// -------------------------
-// Passport Google OAuth Config
-// -------------------------
-require("./config/passport"); // configure GoogleStrategy here
 
 // -------------------------
 // API Routes

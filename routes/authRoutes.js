@@ -17,19 +17,17 @@ router.post("/logout", authController.logout);
 router.get("/google", (req, res, next) => {
   const { role } = req.query;
 
-  // Validate role
   if (!role || !["shipper", "customer"].includes(role)) {
     return res
       .status(400)
       .send("Role is required and must be 'shipper' or 'customer'");
   }
 
-  // Pass role via `state` (base64 encoded JSON)
-  const state = Buffer.from(JSON.stringify({ role })).toString("base64");
+  req.session.role = role; // store role for callback
 
   passport.authenticate("google", {
     scope: ["profile", "email"],
-    state,
+    state: Buffer.from(JSON.stringify({ role })).toString("base64"),
   })(req, res, next);
 });
 
@@ -40,37 +38,15 @@ router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: "/login",
+    failureRedirect: `${process.env.FRONTEND_URL}/login`,
   }),
   (req, res) => {
     try {
-      // Decode state parameter to get role
-      let role = "shipper"; // fallback
-      const { state } = req.query;
+      const redirectUrl = req.user?.redirectUrl;
+      if (!redirectUrl)
+        return res.redirect(`${process.env.FRONTEND_URL}/login`);
 
-      if (state) {
-        const decoded = JSON.parse(
-          Buffer.from(state, "base64").toString("utf-8")
-        );
-        if (decoded.role && ["shipper", "customer"].includes(decoded.role)) {
-          role = decoded.role;
-        }
-      }
-
-      // Attach role to user object
-      req.user.role = role;
-
-      // Redirect to frontend with token and role
-      const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${
-        req.user.token
-      }&role=${role}&name=${encodeURIComponent(
-        req.user.name
-      )}&email=${encodeURIComponent(req.user.email)}&photo=${encodeURIComponent(
-        req.user.photo || ""
-      )}&provider=${encodeURIComponent(
-        req.user.provider
-      )}&providerId=${encodeURIComponent(req.user.providerId || "")}`;
-
+      req.session.role = null; // clear session role
       res.redirect(redirectUrl);
     } catch (err) {
       console.error("OAuth redirect error:", err);

@@ -2,17 +2,15 @@ const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
-const OAuthUser = require("../models/OAuthUser"); // New minimal OAuth model
 const generateToken = require("../utils/generateToken");
 
-// ---------------- Helper functions ----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
+
 const getCallbackURL = () =>
   process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
-// ---------------- Google OAuth Strategy ----------------
 passport.use(
   new GoogleStrategy(
     {
@@ -23,11 +21,14 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        const role = req.session?.role || "shipper";
+        const role = req.session?.role;
+        if (!role || !["shipper", "customer"].includes(role)) {
+          return done(new Error("Invalid role selected"), null);
+        }
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // ---------- Prevent duplicate across roles ----------
+        // Prevent duplicates across roles
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
 
@@ -36,50 +37,43 @@ passport.use(
           (role === "customer" && existingShipper)
         ) {
           return done(
-            new Error(
-              "This email is already registered with another role. Please login with that account."
-            ),
+            new Error("Email already registered with another role"),
             null
           );
         }
 
-        // ---------- Check if OAuth user already exists ----------
-        let user = await OAuthUser.findOne({
-          email,
-          provider: "google",
-          providerId: profile.id,
-        });
+        const Model = getModel(role);
+        let user = await Model.findOne({ email, providerId: profile.id });
 
         if (!user) {
-          // Create minimal OAuth user
-          user = await OAuthUser.create({
+          const uniqueId =
+            role === "shipper"
+              ? `HS${Math.floor(1000 + Math.random() * 9000)}`
+              : `HC${Math.floor(1000 + Math.random() * 9000)}`;
+          user = new Model({
+            uniqueId,
             name: profile.displayName || email.split("@")[0],
             email,
             provider: "google",
             providerId: profile.id,
-            role,
             profilePicture: profile.photos?.[0]?.value || null,
             firstName: profile.name?.givenName || null,
             lastName: profile.name?.familyName || null,
             locale: profile._json?.locale || null,
             emailVerified: true,
             isLogin: true,
-            rawProfile: profile,
+            role,
           });
+          await user.save();
         } else {
-          // Update login status
           user.isLogin = true;
-          user.lastLoginAt = new Date();
           await user.save();
         }
 
-        // Generate JWT token
         const token = generateToken({ id: user._id, role: user.role });
-
-        // Redirect URL to frontend
         const redirectUrl = `${
           process.env.FRONTEND_URL
-        }/oauth-success?token=${token}&id=${user._id}&role=${
+        }/oauth-success?token=${token}&role=${
           user.role
         }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
           user.email
@@ -96,6 +90,5 @@ passport.use(
   )
 );
 
-// ---------------- Serialize / Deserialize ----------------
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));

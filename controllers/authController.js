@@ -1,6 +1,5 @@
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
-const OAuthUser = require("../models/OAuthUser"); // New minimal OAuth model
 const generateToken = require("../utils/generateToken");
 
 // ----------------- Utility Functions -----------------
@@ -29,8 +28,7 @@ const generateUniqueId = async (role) => {
 // ----------------- Signup -----------------
 exports.signup = async (req, res) => {
   try {
-    const { role, email, password, name, provider, profilePicture, profile } =
-      req.body;
+    const { role, email, password, name, provider, profile } = req.body;
 
     if (!role || !email)
       return res
@@ -41,7 +39,7 @@ exports.signup = async (req, res) => {
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    // ---------- Prevent duplicate emails across roles ----------
+    // Prevent duplicate emails across roles
     const existingShipper = await Shipper.findOne({ email });
     const existingCustomer = await Customer.findOne({ email });
 
@@ -54,22 +52,22 @@ exports.signup = async (req, res) => {
 
     const uniqueId = await generateUniqueId(role);
 
-    // ---------- Create main model user only for local signup ----------
+    // Create user
     const user = new Model({
       uniqueId,
-      name: name || email.split("@")[0],
+      name: name || profile?.name || email.split("@")[0],
       email,
       password: provider === "google" ? null : password,
       role,
       provider: provider || "local",
-      profilePicture: profilePicture || (profile ? profile.picture : null),
-      providerId: profile ? profile.sub : null,
-      firstName: profile ? profile.given_name : null,
-      lastName: profile ? profile.family_name : null,
-      locale: profile ? profile.locale : null,
+      providerId: profile?.sub || null,
+      profilePicture: profile?.picture || null,
+      firstName: profile?.given_name || null,
+      lastName: profile?.family_name || null,
+      locale: profile?.locale || null,
       emailVerified: provider === "google",
       rawProfile: profile || null,
-      isLogin: false,
+      isLogin: provider === "google" ? true : false,
       isActive: true,
     });
 
@@ -103,12 +101,8 @@ exports.login = async (req, res) => {
     let user;
 
     if (provider === "google" && profile) {
-      // ---------- Login via OAuth ----------
-      user = await OAuthUser.findOne({
-        email,
-        provider: "google",
-        providerId: profile.sub,
-      });
+      // Login via Google
+      user = await Model.findOne({ email, providerId: profile.sub });
 
       if (!user)
         return res.status(404).json({
@@ -120,7 +114,7 @@ exports.login = async (req, res) => {
       user.lastLoginAt = new Date();
       await user.save();
     } else {
-      // ---------- Normal login ----------
+      // Local login
       user = await Model.findOne({ email });
       if (!user || !(await user.matchPassword(password)))
         return res
@@ -152,19 +146,11 @@ exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
 
-    let user;
+    const Model = getModel(role);
+    if (!Model)
+      return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    if (role === "shipper" || role === "customer") {
-      const Model = getModel(role);
-      if (!Model)
-        return res
-          .status(400)
-          .json({ success: false, errors: ["Invalid role"] });
-
-      user = await Model.findById(userId);
-    } else if (role === "oauth") {
-      user = await OAuthUser.findById(userId);
-    }
+    const user = await Model.findById(userId);
 
     if (!user)
       return res
