@@ -58,6 +58,7 @@ passport.use(
             role === "shipper"
               ? `HS${Math.floor(1000 + Math.random() * 9000)}`
               : `HC${Math.floor(1000 + Math.random() * 9000)}`;
+
           user = new Model({
             uniqueId,
             name: profile.displayName || email.split("@")[0],
@@ -71,14 +72,38 @@ passport.use(
             emailVerified: true,
             isLogin: true,
             role,
+
+            // Additional fields
+            rawProfile: profile._json || {},
+            currentDevice: req.headers["user-agent"] || null,
+            currentLocation: parsedState.location || undefined, // optional: frontend can send { latitude, longitude } in state
+            loginHistory: [
+              {
+                deviceId: req.headers["user-agent"] || null,
+                ip: req.ip || null,
+                loginAt: new Date(),
+              },
+            ],
           });
+
           await user.save();
         } else {
+          // Update login info
           user.isLogin = true;
+          user.currentDevice = req.headers["user-agent"] || user.currentDevice;
+          user.currentLocation = parsedState.location
+            ? { ...parsedState.location, updatedAt: new Date() }
+            : user.currentLocation;
+          user.loginHistory.push({
+            deviceId: req.headers["user-agent"] || null,
+            ip: req.ip || null,
+            loginAt: new Date(),
+          });
           await user.save();
         }
 
         const token = generateToken({ id: user._id, role: user.role });
+
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&role=${

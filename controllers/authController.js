@@ -17,7 +17,7 @@ const generateUniqueId = async (role) => {
   let exists = true;
 
   while (exists) {
-    const randomNum = Math.floor(1000 + Math.random() * 9000); // 4-digit
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
     id = `${prefix}${randomNum}`;
     const existing = await Model.findOne({ uniqueId: id });
     if (!existing) exists = false;
@@ -28,7 +28,16 @@ const generateUniqueId = async (role) => {
 // ----------------- Signup -----------------
 exports.signup = async (req, res) => {
   try {
-    const { role, email, password, name, provider, profile } = req.body;
+    const {
+      role,
+      email,
+      password,
+      name,
+      provider,
+      profile,
+      location,
+      deviceId,
+    } = req.body;
 
     if (!role || !email)
       return res
@@ -52,7 +61,6 @@ exports.signup = async (req, res) => {
 
     const uniqueId = await generateUniqueId(role);
 
-    // Create user
     const user = new Model({
       uniqueId,
       name: name || profile?.name || email.split("@")[0],
@@ -69,6 +77,18 @@ exports.signup = async (req, res) => {
       rawProfile: profile || null,
       isLogin: provider === "google" ? true : false,
       isActive: true,
+      currentDevice: deviceId || null,
+      currentLocation: location || undefined,
+      loginHistory:
+        provider === "google"
+          ? [
+              {
+                deviceId: deviceId || null,
+                ip: req.ip || null,
+                loginAt: new Date(),
+              },
+            ]
+          : [],
     });
 
     await user.save();
@@ -87,7 +107,8 @@ exports.signup = async (req, res) => {
 // ----------------- Login -----------------
 exports.login = async (req, res) => {
   try {
-    const { role, email, password, provider, profile, deviceId } = req.body;
+    const { role, email, password, provider, profile, deviceId, location } =
+      req.body;
 
     if (!role || !email)
       return res
@@ -101,7 +122,6 @@ exports.login = async (req, res) => {
     let user;
 
     if (provider === "google" && profile) {
-      // Login via Google
       user = await Model.findOne({ email, providerId: profile.sub });
 
       if (!user)
@@ -111,10 +131,16 @@ exports.login = async (req, res) => {
         });
 
       user.isLogin = true;
-      user.lastLoginAt = new Date();
+      user.currentDevice = deviceId || user.currentDevice;
+      user.currentLocation = location || user.currentLocation;
+      user.loginHistory.push({
+        deviceId: deviceId || null,
+        ip: req.ip || null,
+        loginAt: new Date(),
+      });
+
       await user.save();
     } else {
-      // Local login
       user = await Model.findOne({ email });
       if (!user || !(await user.matchPassword(password)))
         return res
@@ -128,6 +154,13 @@ exports.login = async (req, res) => {
 
       user.isLogin = true;
       user.currentDevice = deviceId || null;
+      user.currentLocation = location || undefined;
+      user.loginHistory.push({
+        deviceId: deviceId || null,
+        ip: req.ip || null,
+        loginAt: new Date(),
+      });
+
       await user.save();
     }
 
