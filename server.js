@@ -89,7 +89,7 @@ if (isServerless) {
   // Ensure upload directory exists (only in local/dev)
   if (!fs.existsSync(uploadPath)) {
     fs.mkdirSync(uploadPath, { recursive: true });
-    console.log("✅ Upload directory created:", uploadPath);
+    console.log("Upload directory created:", uploadPath);
   }
 }
 
