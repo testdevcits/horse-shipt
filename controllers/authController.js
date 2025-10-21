@@ -134,64 +134,55 @@ exports.login = async (req, res) => {
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
-    if (!role || !email) {
-      console.log("[LOGIN] Missing role or email");
+    if (!role || !email || (!password && !provider)) {
       return res
         .status(400)
-        .json({ success: false, errors: ["Role and email are required"] });
+        .json({
+          success: false,
+          errors: ["Role, email and password are required"],
+        });
     }
 
     const Model = getModel(role);
-    if (!Model) {
-      console.log("[LOGIN] Invalid role:", role);
+    if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
-    }
 
     let user;
 
     if (provider === "google" && profile) {
       user = await Model.findOne({ email, providerId: profile.sub });
-      if (!user) {
-        console.log("[LOGIN] Google user not found:", email);
-        return res.status(404).json({
-          success: false,
-          errors: ["Google user not found. Please signup first."],
-        });
-      }
+      if (!user)
+        return res
+          .status(404)
+          .json({
+            success: false,
+            errors: ["Google user not found. Please signup first."],
+          });
     } else {
       user = await Model.findOne({ email });
-      if (!user) {
-        console.log("[LOGIN] Local user not found:", email);
+      if (!user)
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
-      }
 
-      if (!user.emailVerified) {
-        console.log("[LOGIN] Email not verified:", email);
+      if (!user.emailVerified)
         return res
           .status(403)
           .json({ success: false, errors: ["Email not verified"] });
-      }
 
-      // ---------------- Debug logs ----------------
       console.log("[LOGIN DEBUG] Plain password:", password);
       console.log("[LOGIN DEBUG] Hashed password:", user.password);
 
       const isMatch = await bcrypt.compare(password, user.password);
-      if (!isMatch) {
-        console.log("[LOGIN] Password mismatch for:", email);
+      if (!isMatch)
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
-      }
 
-      if (!user.isActive) {
-        console.log("[LOGIN] Account blocked:", email);
+      if (!user.isActive)
         return res
           .status(403)
           .json({ success: false, errors: ["Account is blocked"] });
-      }
     }
 
     // Update login info
@@ -209,10 +200,9 @@ exports.login = async (req, res) => {
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    res.status(200).json({
-      success: true,
-      data: { ...user.toObject(), token },
-    });
+    res
+      .status(200)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("[LOGIN] Error:", err);
     res.status(500).json({ success: false, errors: ["Server Error"] });
