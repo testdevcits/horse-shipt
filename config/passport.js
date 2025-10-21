@@ -22,13 +22,20 @@ passport.use(
     async (req, accessToken, refreshToken, profile, done) => {
       try {
         // --------------------------
-        // Read role from 'state' param
+        // Parse state safely
         // --------------------------
         const state = req.query.state;
         if (!state) return done(new Error("Missing state parameter"), null);
 
-        const parsedState = JSON.parse(Buffer.from(state, "base64").toString());
+        let parsedState;
+        try {
+          parsedState = JSON.parse(Buffer.from(state, "base64").toString());
+        } catch (e) {
+          return done(new Error("Invalid state parameter"), null);
+        }
+
         const role = parsedState.role;
+        const location = parsedState.location;
 
         if (!role || !["shipper", "customer"].includes(role)) {
           return done(new Error("Invalid role selected"), null);
@@ -39,7 +46,6 @@ passport.use(
         // Prevent duplicates across roles
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
-
         if (
           (role === "shipper" && existingCustomer) ||
           (role === "customer" && existingShipper)
@@ -51,6 +57,8 @@ passport.use(
         }
 
         const Model = getModel(role);
+
+        // Check if user exists
         let user = await Model.findOne({ email, providerId: profile.id });
 
         if (!user) {
@@ -72,11 +80,9 @@ passport.use(
             emailVerified: true,
             isLogin: true,
             role,
-
-            // Additional fields
             rawProfile: profile._json || {},
             currentDevice: req.headers["user-agent"] || null,
-            currentLocation: parsedState.location || undefined, // optional: frontend can send { latitude, longitude } in state
+            currentLocation: location || undefined,
             loginHistory: [
               {
                 deviceId: req.headers["user-agent"] || null,
@@ -91,8 +97,8 @@ passport.use(
           // Update login info
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
-          user.currentLocation = parsedState.location
-            ? { ...parsedState.location, updatedAt: new Date() }
+          user.currentLocation = location
+            ? { ...location, updatedAt: new Date() }
             : user.currentLocation;
           user.loginHistory.push({
             deviceId: req.headers["user-agent"] || null,
@@ -104,6 +110,7 @@ passport.use(
 
         const token = generateToken({ id: user._id, role: user.role });
 
+        // Pass redirect URL
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&role=${
@@ -117,11 +124,13 @@ passport.use(
         done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
-        done(err, null);
+        // Pass error message to frontend
+        done(new Error(err.message || "Google OAuth failed"), null);
       }
     }
   )
 );
 
+// ---------------- Serialize/Deserialize ----------------
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));
