@@ -26,21 +26,21 @@ const app = express();
 // -------------------------
 // Detect environment (serverless or local)
 // -------------------------
-const isServerless = process.env.IS_SERVERLESS === "true";
+const isServerless = process.env.IS_SERVERLESS === "true" || process.env.VERCEL;
 
 // -------------------------
 // CORS Configuration
 // -------------------------
 const allowedOrigins = [
   "http://localhost:3000", // local dev
-  "https://horse-shipt-frontend.vercel.app", // frontend production
+  "https://horse-shipt-frontend.vercel.app", // production frontend
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true); // allow Postman / mobile
-      if (allowedOrigins.indexOf(origin) !== -1) callback(null, true);
+      if (allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error("CORS policy: Origin not allowed"));
     },
     credentials: true,
@@ -55,13 +55,14 @@ app.use(express.urlencoded({ extended: true }));
 
 // -------------------------
 // Session Middleware
+// (MemoryStore is OK for dev; use Redis or MongoStore for production)
 // -------------------------
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "your-secret-key",
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }, // set to true if using HTTPS
+    cookie: { secure: false },
   })
 );
 
@@ -73,16 +74,29 @@ app.use(passport.session());
 require("./config/passport"); // GoogleStrategy setup
 
 // -------------------------
-// Serve static profile images
+// Upload Directory Setup
 // -------------------------
-const uploadPath = path.join(__dirname, "uploads/profilePictures");
+let uploadPath;
 
-// Ensure upload directory exists
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
+if (isServerless) {
+  console.warn(
+    "⚠️ Running in a serverless environment — using /tmp for uploads"
+  );
+  uploadPath = path.join("/tmp", "uploads", "profilePictures");
+} else {
+  uploadPath = path.join(__dirname, "uploads/profilePictures");
+
+  // Ensure upload directory exists (only in local/dev)
+  if (!fs.existsSync(uploadPath)) {
+    fs.mkdirSync(uploadPath, { recursive: true });
+    console.log("✅ Upload directory created:", uploadPath);
+  }
 }
 
-app.use("/uploads/profilePictures", express.static(uploadPath));
+// Serve static files only in local/dev mode
+if (!isServerless) {
+  app.use("/uploads/profilePictures", express.static(uploadPath));
+}
 
 // -------------------------
 // API Routes
@@ -121,13 +135,18 @@ app.use((err, req, res, next) => {
 });
 
 // -------------------------
-// Start Server
+// Start Server (only for local)
 // -------------------------
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(
-    `🐎 Server running in ${
-      process.env.NODE_ENV || "development"
-    } mode on port ${PORT}`
-  );
-});
+if (!isServerless) {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => {
+    console.log(
+      `🐎 Server running in ${
+        process.env.NODE_ENV || "development"
+      } mode on port ${PORT}`
+    );
+  });
+}
+
+// Export app for serverless (Vercel)
+module.exports = app;
