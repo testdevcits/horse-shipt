@@ -174,6 +174,10 @@ exports.login = async (req, res) => {
           .json({ success: false, errors: ["Email not verified"] });
       }
 
+      // ---------------- Debug logs ----------------
+      console.log("[LOGIN DEBUG] Plain password:", password);
+      console.log("[LOGIN DEBUG] Hashed password:", user.password);
+
       const isMatch = await bcrypt.compare(password, user.password);
       if (!isMatch) {
         console.log("[LOGIN] Password mismatch for:", email);
