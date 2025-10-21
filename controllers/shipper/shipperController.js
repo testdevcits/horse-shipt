@@ -2,14 +2,11 @@ const Shipper = require("../../models/shipper/shipperModel");
 const fs = require("fs");
 const path = require("path");
 
-// ------------------ Profile Update ------------------
 exports.updateProfile = async (req, res) => {
   try {
-    const user = req.user; // From shipperAuth middleware
-
+    const user = req.user;
     const { firstName, lastName, locale } = req.body;
 
-    // Merge firstName + lastName into name
     if (firstName || lastName) {
       user.firstName = firstName || user.firstName;
       user.lastName = lastName || user.lastName;
@@ -24,7 +21,7 @@ exports.updateProfile = async (req, res) => {
         const oldPath = path.join(__dirname, "../../", user.profilePicture);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
-      user.profilePicture = req.file.path;
+      user.profilePicture = `uploads/profilePictures/${req.file.filename}`;
     }
 
     await user.save();

@@ -33,7 +33,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow Postman / mobile
+      if (!origin) return callback(null, true); // Postman / mobile
       if (allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error("CORS policy: Origin not allowed"));
     },
@@ -55,7 +55,7 @@ app.use(
     secret: process.env.SESSION_SECRET || "your-secret-key",
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }, // set true if using HTTPS
+    cookie: { secure: false },
   })
 );
 
@@ -64,14 +64,13 @@ app.use(
 // -------------------------
 app.use(passport.initialize());
 app.use(passport.session());
-require("./config/passport"); // GoogleStrategy setup
+require("./config/passport");
 
 // -------------------------
-// Upload Directory Setup (Local only)
+// Upload Directory Setup
 // -------------------------
 const uploadPath = path.join(__dirname, "uploads/profilePictures");
 
-// Ensure upload folder exists
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
   console.log("✅ Upload directory created:", uploadPath);
