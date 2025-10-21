@@ -1,8 +1,10 @@
+// server.js
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const session = require("express-session");
 const passport = require("passport");
+const path = require("path");
 const connectDB = require("./config/db");
 
 // -------------------------
@@ -19,6 +21,11 @@ connectDB();
 // Initialize Express App
 // -------------------------
 const app = express();
+
+// -------------------------
+// Detect environment (serverless or local)
+// -------------------------
+const isServerless = process.env.IS_SERVERLESS === "true";
 
 // -------------------------
 // CORS Configuration
@@ -66,7 +73,15 @@ app.use(passport.session());
 // -------------------------
 // Passport Strategy
 // -------------------------
-require("./config/passport"); // make sure your GoogleStrategy is defined here
+require("./config/passport"); // GoogleStrategy setup
+
+// -------------------------
+// Serve static profile images (local environment only)
+// -------------------------
+if (!isServerless) {
+  const uploadPath = path.join(__dirname, "uploads/profilePictures");
+  app.use("/uploads/profilePictures", express.static(uploadPath));
+}
 
 // -------------------------
 // API Routes
@@ -97,8 +112,9 @@ app.use((req, res, next) => {
 // Global Error Handler
 // -------------------------
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error("Global Error Handler:", err.stack);
   res.status(err.statusCode || 500).json({
+    success: false,
     message: err.message || "Internal Server Error",
   });
 });
