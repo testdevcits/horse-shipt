@@ -5,6 +5,7 @@ const cors = require("cors");
 const session = require("express-session");
 const passport = require("passport");
 const path = require("path");
+const fs = require("fs");
 const connectDB = require("./config/db");
 
 // -------------------------
@@ -53,14 +54,14 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -------------------------
-// Session Middleware (needed for Passport Google OAuth)
+// Session Middleware
 // -------------------------
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "your-secret-key",
     resave: false,
     saveUninitialized: true,
-    cookie: { secure: false }, // true if using HTTPS
+    cookie: { secure: false }, // set to true if using HTTPS
   })
 );
 
@@ -69,19 +70,19 @@ app.use(
 // -------------------------
 app.use(passport.initialize());
 app.use(passport.session());
-
-// -------------------------
-// Passport Strategy
-// -------------------------
 require("./config/passport"); // GoogleStrategy setup
 
 // -------------------------
-// Serve static profile images (local environment only)
+// Serve static profile images
 // -------------------------
-if (!isServerless) {
-  const uploadPath = path.join(__dirname, "uploads/profilePictures");
-  app.use("/uploads/profilePictures", express.static(uploadPath));
+const uploadPath = path.join(__dirname, "uploads/profilePictures");
+
+// Ensure upload directory exists
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true });
 }
+
+app.use("/uploads/profilePictures", express.static(uploadPath));
 
 // -------------------------
 // API Routes
@@ -104,7 +105,7 @@ app.get("/", (req, res) => {
 // -------------------------
 // 404 - Not Found
 // -------------------------
-app.use((req, res, next) => {
+app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
 });
 
