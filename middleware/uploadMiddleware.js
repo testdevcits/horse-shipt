@@ -2,49 +2,37 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
-// --------------------
-// Storage configuration
-// --------------------
+// Define upload folder
+const uploadFolder = path.join(__dirname, "../uploads/profilePictures");
+
+// Ensure the folder exists
+if (!fs.existsSync(uploadFolder)) {
+  fs.mkdirSync(uploadFolder, { recursive: true });
+}
+
+// Multer storage config
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    const uploadPath = path.join(__dirname, "../uploads/profilePictures");
-
-    // Ensure the folder exists
-    fs.mkdirSync(uploadPath, { recursive: true });
-
-    cb(null, uploadPath);
+  destination: function (req, file, cb) {
+    cb(null, uploadFolder);
   },
-  filename: (req, file, cb) => {
+  filename: function (req, file, cb) {
     const ext = path.extname(file.originalname);
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+    const filename = `${Date.now()}-${file.fieldname}${ext}`;
+    cb(null, filename);
   },
 });
 
-// --------------------
-// File filter
-// --------------------
+// File filter for images only
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp/;
-  const mimetype = allowedTypes.test(file.mimetype);
-  const extname = allowedTypes.test(
-    path.extname(file.originalname).toLowerCase()
-  );
-
-  if (mimetype && extname) {
-    return cb(null, true);
+  const allowedTypes = /jpeg|jpg|png|gif/;
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (allowedTypes.test(ext)) {
+    cb(null, true);
   } else {
-    cb(new Error("Only images are allowed (jpeg, jpg, png, webp)"));
+    cb(new Error("Only image files are allowed"));
   }
 };
 
-// --------------------
-// Multer upload instance
-// --------------------
-const upload = multer({
-  storage,
-  fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // max 5MB
-});
+const upload = multer({ storage, fileFilter });
 
 module.exports = upload;
