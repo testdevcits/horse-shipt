@@ -1,3 +1,4 @@
+// routes/authRoutes.js
 const express = require("express");
 const passport = require("passport");
 const router = express.Router();
@@ -41,17 +42,11 @@ router.get(
   }),
   (req, res) => {
     try {
-      const user = req.user; // Full user object from strategy
-      const token = user.token; // JWT generated inside strategy
+      const user = req.user; // Full user object from Google strategy
+      const token = user.token; // JWT token attached in strategy
 
-      if (!user) {
-        return res
-          .status(401)
-          .json({ success: false, message: "User not found" });
-      }
-
-      // Return full user object + token
-      res.status(200).json({
+      // Send full JSON response
+      res.json({
         success: true,
         token,
         user: {
@@ -68,8 +63,8 @@ router.get(
           locale: user.locale,
           emailVerified: user.emailVerified,
           isLogin: user.isLogin,
-          isActive: user.isActive,
-          loginHistory: user.loginHistory,
+          isActive: user.isActive ?? true, // Default true if not set
+          loginHistory: user.loginHistory || [],
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           currentDevice: user.currentDevice,
