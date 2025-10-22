@@ -42,9 +42,16 @@ router.get(
   (req, res) => {
     try {
       const user = req.user; // Full user object from strategy
-      const token = user.token; // Token generated inside strategy
+      const token = user.token; // JWT generated inside strategy
 
-      res.json({
+      if (!user) {
+        return res
+          .status(401)
+          .json({ success: false, message: "User not found" });
+      }
+
+      // Return full user object + token
+      res.status(200).json({
         success: true,
         token,
         user: {
