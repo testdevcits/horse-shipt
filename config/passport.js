@@ -24,7 +24,7 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // ---------------- Parse state ----------------
+        // Parse state
         const state = req.query.state;
         if (!state) return done(new Error("Missing state parameter"), null);
 
@@ -36,15 +36,14 @@ passport.use(
         }
 
         const role = parsedState.role;
-        const location = parsedState.location;
-
         if (!role || !["shipper", "customer"].includes(role)) {
           return done(new Error("Invalid role selected"), null);
         }
 
+        const location = parsedState.location;
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // ---------------- Prevent cross-role duplicates ----------------
+        // Prevent cross-role duplicates
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
         if (
@@ -59,7 +58,7 @@ passport.use(
 
         const Model = getModel(role);
 
-        // ---------------- Check if user exists ----------------
+        // Check if user exists
         let user = await Model.findOne({ email, providerId: profile.id });
 
         if (!user) {
@@ -97,7 +96,7 @@ passport.use(
 
           await user.save();
         } else {
-          // ---------------- Update login info ----------------
+          // Update login info
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
           user.currentLocation = location
@@ -111,21 +110,14 @@ passport.use(
           await user.save();
         }
 
-        // ---------------- Generate JWT ----------------
+        // Generate JWT
         const token = generateToken({ id: user._id, role: user.role });
 
-        // ---------------- Redirect with _id included ----------------
-        const redirectUrl = `${
-          process.env.FRONTEND_URL
-        }/oauth-success?token=${token}&role=${user.role}&_id=${
-          user._id
-        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
-          user.email
-        )}&photo=${encodeURIComponent(
-          user.profilePicture || ""
-        )}&provider=google&providerId=${profile.id}`;
+        // Attach token to user object for callback route
+        user = user.toObject();
+        user.token = token;
 
-        done(null, { redirectUrl });
+        done(null, user);
       } catch (err) {
         console.error("Google OAuth Error:", err);
         done(new Error(err.message || "Google OAuth failed"), null);

@@ -41,15 +41,38 @@ router.get(
   }),
   (req, res) => {
     try {
-      // req.user.redirectUrl comes from your GoogleStrategy
-      const redirectUrl = req.user?.redirectUrl;
-      if (!redirectUrl)
-        return res.redirect(`${process.env.FRONTEND_URL}/login`);
+      const user = req.user; // Full user object from strategy
+      const token = user.token; // Token generated inside strategy
 
-      res.redirect(redirectUrl);
+      res.json({
+        success: true,
+        token,
+        user: {
+          _id: user._id,
+          uniqueId: user.uniqueId,
+          name: user.name,
+          email: user.email,
+          role: user.role,
+          provider: user.provider,
+          providerId: user.providerId,
+          profilePicture: user.profilePicture,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          locale: user.locale,
+          emailVerified: user.emailVerified,
+          isLogin: user.isLogin,
+          isActive: user.isActive,
+          loginHistory: user.loginHistory,
+          createdAt: user.createdAt,
+          updatedAt: user.updatedAt,
+          currentDevice: user.currentDevice,
+        },
+      });
     } catch (err) {
-      console.error("OAuth redirect error:", err);
-      res.redirect(`${process.env.FRONTEND_URL}/login`);
+      console.error("OAuth callback error:", err);
+      res
+        .status(500)
+        .json({ success: false, message: "OAuth callback failed" });
     }
   }
 );
