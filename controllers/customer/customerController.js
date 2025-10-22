@@ -2,14 +2,14 @@ const Customer = require("../../models/customer/customerModel");
 const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
 const fs = require("fs");
 const path = require("path");
+const sendCustomerPaymentEmail = require("../../utils/customerPaymentEmail");
 
 // ------------------ Profile Update ------------------
 exports.updateProfile = async (req, res) => {
   try {
-    const user = req.user; // From customerAuth middleware
+    const user = req.user;
     const { firstName, lastName, locale } = req.body;
 
-    // Merge firstName + lastName into name
     if (firstName || lastName) {
       user.firstName = firstName || user.firstName;
       user.lastName = lastName || user.lastName;
@@ -18,7 +18,6 @@ exports.updateProfile = async (req, res) => {
 
     if (locale) user.locale = locale;
 
-    // Handle profile picture
     if (req.file) {
       if (user.profilePicture) {
         const oldPath = path.join(__dirname, "../../", user.profilePicture);
@@ -40,30 +39,30 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// ---------------- Add Payment Setup (One per user) ----------------
+// ---------------- Add Payment Setup (First time) ----------------
 exports.addOrUpdatePayment = async (req, res) => {
   try {
     const userId = req.user._id;
     const { pkLive, skLive } = req.body;
 
     if (!pkLive || !skLive) {
-      return res
-        .status(400)
-        .json({ success: false, message: "PK_LIVE and SK_LIVE are required" });
+      return res.status(400).json({
+        success: false,
+        message: "PK_LIVE and SK_LIVE are required",
+      });
     }
 
-    // Check if user already has a payment setup
     const existingPayment = await CustomerPayment.findOne({ userId });
 
     if (existingPayment) {
       return res.status(400).json({
         success: false,
-        message: "You already have a payment setup. You can only update it.",
+        message:
+          "Payment already exists. Use OTP verification to update payment.",
         data: existingPayment,
       });
     }
 
-    // Create new payment setup
     const payment = await CustomerPayment.create({
       userId,
       serviceName: "Stripe",
@@ -83,21 +82,132 @@ exports.addOrUpdatePayment = async (req, res) => {
   }
 };
 
+// ---------------- Request OTP for Payment Update ----------------
+exports.requestPaymentUpdateOTP = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { pkLive, skLive } = req.body;
+
+    if (!pkLive || !skLive) {
+      return res.status(400).json({
+        success: false,
+        message: "PK_LIVE and SK_LIVE are required",
+      });
+    }
+
+    const payment = await CustomerPayment.findOne({ userId });
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "No existing payment found. Please create payment first.",
+      });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    payment.otp = otp;
+    payment.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+    payment.lastOtpSentAt = new Date();
+    await payment.save();
+
+    await sendCustomerPaymentEmail(
+      req.user.email,
+      "Payment Update OTP",
+      `Your OTP for updating payment is: ${otp}. It will expire in 5 minutes.`
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "OTP sent to your email. Verify to update payment.",
+    });
+  } catch (err) {
+    console.error("[REQUEST PAYMENT OTP] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------------- Verify OTP & Update Payment ----------------
+exports.verifyPaymentOTP = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { otp, pkLive, skLive } = req.body;
+
+    const payment = await CustomerPayment.findOne({ userId });
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Payment not found" });
+    }
+
+    if (!payment.otp || !payment.otpExpiresAt) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No OTP requested" });
+    }
+
+    if (payment.otp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+
+    if (new Date() > payment.otpExpiresAt) {
+      payment.otp = null;
+      payment.otpExpiresAt = null;
+      await payment.save();
+      return res.status(400).json({ success: false, message: "OTP expired" });
+    }
+
+    payment.pkLive = pkLive;
+    payment.skLive = skLive;
+    payment.lastUpdatedByOtp = true;
+    payment.otp = null;
+    payment.otpExpiresAt = null;
+
+    await payment.save();
+
+    res
+      .status(200)
+      .json({
+        success: true,
+        data: payment,
+        message: "Payment updated successfully",
+      });
+  } catch (err) {
+    console.error("[VERIFY PAYMENT OTP] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
 // ---------------- Get Payment Setup for Logged-in Customer ----------------
 exports.getPaymentByUser = async (req, res) => {
   try {
-    const userId = req.user._id;
-    const payment = await CustomerPayment.findOne({ userId });
-
+    const payment = await CustomerPayment.findOne({ userId: req.user._id });
     if (!payment) {
       return res
         .status(404)
         .json({ success: false, message: "No payment setup found" });
     }
-
     res.status(200).json({ success: true, data: payment });
   } catch (err) {
-    console.error("[CUSTOMER GET PAYMENT] Error:", err);
+    console.error("[GET PAYMENT BY USER] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------------- Get Payment by ID ----------------
+exports.getPaymentById = async (req, res) => {
+  try {
+    const payment = await CustomerPayment.findById(req.params.id).populate(
+      "userId",
+      "name email"
+    );
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Payment not found" });
+    }
+    res.status(200).json({ success: true, data: payment });
+  } catch (err) {
+    console.error("[GET PAYMENT BY ID] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -111,7 +221,7 @@ exports.getAllPayments = async (req, res) => {
     );
     res.status(200).json({ success: true, data: payments });
   } catch (err) {
-    console.error("[CUSTOMER GET ALL PAYMENTS] Error:", err);
+    console.error("[GET ALL PAYMENTS] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -119,18 +229,14 @@ exports.getAllPayments = async (req, res) => {
 // ---------------- Activate / Deactivate Payment ----------------
 exports.togglePaymentStatus = async (req, res) => {
   try {
-    const { id } = req.params;
-    const payment = await CustomerPayment.findById(id);
-
+    const payment = await CustomerPayment.findById(req.params.id);
     if (!payment) {
       return res
         .status(404)
         .json({ success: false, message: "Payment not found" });
     }
-
     payment.active = !payment.active;
     await payment.save();
-
     res.status(200).json({
       success: true,
       data: payment,
@@ -139,7 +245,7 @@ exports.togglePaymentStatus = async (req, res) => {
       }`,
     });
   } catch (err) {
-    console.error("[CUSTOMER TOGGLE PAYMENT STATUS] Error:", err);
+    console.error("[TOGGLE PAYMENT STATUS] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
