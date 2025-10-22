@@ -4,13 +4,16 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
+// Utility to get model based on role
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
+// Callback URL based on environment
 const getCallbackURL = () =>
   process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
+// ---------------- Google Strategy ----------------
 passport.use(
   new GoogleStrategy(
     {
@@ -21,9 +24,7 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // --------------------------
-        // Parse state safely
-        // --------------------------
+        // ---------------- Parse state ----------------
         const state = req.query.state;
         if (!state) return done(new Error("Missing state parameter"), null);
 
@@ -43,7 +44,7 @@ passport.use(
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // Prevent duplicates across roles
+        // ---------------- Prevent cross-role duplicates ----------------
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
         if (
@@ -58,15 +59,17 @@ passport.use(
 
         const Model = getModel(role);
 
-        // Check if user exists
+        // ---------------- Check if user exists ----------------
         let user = await Model.findOne({ email, providerId: profile.id });
 
         if (!user) {
+          // Generate unique ID
           const uniqueId =
             role === "shipper"
               ? `HS${Math.floor(1000 + Math.random() * 9000)}`
               : `HC${Math.floor(1000 + Math.random() * 9000)}`;
 
+          // Create new user
           user = new Model({
             uniqueId,
             name: profile.displayName || email.split("@")[0],
@@ -94,7 +97,7 @@ passport.use(
 
           await user.save();
         } else {
-          // Update login info
+          // ---------------- Update login info ----------------
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
           user.currentLocation = location
@@ -108,9 +111,10 @@ passport.use(
           await user.save();
         }
 
+        // ---------------- Generate JWT ----------------
         const token = generateToken({ id: user._id, role: user.role });
 
-        // ------------------- FIXED: Include _id in redirect -------------------
+        // ---------------- Redirect with _id included ----------------
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&role=${user.role}&_id=${
