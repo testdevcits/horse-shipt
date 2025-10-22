@@ -57,8 +57,7 @@ exports.addOrUpdatePayment = async (req, res) => {
     if (existingPayment) {
       return res.status(400).json({
         success: false,
-        message:
-          "Payment already exists. Use OTP verification to update payment.",
+        message: "Payment already exists. Use OTP verification to update.",
         data: existingPayment,
       });
     }
@@ -95,7 +94,6 @@ exports.requestPaymentUpdateOTP = async (req, res) => {
       });
     }
 
-    // Find existing payment setup
     const payment = await CustomerPayment.findOne({ userId });
     if (!payment) {
       return res.status(404).json({
@@ -106,14 +104,12 @@ exports.requestPaymentUpdateOTP = async (req, res) => {
 
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Save OTP in DB
     payment.otp = otp;
     payment.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
     payment.lastOtpSentAt = new Date();
     await payment.save();
 
-    // Send OTP via email
+    // Send OTP email
     await sendCustomerPaymentEmail(
       req.user.email,
       "Payment Update OTP",
