@@ -89,7 +89,7 @@ if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
 
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
-  console.log("✅ Upload directory ready:", uploadPath);
+  console.log("Upload directory ready:", uploadPath);
 }
 
 // Serve uploaded images

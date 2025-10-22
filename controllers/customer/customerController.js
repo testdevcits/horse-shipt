@@ -1,4 +1,5 @@
 const Customer = require("../../models/customer/customerModel");
+const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
 const fs = require("fs");
 const path = require("path");
 
@@ -6,7 +7,6 @@ const path = require("path");
 exports.updateProfile = async (req, res) => {
   try {
     const user = req.user; // From customerAuth middleware
-
     const { firstName, lastName, locale } = req.body;
 
     // Merge firstName + lastName into name
@@ -36,6 +36,107 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (err) {
     console.error("[CUSTOMER PROFILE UPDATE] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------------- Add or Update Payment Setup ----------------
+exports.addOrUpdatePayment = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const { pkLive, skLive } = req.body;
+
+    if (!pkLive || !skLive) {
+      return res
+        .status(400)
+        .json({ success: false, message: "PK_LIVE and SK_LIVE are required" });
+    }
+
+    let payment = await CustomerPayment.findOne({ userId });
+
+    if (payment) {
+      payment.pkLive = pkLive;
+      payment.skLive = skLive;
+      payment.active = true; // auto-activate
+      await payment.save();
+    } else {
+      payment = await CustomerPayment.create({
+        userId,
+        serviceName: "Stripe",
+        pkLive,
+        skLive,
+        active: true,
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: payment,
+      message: "Payment setup saved successfully",
+    });
+  } catch (err) {
+    console.error("[CUSTOMER ADD/UPDATE PAYMENT] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------------- Get Payment Setup for Logged-in Customer ----------------
+exports.getPaymentByUser = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const payment = await CustomerPayment.findOne({ userId });
+
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "No payment setup found" });
+    }
+
+    res.status(200).json({ success: true, data: payment });
+  } catch (err) {
+    console.error("[CUSTOMER GET PAYMENT] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------------- Get All Payments (Admin) ----------------
+exports.getAllPayments = async (req, res) => {
+  try {
+    const payments = await CustomerPayment.find().populate(
+      "userId",
+      "name email"
+    );
+    res.status(200).json({ success: true, data: payments });
+  } catch (err) {
+    console.error("[CUSTOMER GET ALL PAYMENTS] Error:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ---------------- Activate / Deactivate Payment ----------------
+exports.togglePaymentStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const payment = await CustomerPayment.findById(id);
+
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Payment not found" });
+    }
+
+    payment.active = !payment.active;
+    await payment.save();
+
+    res.status(200).json({
+      success: true,
+      data: payment,
+      message: `Payment has been ${
+        payment.active ? "activated" : "deactivated"
+      }`,
+    });
+  } catch (err) {
+    console.error("[CUSTOMER TOGGLE PAYMENT STATUS] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
