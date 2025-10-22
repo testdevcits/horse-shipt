@@ -113,7 +113,7 @@ passport.use(
         // Pass redirect URL
         const redirectUrl = `${
           process.env.FRONTEND_URL
-        }/oauth-success?token=${token}&role=${
+        }/oauth-success?token=${token}&id=${user._id}&role=${
           user.role
         }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
           user.email
