@@ -105,7 +105,7 @@ exports.requestPaymentUpdateOTP = async (req, res) => {
     // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     payment.otp = otp;
-    payment.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+    payment.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000);
     payment.lastOtpSentAt = new Date();
     await payment.save();
 
