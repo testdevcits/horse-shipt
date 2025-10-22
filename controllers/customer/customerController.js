@@ -40,7 +40,7 @@ exports.updateProfile = async (req, res) => {
   }
 };
 
-// ---------------- Add or Update Payment Setup ----------------
+// ---------------- Add Payment Setup (One per user) ----------------
 exports.addOrUpdatePayment = async (req, res) => {
   try {
     const userId = req.user._id;
@@ -52,30 +52,33 @@ exports.addOrUpdatePayment = async (req, res) => {
         .json({ success: false, message: "PK_LIVE and SK_LIVE are required" });
     }
 
-    let payment = await CustomerPayment.findOne({ userId });
+    // Check if user already has a payment setup
+    const existingPayment = await CustomerPayment.findOne({ userId });
 
-    if (payment) {
-      payment.pkLive = pkLive;
-      payment.skLive = skLive;
-      payment.active = true; // auto-activate
-      await payment.save();
-    } else {
-      payment = await CustomerPayment.create({
-        userId,
-        serviceName: "Stripe",
-        pkLive,
-        skLive,
-        active: true,
+    if (existingPayment) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have a payment setup. You can only update it.",
+        data: existingPayment,
       });
     }
 
-    res.status(200).json({
+    // Create new payment setup
+    const payment = await CustomerPayment.create({
+      userId,
+      serviceName: "Stripe",
+      pkLive,
+      skLive,
+      active: true,
+    });
+
+    res.status(201).json({
       success: true,
       data: payment,
-      message: "Payment setup saved successfully",
+      message: "Payment setup created successfully",
     });
   } catch (err) {
-    console.error("[CUSTOMER ADD/UPDATE PAYMENT] Error:", err);
+    console.error("[CUSTOMER ADD PAYMENT] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
