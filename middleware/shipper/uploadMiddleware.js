@@ -3,14 +3,25 @@ const path = require("path");
 const fs = require("fs");
 
 // -------------------------
-// Upload folder path
+// Handle platform-safe upload path
 // -------------------------
-const uploadPath = path.join(__dirname, "../../uploads/profilePictures");
+let uploadPath;
 
-// Ensure folder exists
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-  console.log("✅ Upload folder created at:", uploadPath);
+// 🧠 Detect if running in a read-only environment (Vercel / AWS Lambda)
+if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  uploadPath = path.join("/tmp", "uploads/profilePictures");
+} else {
+  uploadPath = path.join(__dirname, "../../uploads/profilePictures");
+}
+
+// ✅ Ensure folder exists safely
+try {
+  if (!fs.existsSync(uploadPath)) {
+    fs.mkdirSync(uploadPath, { recursive: true });
+    console.log("✅ Upload folder ready:", uploadPath);
+  }
+} catch (err) {
+  console.error("❌ Error creating upload folder:", err.message);
 }
 
 // -------------------------
@@ -43,7 +54,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
 });
 
 module.exports = upload;
