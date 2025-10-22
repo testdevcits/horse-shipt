@@ -109,7 +109,6 @@ exports.requestPaymentUpdateOTP = async (req, res) => {
     payment.lastOtpSentAt = new Date();
     await payment.save();
 
-    // Send OTP email
     await sendCustomerPaymentEmail(
       req.user.email,
       "Payment Update OTP",
