@@ -2,6 +2,7 @@ const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
 const session = require("express-session");
+const MongoStore = require("connect-mongo");
 const passport = require("passport");
 const path = require("path");
 const fs = require("fs");
@@ -10,7 +11,7 @@ const connectDB = require("./config/db");
 // -------------------------
 // Load environment variables
 // -------------------------
-dotenv.config();
+dotenv.config({ path: ".env" });
 
 // -------------------------
 // Connect to MongoDB
@@ -33,7 +34,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Postman / mobile
+      if (!origin) return callback(null, true); // allow Postman / mobile apps
       if (allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error("CORS policy: Origin not allowed"));
     },
@@ -48,14 +49,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -------------------------
-// Session Middleware
+// Session Middleware (Mongo Store)
 // -------------------------
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "your-secret-key",
     resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false },
+    saveUninitialized: false,
+    store: MongoStore.create({
+      mongoUrl: process.env.MONGO_URI,
+      collectionName: "sessions",
+    }),
+    cookie: {
+      secure: process.env.NODE_ENV === "production", // true only in HTTPS
+      httpOnly: true,
+      maxAge: 1000 * 60 * 60 * 24, // 1 day
+    },
   })
 );
 
@@ -69,11 +78,18 @@ require("./config/passport");
 // -------------------------
 // Upload Directory Setup
 // -------------------------
-const uploadPath = path.join(__dirname, "uploads/profilePictures");
+let uploadPath;
+
+// If running on Vercel/AWS (read-only /var/task), use tmp folder
+if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  uploadPath = path.join("/tmp", "uploads/profilePictures");
+} else {
+  uploadPath = path.join(__dirname, "uploads/profilePictures");
+}
 
 if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
-  console.log("✅ Upload directory created:", uploadPath);
+  console.log("✅ Upload directory ready:", uploadPath);
 }
 
 // Serve uploaded images
