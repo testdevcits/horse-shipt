@@ -110,11 +110,11 @@ passport.use(
 
         const token = generateToken({ id: user._id, role: user.role });
 
-        // Pass redirect URL
+        // ------------------- FIXED: Include _id in redirect -------------------
         const redirectUrl = `${
           process.env.FRONTEND_URL
-        }/oauth-success?token=${token}&role=${
-          user.role
+        }/oauth-success?token=${token}&role=${user.role}&_id=${
+          user._id
         }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
           user.email
         )}&photo=${encodeURIComponent(
@@ -124,7 +124,6 @@ passport.use(
         done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
-        // Pass error message to frontend
         done(new Error(err.message || "Google OAuth failed"), null);
       }
     }
