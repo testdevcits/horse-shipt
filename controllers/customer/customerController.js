@@ -95,6 +95,7 @@ exports.requestPaymentUpdateOTP = async (req, res) => {
       });
     }
 
+    // Find existing payment setup
     const payment = await CustomerPayment.findOne({ userId });
     if (!payment) {
       return res.status(404).json({
@@ -103,17 +104,21 @@ exports.requestPaymentUpdateOTP = async (req, res) => {
       });
     }
 
+    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Save OTP in DB
     payment.otp = otp;
     payment.otpExpiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
     payment.lastOtpSentAt = new Date();
     await payment.save();
 
+    // Send OTP via email
     await sendCustomerPaymentEmail(
       req.user.email,
       "Payment Update OTP",
-      `Your OTP for updating payment is: ${otp}. It will expire in 5 minutes.`
+      `Your OTP is: ${otp}. It will expire in 5 minutes.`,
+      `<p>Your OTP for updating payment is: <strong>${otp}</strong>. It will expire in 5 minutes.</p>`
     );
 
     res.status(200).json({
@@ -164,13 +169,11 @@ exports.verifyPaymentOTP = async (req, res) => {
 
     await payment.save();
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        data: payment,
-        message: "Payment updated successfully",
-      });
+    res.status(200).json({
+      success: true,
+      data: payment,
+      message: "Payment updated successfully",
+    });
   } catch (err) {
     console.error("[VERIFY PAYMENT OTP] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
