@@ -1,4 +1,3 @@
-// routes/authRoutes.js
 const express = require("express");
 const passport = require("passport");
 const router = express.Router();
@@ -42,39 +41,15 @@ router.get(
   }),
   (req, res) => {
     try {
-      const user = req.user; // Full user object from Google strategy
-      const token = user.token; // JWT token attached in strategy
+      // req.user.redirectUrl comes from your GoogleStrategy
+      const redirectUrl = req.user?.redirectUrl;
+      if (!redirectUrl)
+        return res.redirect(`${process.env.FRONTEND_URL}/login`);
 
-      // Send full JSON response
-      res.json({
-        success: true,
-        token,
-        user: {
-          _id: user._id,
-          uniqueId: user.uniqueId,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          provider: user.provider,
-          providerId: user.providerId,
-          profilePicture: user.profilePicture,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          locale: user.locale,
-          emailVerified: user.emailVerified,
-          isLogin: user.isLogin,
-          isActive: user.isActive ?? true, // Default true if not set
-          loginHistory: user.loginHistory || [],
-          createdAt: user.createdAt,
-          updatedAt: user.updatedAt,
-          currentDevice: user.currentDevice,
-        },
-      });
+      res.redirect(redirectUrl);
     } catch (err) {
-      console.error("OAuth callback error:", err);
-      res
-        .status(500)
-        .json({ success: false, message: "OAuth callback failed" });
+      console.error("OAuth redirect error:", err);
+      res.redirect(`${process.env.FRONTEND_URL}/login`);
     }
   }
 );
