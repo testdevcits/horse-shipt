@@ -15,7 +15,7 @@ const deleteFromCloudinary = async (public_id) => {
   await cloudinary.uploader.destroy(public_id);
 };
 
-// ---------------- Helper: Fetch Shipment (for internal use) ----------------
+// ---------------- Helper: Fetch Shipment ----------------
 exports.fetchShipmentById = async (shipmentId, userId) => {
   const shipment = await CustomerShipment.findById(shipmentId);
   if (!shipment) return null;
@@ -90,6 +90,25 @@ exports.createShipment = async (req, res) => {
     });
 
     await shipment.save();
+
+    // --- Send notification after creation ---
+    const notif = await CustomerNotification.findOne({ user: customerId });
+    if (notif && notif.subscription && notif.settings.shipmentUpdates) {
+      const payload = JSON.stringify({
+        title: "Shipment Created",
+        body: `Your shipment for ${pickupDate} has been created successfully.`,
+        type: "shipment_update",
+      });
+      try {
+        await webpush.sendNotification(notif.subscription, payload);
+      } catch (err) {
+        if (err.statusCode === 410 || err.statusCode === 404) {
+          notif.subscription = null;
+          await notif.save();
+        } else console.error(err);
+      }
+    }
+
     res.status(201).json({ success: true, shipment });
   } catch (error) {
     console.error("Error creating shipment:", error);
@@ -97,12 +116,14 @@ exports.createShipment = async (req, res) => {
   }
 };
 
-// ---------------- Get Shipments by Customer ----------------
+// ---------------- Other CRUD ----------------
 exports.getShipmentsByCustomer = async (req, res) => {
   try {
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-    }).sort({ createdAt: -1 });
+    }).sort({
+      createdAt: -1,
+    });
     res.status(200).json({ success: true, shipments });
   } catch (error) {
     console.error(error);
@@ -110,7 +131,6 @@ exports.getShipmentsByCustomer = async (req, res) => {
   }
 };
 
-// ---------------- Get Shipment by ID (Controller) ----------------
 exports.getShipmentById = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
@@ -129,7 +149,6 @@ exports.getShipmentById = async (req, res) => {
   }
 };
 
-// ---------------- Update Shipment ----------------
 exports.updateShipment = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
@@ -191,7 +210,6 @@ exports.updateShipment = async (req, res) => {
   }
 };
 
-// ---------------- Delete Shipment ----------------
 exports.deleteShipment = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
@@ -220,7 +238,6 @@ exports.deleteShipment = async (req, res) => {
   }
 };
 
-// ---------------- Update Shipment Location ----------------
 exports.updateShipmentLocation = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(

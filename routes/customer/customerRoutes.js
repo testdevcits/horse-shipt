@@ -32,6 +32,7 @@ const {
   deleteShipment,
   updateShipmentLocation,
   notifyShipmentAccepted,
+  fetchShipmentById,
 } = require("../../controllers/customer/customerShipmentController");
 
 // ---------------- Middleware ----------------
@@ -69,30 +70,29 @@ router.post("/notifications/subscribe", customerAuth, subscribeToPush);
 router.post("/test-notification", customerAuth, sendTestNotification);
 
 // ---------------- Shipments ----------------
-router.post(
-  "/shipments",
-  customerAuth,
-  (req, res, next) => {
-    const fields = [];
-    const numberOfHorses = parseInt(req.body.numberOfHorses || "0");
-    for (let i = 0; i < numberOfHorses; i++) {
-      fields.push({ name: `horses[${i}][photo]` });
-      fields.push({ name: `horses[${i}][cogins]` });
-      fields.push({ name: `horses[${i}][healthCertificate]` });
-    }
-    upload.fields(fields)(req, res, next);
-  },
-  createShipment
-);
 
+// Middleware to dynamically create fields for multer based on numberOfHorses
+const dynamicHorseUpload = (req, res, next) => {
+  const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
+  const fields = [];
+  for (let i = 0; i < numberOfHorses; i++) {
+    fields.push({ name: `horses[${i}][photo]` });
+    fields.push({ name: `horses[${i}][cogins]` });
+    fields.push({ name: `horses[${i}][healthCertificate]` });
+  }
+  upload.fields(fields)(req, res, next);
+};
+
+// Create Shipment
+router.post("/shipments", customerAuth, dynamicHorseUpload, createShipment);
+
+// Get Shipments
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
+// Update Shipment
 router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
   try {
-    const {
-      fetchShipmentById,
-    } = require("../../controllers/customer/customerShipmentController");
     const shipmentBefore = await fetchShipmentById(
       req.params.shipmentId,
       req.user._id
@@ -117,12 +117,15 @@ router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
       await notifyShipmentAccepted(req.params.shipmentId, shipperName);
     }
   } catch (err) {
-    console.error(err);
+    console.error("Error updating shipment:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 });
 
+// Delete Shipment
 router.delete("/shipments/:shipmentId", customerAuth, deleteShipment);
+
+// Update Shipment Location
 router.patch(
   "/shipments/:shipmentId/location",
   customerAuth,
