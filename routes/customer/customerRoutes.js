@@ -19,6 +19,10 @@ const {
 } = require("../../controllers/customer/customerNotificationController");
 
 const {
+  subscribeToPush,
+} = require("../../controllers/customer/customerPushController"); // NEW CONTROLLER
+
+const {
   customerAuth,
 } = require("../../middleware/customer/customerMiddleware");
 
@@ -42,5 +46,8 @@ router.post("/payment/verify-otp", customerAuth, verifyOtp);
 // ---------------- Notifications ----------------
 router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
+
+// ---------------- Push Subscription ----------------
+router.post("/notifications/subscribe", customerAuth, subscribeToPush); // NEW ROUTE
 
 module.exports = router;

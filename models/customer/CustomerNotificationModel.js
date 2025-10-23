@@ -1,13 +1,13 @@
 const mongoose = require("mongoose");
-const Customer = require("./customerModel"); // reference to your existing Customer model
+const Customer = require("./customerModel");
 
 const CustomerNotificationSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Customer", // reference Customer collection
+      ref: "Customer",
       required: true,
-      unique: true, // ensure one settings document per customer
+      unique: true,
     },
     settings: {
       newQuote: { type: Boolean, default: true },
@@ -16,6 +16,10 @@ const CustomerNotificationSchema = new mongoose.Schema(
       newReview: { type: Boolean, default: true },
       upcomingShipment: { type: Boolean, default: true },
       shipmentUpdates: { type: Boolean, default: true },
+    },
+    subscription: {
+      type: Object,
+      default: null,
     },
   },
   { timestamps: true }
