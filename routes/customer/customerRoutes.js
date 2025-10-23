@@ -2,7 +2,6 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
-// ---------------- Controllers ----------------
 const {
   updateProfile,
   addOrUpdatePayment,
@@ -35,7 +34,6 @@ const {
   fetchShipmentById,
 } = require("../../controllers/customer/customerShipmentController");
 
-// ---------------- Middleware ----------------
 const {
   customerAuth,
 } = require("../../middleware/customer/customerMiddleware");
@@ -71,7 +69,7 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 
 // ---------------- Shipments ----------------
 
-// Accept **any file** for horses dynamically
+// Accept **any file** dynamically for horses
 router.post(
   "/shipments",
   customerAuth,
