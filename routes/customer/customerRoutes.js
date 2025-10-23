@@ -8,8 +8,6 @@ const {
   getAllPayments,
   togglePaymentStatus,
   getPaymentById,
-  requestPaymentUpdateOTP,
-  verifyPaymentOTP,
 } = require("../../controllers/customer/customerController");
 const {
   customerAuth,
@@ -24,13 +22,8 @@ router.put(
 );
 
 // ---------------- Payment Setup ----------------
+// Add new payment or update existing payment using paymentId
 router.post("/payment", customerAuth, addOrUpdatePayment);
-
-// Request OTP to update payment
-router.post("/payment/request-otp", customerAuth, requestPaymentUpdateOTP);
-
-// Verify OTP and update payment
-router.post("/payment/verify-otp", customerAuth, verifyPaymentOTP);
 
 // Get payment setup for logged-in customer
 router.get("/payment", customerAuth, getPaymentByUser);
