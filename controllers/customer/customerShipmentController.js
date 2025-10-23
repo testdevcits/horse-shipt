@@ -5,7 +5,11 @@ const webpush = require("web-push");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, folder = "shipments") => {
-  const result = await cloudinary.uploader.upload(file.path, { folder });
+  if (!file) return null;
+  const result = await cloudinary.uploader.upload(file.buffer, {
+    folder,
+    resource_type: "auto",
+  });
   return { url: result.secure_url, public_id: result.public_id };
 };
 
@@ -31,9 +35,8 @@ exports.createShipment = async (req, res) => {
     console.log("=== Incoming Shipment Request ===");
     console.log("User ID:", customerId);
     console.log("Request Body:", req.body);
-    console.log("Request Files:", req.files);
+    console.log("Files:", req.files);
 
-    // Safely parse numberOfHorses
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
     if (isNaN(numberOfHorses) || numberOfHorses < 0) {
       return res.status(400).json({
@@ -52,7 +55,6 @@ exports.createShipment = async (req, res) => {
       additionalInfo,
     } = req.body;
 
-    // Safely parse horses array
     const horseData = req.body.horses
       ? Array.isArray(req.body.horses)
         ? req.body.horses
@@ -73,31 +75,25 @@ exports.createShipment = async (req, res) => {
         generalInfo: h.generalInfo || "",
       };
 
-      // Upload files if exist
-      if (req.files) {
-        if (req.files[`horses[${i}][photo]`]) {
-          horseObj.photo = await uploadToCloudinary(
-            req.files[`horses[${i}][photo]`][0]
-          );
-        }
-        if (req.files[`horses[${i}][cogins]`]) {
-          horseObj.cogins = await uploadToCloudinary(
-            req.files[`horses[${i}][cogins]`][0]
-          );
-        }
-        if (req.files[`horses[${i}][healthCertificate]`]) {
-          horseObj.healthCertificate = await uploadToCloudinary(
-            req.files[`horses[${i}][healthCertificate]`][0]
-          );
-        }
-      }
+      // Find uploaded files for this horse
+      const photoFile = req.files.find(
+        (f) => f.fieldname === `horses[${i}][photo]`
+      );
+      const coginsFile = req.files.find(
+        (f) => f.fieldname === `horses[${i}][cogins]`
+      );
+      const healthFile = req.files.find(
+        (f) => f.fieldname === `horses[${i}][healthCertificate]`
+      );
 
-      console.log(`Horse ${i} data:`, horseObj);
+      if (photoFile) horseObj.photo = await uploadToCloudinary(photoFile);
+      if (coginsFile) horseObj.cogins = await uploadToCloudinary(coginsFile);
+      if (healthFile)
+        horseObj.healthCertificate = await uploadToCloudinary(healthFile);
 
       horses.push(horseObj);
     }
 
-    // Create Shipment
     const shipment = new CustomerShipment({
       customer: customerId,
       pickupLocation,
@@ -107,16 +103,15 @@ exports.createShipment = async (req, res) => {
       deliveryTimeOption,
       deliveryDate,
       numberOfHorses,
-      additionalInfo,
+      additionalInfo: additionalInfo || "",
       horses,
       status: "pending",
     });
 
     await shipment.save();
+    console.log("Shipment saved:", shipment);
 
-    console.log("Shipment successfully saved:", shipment);
-
-    // --- Send notification after creation ---
+    // Send notification
     const notif = await CustomerNotification.findOne({ user: customerId });
     if (notif && notif.subscription && notif.settings.shipmentUpdates) {
       const payload = JSON.stringify({
@@ -141,14 +136,12 @@ exports.createShipment = async (req, res) => {
   }
 };
 
-// ---------------- Other CRUD ----------------
+// ---------------- Get Shipments ----------------
 exports.getShipmentsByCustomer = async (req, res) => {
   try {
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-    }).sort({
-      createdAt: -1,
-    });
+    }).sort({ createdAt: -1 });
     res.status(200).json({ success: true, shipments });
   } catch (error) {
     console.error(error);
@@ -166,7 +159,6 @@ exports.getShipmentById = async (req, res) => {
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
-
     res.status(200).json({ success: true, shipment });
   } catch (error) {
     console.error(error);
@@ -174,6 +166,7 @@ exports.getShipmentById = async (req, res) => {
   }
 };
 
+// ---------------- Update Shipment ----------------
 exports.updateShipment = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
@@ -191,34 +184,39 @@ exports.updateShipment = async (req, res) => {
       const horseData = Array.isArray(updateData.horses)
         ? updateData.horses
         : JSON.parse(updateData.horses);
+
       for (let i = 0; i < horseData.length; i++) {
         const h = horseData[i];
         const existingHorse = shipment.horses[i] || {};
 
-        if (req.files[`horses[${i}][photo]`]) {
+        const photoFile = req.files.find(
+          (f) => f.fieldname === `horses[${i}][photo]`
+        );
+        const coginsFile = req.files.find(
+          (f) => f.fieldname === `horses[${i}][cogins]`
+        );
+        const healthFile = req.files.find(
+          (f) => f.fieldname === `horses[${i}][healthCertificate]`
+        );
+
+        if (photoFile) {
           if (existingHorse.photo?.public_id)
             await deleteFromCloudinary(existingHorse.photo.public_id);
-          h.photo = await uploadToCloudinary(
-            req.files[`horses[${i}][photo]`][0]
-          );
+          h.photo = await uploadToCloudinary(photoFile);
         } else if (existingHorse.photo) h.photo = existingHorse.photo;
 
-        if (req.files[`horses[${i}][cogins]`]) {
+        if (coginsFile) {
           if (existingHorse.cogins?.public_id)
             await deleteFromCloudinary(existingHorse.cogins.public_id);
-          h.cogins = await uploadToCloudinary(
-            req.files[`horses[${i}][cogins]`][0]
-          );
+          h.cogins = await uploadToCloudinary(coginsFile);
         } else if (existingHorse.cogins) h.cogins = existingHorse.cogins;
 
-        if (req.files[`horses[${i}][healthCertificate]`]) {
+        if (healthFile) {
           if (existingHorse.healthCertificate?.public_id)
             await deleteFromCloudinary(
               existingHorse.healthCertificate.public_id
             );
-          h.healthCertificate = await uploadToCloudinary(
-            req.files[`horses[${i}][healthCertificate]`][0]
-          );
+          h.healthCertificate = await uploadToCloudinary(healthFile);
         } else if (existingHorse.healthCertificate)
           h.healthCertificate = existingHorse.healthCertificate;
 
@@ -235,6 +233,7 @@ exports.updateShipment = async (req, res) => {
   }
 };
 
+// ---------------- Delete Shipment ----------------
 exports.deleteShipment = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
@@ -263,6 +262,7 @@ exports.deleteShipment = async (req, res) => {
   }
 };
 
+// ---------------- Update Shipment Location ----------------
 exports.updateShipmentLocation = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(

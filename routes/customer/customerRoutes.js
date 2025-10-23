@@ -71,46 +71,11 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 
 // ---------------- Shipments ----------------
 
-// Middleware to dynamically create fields for multer based on numberOfHorses
-const dynamicHorseUpload = (req, res, next) => {
-  const multerFields = [];
-
-  // parse text fields first
-  multer().none()(req, res, (err) => {
-    if (err) return next(err);
-
-    const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
-    if (isNaN(numberOfHorses) || numberOfHorses < 0)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid numberOfHorses" });
-
-    // generate multer fields
-    for (let i = 0; i < numberOfHorses; i++) {
-      multerFields.push({ name: `horses[${i}][photo]`, maxCount: 1 });
-      multerFields.push({ name: `horses[${i}][cogins]`, maxCount: 1 });
-      multerFields.push({
-        name: `horses[${i}][healthCertificate]`,
-        maxCount: 1,
-      });
-    }
-
-    // parse files
-    if (multerFields.length > 0) {
-      upload.fields(multerFields)(req, res, next);
-    } else {
-      next();
-    }
-  });
-};
-
-// ---------------- Shipments Routes ----------------
-
-// Log all incoming shipment data
+// Accept **any file** for horses dynamically
 router.post(
   "/shipments",
   customerAuth,
-  dynamicHorseUpload,
+  upload.any(),
   (req, res, next) => {
     console.log("=== Received shipment data ===");
     console.log("Body:", req.body);
