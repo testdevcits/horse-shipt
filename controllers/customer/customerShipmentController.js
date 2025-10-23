@@ -10,6 +10,7 @@ const uploadToCloudinary = async (file, folder = "shipments") => {
   try {
     let uploadResult;
     if (file.buffer) {
+      // Convert buffer to base64 string
       const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
         "base64"
       )}`;
@@ -22,9 +23,15 @@ const uploadToCloudinary = async (file, folder = "shipments") => {
         folder,
         resource_type: "auto",
       });
-    } else return null;
+    } else {
+      console.log("No valid buffer or path for file:", file);
+      return null;
+    }
 
-    console.log(`Uploaded ${file.originalname} to Cloudinary:`, uploadResult.secure_url);
+    console.log(
+      `Uploaded ${file.originalname} to Cloudinary:`,
+      uploadResult.secure_url
+    );
     return { url: uploadResult.secure_url, public_id: uploadResult.public_id };
   } catch (err) {
     console.error("Cloudinary upload error for file:", file.originalname, err);
@@ -35,10 +42,14 @@ const uploadToCloudinary = async (file, folder = "shipments") => {
 // ---------------- Helper: Delete from Cloudinary ----------------
 const deleteFromCloudinary = async (public_id) => {
   if (!public_id) return;
-  await cloudinary.uploader.destroy(public_id);
+  try {
+    await cloudinary.uploader.destroy(public_id);
+  } catch (err) {
+    console.error("Error deleting from Cloudinary:", err);
+  }
 };
 
-// ---------------- Fetch Shipment ----------------
+// ---------------- Helper: Fetch Shipment ----------------
 exports.fetchShipmentById = async (shipmentId, userId) => {
   const shipment = await CustomerShipment.findById(shipmentId);
   if (!shipment) return null;
@@ -50,7 +61,19 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 exports.createShipment = async (req, res) => {
   try {
     const customerId = req.user._id;
+
+    console.log("=== Incoming Shipment Request ===");
+    console.log("User ID:", customerId);
+    console.log("Request Body:", req.body);
+    console.log("Files:", req.files);
+
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
+    if (isNaN(numberOfHorses) || numberOfHorses < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid numberOfHorses",
+      });
+    }
 
     const {
       pickupLocation,
@@ -61,6 +84,12 @@ exports.createShipment = async (req, res) => {
       deliveryDate,
       additionalInfo,
     } = req.body;
+
+    // Map files for easy access
+    const fileMap = {};
+    (req.files || []).forEach((f) => {
+      fileMap[f.fieldname] = f;
+    });
 
     const horseData = req.body.horses
       ? Array.isArray(req.body.horses)
@@ -82,9 +111,9 @@ exports.createShipment = async (req, res) => {
         generalInfo: h.generalInfo || "",
       };
 
-      const photoFile = req.files?.[`horses[${i}][photo]`]?.[0];
-      const coginsFile = req.files?.[`horses[${i}][cogins]`]?.[0];
-      const healthFile = req.files?.[`horses[${i}][healthCertificate]`]?.[0];
+      const photoFile = fileMap[`horses[${i}][photo]`];
+      const coginsFile = fileMap[`horses[${i}][cogins]`];
+      const healthFile = fileMap[`horses[${i}][healthCertificate]`];
 
       if (photoFile) horseObj.photo = await uploadToCloudinary(photoFile);
       if (coginsFile) horseObj.cogins = await uploadToCloudinary(coginsFile);
@@ -111,7 +140,7 @@ exports.createShipment = async (req, res) => {
     await shipment.save();
     console.log("Shipment saved:", shipment);
 
-    // Send push notification
+    // Send push notification if enabled
     const notif = await CustomerNotification.findOne({ user: customerId });
     if (notif && notif.subscription && notif.settings.shipmentUpdates) {
       const payload = JSON.stringify({
@@ -156,7 +185,9 @@ exports.getShipmentById = async (req, res) => {
       req.user._id
     );
     if (!shipment)
-      return res.status(404).json({ success: false, message: "Shipment not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
     res.status(200).json({ success: true, shipment });
   } catch (error) {
     console.error(error);
@@ -167,36 +198,56 @@ exports.getShipmentById = async (req, res) => {
 // ---------------- Update Shipment ----------------
 exports.updateShipment = async (req, res) => {
   try {
-    const shipment = await exports.fetchShipmentById(req.params.shipmentId, req.user._id);
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
-      return res.status(404).json({ success: false, message: "Shipment not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
 
     const updateData = req.body;
 
-    if (updateData.horses && req.files) {
-      const horseData = Array.isArray(updateData.horses) ? updateData.horses : JSON.parse(updateData.horses);
+    // Map files for easy access
+    const fileMap = {};
+    (req.files || []).forEach((f) => {
+      fileMap[f.fieldname] = f;
+    });
+
+    if (updateData.horses) {
+      const horseData = Array.isArray(updateData.horses)
+        ? updateData.horses
+        : JSON.parse(updateData.horses);
+
       for (let i = 0; i < horseData.length; i++) {
         const h = horseData[i];
         const existingHorse = shipment.horses[i] || {};
 
-        const photoFile = req.files?.[`horses[${i}][photo]`]?.[0];
-        const coginsFile = req.files?.[`horses[${i}][cogins]`]?.[0];
-        const healthFile = req.files?.[`horses[${i}][healthCertificate]`]?.[0];
+        const photoFile = fileMap[`horses[${i}][photo]`];
+        const coginsFile = fileMap[`horses[${i}][cogins]`];
+        const healthFile = fileMap[`horses[${i}][healthCertificate]`];
 
         if (photoFile) {
-          if (existingHorse.photo?.public_id) await deleteFromCloudinary(existingHorse.photo.public_id);
+          if (existingHorse.photo?.public_id)
+            await deleteFromCloudinary(existingHorse.photo.public_id);
           h.photo = await uploadToCloudinary(photoFile);
         } else if (existingHorse.photo) h.photo = existingHorse.photo;
 
         if (coginsFile) {
-          if (existingHorse.cogins?.public_id) await deleteFromCloudinary(existingHorse.cogins.public_id);
+          if (existingHorse.cogins?.public_id)
+            await deleteFromCloudinary(existingHorse.cogins.public_id);
           h.cogins = await uploadToCloudinary(coginsFile);
         } else if (existingHorse.cogins) h.cogins = existingHorse.cogins;
 
         if (healthFile) {
-          if (existingHorse.healthCertificate?.public_id) await deleteFromCloudinary(existingHorse.healthCertificate.public_id);
+          if (existingHorse.healthCertificate?.public_id)
+            await deleteFromCloudinary(
+              existingHorse.healthCertificate.public_id
+            );
           h.healthCertificate = await uploadToCloudinary(healthFile);
-        } else if (existingHorse.healthCertificate) h.healthCertificate = existingHorse.healthCertificate;
+        } else if (existingHorse.healthCertificate)
+          h.healthCertificate = existingHorse.healthCertificate;
 
         shipment.horses[i] = h;
       }
@@ -214,18 +265,26 @@ exports.updateShipment = async (req, res) => {
 // ---------------- Delete Shipment ----------------
 exports.deleteShipment = async (req, res) => {
   try {
-    const shipment = await exports.fetchShipmentById(req.params.shipmentId, req.user._id);
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
-      return res.status(404).json({ success: false, message: "Shipment not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
 
     for (const h of shipment.horses) {
       if (h.photo?.public_id) await deleteFromCloudinary(h.photo.public_id);
       if (h.cogins?.public_id) await deleteFromCloudinary(h.cogins.public_id);
-      if (h.healthCertificate?.public_id) await deleteFromCloudinary(h.healthCertificate.public_id);
+      if (h.healthCertificate?.public_id)
+        await deleteFromCloudinary(h.healthCertificate.public_id);
     }
 
     await shipment.remove();
-    res.status(200).json({ success: true, message: "Shipment deleted successfully" });
+    res
+      .status(200)
+      .json({ success: true, message: "Shipment deleted successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -235,9 +294,14 @@ exports.deleteShipment = async (req, res) => {
 // ---------------- Update Shipment Location ----------------
 exports.updateShipmentLocation = async (req, res) => {
   try {
-    const shipment = await exports.fetchShipmentById(req.params.shipmentId, req.user._id);
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
-      return res.status(404).json({ success: false, message: "Shipment not found" });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
 
     const { latitude, longitude } = req.body;
     const newLocation = { latitude, longitude, updatedAt: new Date() };
@@ -246,7 +310,9 @@ exports.updateShipmentLocation = async (req, res) => {
     shipment.locationHistory.push(newLocation);
 
     await shipment.save();
-    res.status(200).json({ success: true, currentLocation: shipment.currentLocation });
+    res
+      .status(200)
+      .json({ success: true, currentLocation: shipment.currentLocation });
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -259,7 +325,9 @@ exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
     const shipment = await CustomerShipment.findById(shipmentId);
     if (!shipment) return;
 
-    const notif = await CustomerNotification.findOne({ user: shipment.customer });
+    const notif = await CustomerNotification.findOne({
+      user: shipment.customer,
+    });
     if (!notif || !notif.subscription) return;
     if (!notif.settings.shipmentUpdates) return;
 
