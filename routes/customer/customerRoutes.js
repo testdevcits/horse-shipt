@@ -73,24 +73,35 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 
 // Middleware to dynamically create fields for multer based on numberOfHorses
 const dynamicHorseUpload = (req, res, next) => {
-  const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
-  const fields = [];
-  for (let i = 0; i < numberOfHorses; i++) {
-    fields.push({ name: `horses[${i}][photo]` });
-    fields.push({ name: `horses[${i}][cogins]` });
-    fields.push({ name: `horses[${i}][healthCertificate]` });
-  }
-  upload.fields(fields)(req, res, next);
+  const multerFields = [];
+
+  // Step 1: parse only text fields first
+  const tmpUpload = multer().none(); // parses text fields into req.body
+  tmpUpload(req, res, (err) => {
+    if (err) return next(err);
+
+    // Step 2: safely parse numberOfHorses
+    const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
+    const validNumberOfHorses =
+      isNaN(numberOfHorses) || numberOfHorses < 0 ? 0 : numberOfHorses;
+
+    // Step 3: generate multer fields for each horse
+    for (let i = 0; i < validNumberOfHorses; i++) {
+      multerFields.push({ name: `horses[${i}][photo]` });
+      multerFields.push({ name: `horses[${i}][cogins]` });
+      multerFields.push({ name: `horses[${i}][healthCertificate]` });
+    }
+
+    // Step 4: now parse files
+    upload.fields(multerFields)(req, res, next);
+  });
 };
 
-// Create Shipment
+// ---------------- Shipments Routes ----------------
 router.post("/shipments", customerAuth, dynamicHorseUpload, createShipment);
-
-// Get Shipments
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
-// Update Shipment
 router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
   try {
     const shipmentBefore = await fetchShipmentById(
@@ -122,10 +133,7 @@ router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
   }
 });
 
-// Delete Shipment
 router.delete("/shipments/:shipmentId", customerAuth, deleteShipment);
-
-// Update Shipment Location
 router.patch(
   "/shipments/:shipmentId/location",
   customerAuth,

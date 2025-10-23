@@ -27,6 +27,16 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 exports.createShipment = async (req, res) => {
   try {
     const customerId = req.user._id;
+
+    // Safely parse numberOfHorses
+    const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
+    if (isNaN(numberOfHorses) || numberOfHorses < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid numberOfHorses",
+      });
+    }
+
     const {
       pickupLocation,
       pickupTimeOption,
@@ -34,29 +44,31 @@ exports.createShipment = async (req, res) => {
       deliveryLocation,
       deliveryTimeOption,
       deliveryDate,
-      numberOfHorses,
       additionalInfo,
     } = req.body;
 
-    let horses = [];
+    //  Safely parse horses array
     const horseData = req.body.horses
       ? Array.isArray(req.body.horses)
         ? req.body.horses
         : JSON.parse(req.body.horses)
       : [];
 
+    const horses = [];
+
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
-      let horseObj = {
-        registeredName: h.registeredName,
-        barnName: h.barnName,
-        breed: h.breed,
-        colour: h.colour,
-        age: h.age,
-        sex: h.sex,
-        generalInfo: h.generalInfo,
+      const horseObj = {
+        registeredName: h.registeredName || "",
+        barnName: h.barnName || "",
+        breed: h.breed || "",
+        colour: h.colour || "",
+        age: h.age || "",
+        sex: h.sex || "",
+        generalInfo: h.generalInfo || "",
       };
 
+      // Upload files if exist
       if (req.files) {
         if (req.files[`horses[${i}][photo]`])
           horseObj.photo = await uploadToCloudinary(
@@ -75,6 +87,7 @@ exports.createShipment = async (req, res) => {
       horses.push(horseObj);
     }
 
+    // Create Shipment
     const shipment = new CustomerShipment({
       customer: customerId,
       pickupLocation,
