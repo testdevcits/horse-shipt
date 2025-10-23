@@ -8,6 +8,8 @@ const {
   getAllPayments,
   togglePaymentStatus,
   getPaymentById,
+  requestOtp,
+  verifyOtp,
 } = require("../../controllers/customer/customerController");
 const {
   customerAuth,
@@ -36,5 +38,12 @@ router.get("/payments", customerAuth, getAllPayments);
 
 // Activate/deactivate payment by ID (Admin)
 router.patch("/payment/:id/toggle", customerAuth, togglePaymentStatus);
+
+// ---------------- OTP for Payment ----------------
+// Request OTP for new or updating payment
+router.post("/payment/request-otp", customerAuth, requestOtp);
+
+// Verify OTP and save payment
+router.post("/payment/verify-otp", customerAuth, verifyOtp);
 
 module.exports = router;
