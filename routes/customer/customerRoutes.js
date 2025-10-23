@@ -25,6 +25,9 @@ const {
 const {
   customerAuth,
 } = require("../../middleware/customer/customerMiddleware");
+const {
+  sendTestNotification,
+} = require("../../controllers/customer/customerTestNotificationController");
 
 // ---------------- Profile ----------------
 router.put(
@@ -49,5 +52,6 @@ router.put("/notifications/:type", customerAuth, updateSetting);
 
 // ---------------- Push Subscription ----------------
 router.post("/notifications/subscribe", customerAuth, subscribeToPush); // NEW ROUTE
+router.post("/test-notification", customerAuth, sendTestNotification);
 
 module.exports = router;
