@@ -6,11 +6,29 @@ const webpush = require("web-push");
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, folder = "shipments") => {
   if (!file) return null;
-  const result = await cloudinary.uploader.upload(file.buffer, {
-    folder,
-    resource_type: "auto",
-  });
-  return { url: result.secure_url, public_id: result.public_id };
+
+  // Handle memory storage buffer
+  if (file.buffer) {
+    const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
+      "base64"
+    )}`;
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder,
+      resource_type: "auto",
+    });
+    return { url: result.secure_url, public_id: result.public_id };
+  }
+
+  // Fallback for disk storage (path)
+  if (file.path) {
+    const result = await cloudinary.uploader.upload(file.path, {
+      folder,
+      resource_type: "auto",
+    });
+    return { url: result.secure_url, public_id: result.public_id };
+  }
+
+  return null;
 };
 
 // ---------------- Helper: Delete from Cloudinary ----------------
@@ -75,16 +93,10 @@ exports.createShipment = async (req, res) => {
         generalInfo: h.generalInfo || "",
       };
 
-      // Find uploaded files for this horse
-      const photoFile = req.files.find(
-        (f) => f.fieldname === `horses[${i}][photo]`
-      );
-      const coginsFile = req.files.find(
-        (f) => f.fieldname === `horses[${i}][cogins]`
-      );
-      const healthFile = req.files.find(
-        (f) => f.fieldname === `horses[${i}][healthCertificate]`
-      );
+      // Multer memory storage: req.files is an object with field arrays
+      const photoFile = req.files?.[`horses[${i}][photo]`]?.[0];
+      const coginsFile = req.files?.[`horses[${i}][cogins]`]?.[0];
+      const healthFile = req.files?.[`horses[${i}][healthCertificate]`]?.[0];
 
       if (photoFile) horseObj.photo = await uploadToCloudinary(photoFile);
       if (coginsFile) horseObj.cogins = await uploadToCloudinary(coginsFile);
@@ -189,15 +201,9 @@ exports.updateShipment = async (req, res) => {
         const h = horseData[i];
         const existingHorse = shipment.horses[i] || {};
 
-        const photoFile = req.files.find(
-          (f) => f.fieldname === `horses[${i}][photo]`
-        );
-        const coginsFile = req.files.find(
-          (f) => f.fieldname === `horses[${i}][cogins]`
-        );
-        const healthFile = req.files.find(
-          (f) => f.fieldname === `horses[${i}][healthCertificate]`
-        );
+        const photoFile = req.files?.[`horses[${i}][photo]`]?.[0];
+        const coginsFile = req.files?.[`horses[${i}][cogins]`]?.[0];
+        const healthFile = req.files?.[`horses[${i}][healthCertificate]`]?.[0];
 
         if (photoFile) {
           if (existingHorse.photo?.public_id)
