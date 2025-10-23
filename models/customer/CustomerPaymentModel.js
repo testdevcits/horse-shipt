@@ -11,6 +11,7 @@ const customerPaymentSchema = new mongoose.Schema(
     serviceName: { type: String, required: true, default: "Stripe" },
     pkLive: { type: String, required: true },
     skLive: { type: String, required: true },
+    otp: { type: String }, // temporary OTP for verification
     active: { type: Boolean, default: true },
     lastOtpSentAt: { type: Date }, // track when OTP was last sent
     lastUpdatedByOtp: { type: Boolean, default: false }, // flag if last update used OTP

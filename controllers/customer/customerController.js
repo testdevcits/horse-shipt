@@ -203,7 +203,7 @@ exports.requestOtp = async (req, res) => {
     let payment = await CustomerPayment.findOne({ userId });
 
     if (!payment) {
-      // Create temporary payment object to store OTP
+      // Create new payment object
       payment = new CustomerPayment({
         userId,
         serviceName: "Stripe",
@@ -212,6 +212,10 @@ exports.requestOtp = async (req, res) => {
         lastOtpSentAt: new Date(),
         lastUpdatedByOtp: false,
       });
+    } else {
+      // Update pkLive/skLive for existing payment
+      payment.pkLive = pkLive;
+      payment.skLive = skLive;
     }
 
     payment.otp = otp; // save OTP temporarily
@@ -219,11 +223,16 @@ exports.requestOtp = async (req, res) => {
     await payment.save();
 
     // Send email with OTP
-    await sendCustomerPaymentEmail(req.user.email, otp);
+    await sendCustomerPaymentEmail(
+      req.user.email,
+      "Your OTP for Stripe Payment",
+      `Your OTP is: ${otp}`
+    );
 
     res.status(200).json({
       success: true,
       message: "OTP sent to your email.",
+      paymentId: payment._id, // send paymentId so frontend can verify OTP
     });
   } catch (err) {
     console.error("[REQUEST OTP] Error:", err);
@@ -237,34 +246,40 @@ exports.verifyOtp = async (req, res) => {
     const userId = req.user._id;
     const { paymentId, pkLive, skLive, otp } = req.body;
 
-    // Log incoming request body for debugging
     console.log("[VERIFY OTP] Incoming Body:", req.body);
 
     if (!paymentId || !pkLive || !skLive || !otp) {
-      console.log("[VERIFY OTP] Missing fields", {
-        paymentId,
-        pkLive,
-        skLive,
-        otp,
-      });
       return res.status(400).json({
         success: false,
         message: "Payment ID, PK_LIVE, SK_LIVE, and OTP are required",
       });
     }
 
-    // Find payment by ID and userId to ensure ownership
+    // Trim OTP in case user adds spaces
+    const trimmedOtp = otp.toString().trim();
+
+    // Find payment by ID and userId
     const payment = await CustomerPayment.findOne({ _id: paymentId, userId });
 
-    // Log the payment found in DB
-    console.log("[VERIFY OTP] Payment in DB:", payment);
+    if (!payment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Payment not found" });
+    }
 
-    if (!payment || payment.otp !== otp) {
+    // Check OTP match
+    if (!payment.otp || payment.otp !== trimmedOtp) {
       console.log("[VERIFY OTP] OTP mismatch", {
-        providedOtp: otp,
-        storedOtp: payment ? payment.otp : null,
+        providedOtp: trimmedOtp,
+        storedOtp: payment.otp,
       });
       return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+
+    // Optional: check OTP expiration (e.g., 10 minutes)
+    const otpAge = (new Date() - payment.lastOtpSentAt) / 1000; // in seconds
+    if (otpAge > 600) {
+      return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
     // Save payment
