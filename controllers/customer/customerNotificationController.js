@@ -5,9 +5,10 @@ exports.getSettings = async (req, res) => {
   try {
     const userId = req.user._id;
 
+    // Try to find notification settings
     let notification = await CustomerNotification.findOne({ user: userId });
 
-    // If no document exists for this user, create default
+    // If not exists, create default with all settings true
     if (!notification) {
       notification = await CustomerNotification.create({ user: userId });
     }
@@ -40,6 +41,7 @@ exports.updateSetting = async (req, res) => {
       notification = await CustomerNotification.create({ user: userId });
     }
 
+    // Check if type is valid
     if (!(type in notification.settings)) {
       return res.status(400).json({
         success: false,

@@ -5,7 +5,7 @@ const CustomerNotificationSchema = new mongoose.Schema(
   {
     user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Customer", // <-- reference Customer collection
+      ref: "Customer", // reference Customer collection
       required: true,
       unique: true, // ensure one settings document per customer
     },
