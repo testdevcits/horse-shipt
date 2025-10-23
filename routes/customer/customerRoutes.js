@@ -2,6 +2,7 @@ const express = require("express");
 const router = express.Router();
 const upload = require("../../middleware/uploadMiddleware");
 
+// ---------------- Controllers ----------------
 const {
   updateProfile,
   addOrUpdatePayment,
@@ -20,14 +21,13 @@ const {
 
 const {
   subscribeToPush,
-} = require("../../controllers/customer/customerPushController"); // NEW CONTROLLER
+  sendTestNotification,
+} = require("../../controllers/customer/customerPushController"); // Push & Test notifications
 
+// ---------------- Middleware ----------------
 const {
   customerAuth,
 } = require("../../middleware/customer/customerMiddleware");
-const {
-  sendTestNotification,
-} = require("../../controllers/customer/customerTestNotificationController");
 
 // ---------------- Profile ----------------
 router.put(
@@ -51,7 +51,7 @@ router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
 
 // ---------------- Push Subscription ----------------
-router.post("/notifications/subscribe", customerAuth, subscribeToPush); // NEW ROUTE
-router.post("/test-notification", customerAuth, sendTestNotification);
+router.post("/notifications/subscribe", customerAuth, subscribeToPush); // Subscribe for push
+router.post("/test-notification", customerAuth, sendTestNotification); // Send test notification
 
 module.exports = router;
