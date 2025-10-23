@@ -235,20 +235,26 @@ exports.requestOtp = async (req, res) => {
 exports.verifyOtp = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { pkLive, skLive, otp } = req.body;
+    const { paymentId, pkLive, skLive, otp } = req.body;
 
     // Log incoming request body for debugging
     console.log("[VERIFY OTP] Incoming Body:", req.body);
 
-    if (!pkLive || !skLive || !otp) {
-      console.log("[VERIFY OTP] Missing fields", { pkLive, skLive, otp });
+    if (!paymentId || !pkLive || !skLive || !otp) {
+      console.log("[VERIFY OTP] Missing fields", {
+        paymentId,
+        pkLive,
+        skLive,
+        otp,
+      });
       return res.status(400).json({
         success: false,
-        message: "PK_LIVE, SK_LIVE, and OTP are required",
+        message: "Payment ID, PK_LIVE, SK_LIVE, and OTP are required",
       });
     }
 
-    const payment = await CustomerPayment.findOne({ userId });
+    // Find payment by ID and userId to ensure ownership
+    const payment = await CustomerPayment.findOne({ _id: paymentId, userId });
 
     // Log the payment found in DB
     console.log("[VERIFY OTP] Payment in DB:", payment);
