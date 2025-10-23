@@ -1,13 +1,11 @@
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 const cloudinary = require("../../utils/cloudinary");
-const fs = require("fs");
 const webpush = require("web-push");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, folder = "shipments") => {
   const result = await cloudinary.uploader.upload(file.path, { folder });
-  fs.unlinkSync(file.path);
   return { url: result.secure_url, public_id: result.public_id };
 };
 
@@ -15,6 +13,14 @@ const uploadToCloudinary = async (file, folder = "shipments") => {
 const deleteFromCloudinary = async (public_id) => {
   if (!public_id) return;
   await cloudinary.uploader.destroy(public_id);
+};
+
+// ---------------- Helper: Fetch Shipment (for internal use) ----------------
+exports.fetchShipmentById = async (shipmentId, userId) => {
+  const shipment = await CustomerShipment.findById(shipmentId);
+  if (!shipment) return null;
+  if (shipment.customer.toString() !== userId.toString()) return null;
+  return shipment;
 };
 
 // ---------------- Create Shipment ----------------
@@ -33,40 +39,40 @@ exports.createShipment = async (req, res) => {
     } = req.body;
 
     let horses = [];
-    if (req.body.horses) {
-      const horseData = Array.isArray(req.body.horses)
+    const horseData = req.body.horses
+      ? Array.isArray(req.body.horses)
         ? req.body.horses
-        : JSON.parse(req.body.horses);
+        : JSON.parse(req.body.horses)
+      : [];
 
-      for (let i = 0; i < horseData.length; i++) {
-        const h = horseData[i];
-        let horseObj = {
-          registeredName: h.registeredName,
-          barnName: h.barnName,
-          breed: h.breed,
-          colour: h.colour,
-          age: h.age,
-          sex: h.sex,
-          generalInfo: h.generalInfo,
-        };
+    for (let i = 0; i < horseData.length; i++) {
+      const h = horseData[i];
+      let horseObj = {
+        registeredName: h.registeredName,
+        barnName: h.barnName,
+        breed: h.breed,
+        colour: h.colour,
+        age: h.age,
+        sex: h.sex,
+        generalInfo: h.generalInfo,
+      };
 
-        if (req.files) {
-          if (req.files[`horses[${i}][photo]`])
-            horseObj.photo = await uploadToCloudinary(
-              req.files[`horses[${i}][photo]`][0]
-            );
-          if (req.files[`horses[${i}][cogins]`])
-            horseObj.cogins = await uploadToCloudinary(
-              req.files[`horses[${i}][cogins]`][0]
-            );
-          if (req.files[`horses[${i}][healthCertificate]`])
-            horseObj.healthCertificate = await uploadToCloudinary(
-              req.files[`horses[${i}][healthCertificate]`][0]
-            );
-        }
-
-        horses.push(horseObj);
+      if (req.files) {
+        if (req.files[`horses[${i}][photo]`])
+          horseObj.photo = await uploadToCloudinary(
+            req.files[`horses[${i}][photo]`][0]
+          );
+        if (req.files[`horses[${i}][cogins]`])
+          horseObj.cogins = await uploadToCloudinary(
+            req.files[`horses[${i}][cogins]`][0]
+          );
+        if (req.files[`horses[${i}][healthCertificate]`])
+          horseObj.healthCertificate = await uploadToCloudinary(
+            req.files[`horses[${i}][healthCertificate]`][0]
+          );
       }
+
+      horses.push(horseObj);
     }
 
     const shipment = new CustomerShipment({
@@ -91,39 +97,34 @@ exports.createShipment = async (req, res) => {
   }
 };
 
-// ---------------- Get All Shipments by Customer ----------------
+// ---------------- Get Shipments by Customer ----------------
 exports.getShipmentsByCustomer = async (req, res) => {
   try {
-    const customerId = req.user._id;
     const shipments = await CustomerShipment.find({
-      customer: customerId,
+      customer: req.user._id,
     }).sort({ createdAt: -1 });
     res.status(200).json({ success: true, shipments });
   } catch (error) {
-    console.error("Error fetching shipments:", error);
+    console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Get Shipment by ID ----------------
+// ---------------- Get Shipment by ID (Controller) ----------------
 exports.getShipmentById = async (req, res) => {
   try {
-    const { shipmentId } = req.params;
-    const shipment = await CustomerShipment.findById(shipmentId);
-
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
 
-    if (shipment.customer.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized access" });
-
     res.status(200).json({ success: true, shipment });
   } catch (error) {
-    console.error("Error fetching shipment:", error);
+    console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -131,20 +132,17 @@ exports.getShipmentById = async (req, res) => {
 // ---------------- Update Shipment ----------------
 exports.updateShipment = async (req, res) => {
   try {
-    const { shipmentId } = req.params;
-    const updateData = req.body;
-
-    const shipment = await CustomerShipment.findById(shipmentId);
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
-    if (shipment.customer.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized access" });
 
-    // Update horse files if new files uploaded
+    const updateData = req.body;
+
     if (updateData.horses && req.files) {
       const horseData = Array.isArray(updateData.horses)
         ? updateData.horses
@@ -188,7 +186,7 @@ exports.updateShipment = async (req, res) => {
     await shipment.save();
     res.status(200).json({ success: true, shipment });
   } catch (error) {
-    console.error("Error updating shipment:", error);
+    console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -196,17 +194,14 @@ exports.updateShipment = async (req, res) => {
 // ---------------- Delete Shipment ----------------
 exports.deleteShipment = async (req, res) => {
   try {
-    const { shipmentId } = req.params;
-    const shipment = await CustomerShipment.findById(shipmentId);
-
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
-    if (shipment.customer.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized access" });
 
     for (const h of shipment.horses) {
       if (h.photo?.public_id) await deleteFromCloudinary(h.photo.public_id);
@@ -220,28 +215,26 @@ exports.deleteShipment = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Shipment deleted successfully" });
   } catch (error) {
-    console.error("Error deleting shipment:", error);
+    console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Update Shipment Live Location ----------------
+// ---------------- Update Shipment Location ----------------
 exports.updateShipmentLocation = async (req, res) => {
   try {
-    const { shipmentId } = req.params;
-    const { latitude, longitude } = req.body;
-
-    const shipment = await CustomerShipment.findById(shipmentId);
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
     if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
-    if (shipment.customer.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized access" });
 
+    const { latitude, longitude } = req.body;
     const newLocation = { latitude, longitude, updatedAt: new Date() };
+
     shipment.currentLocation = newLocation;
     shipment.locationHistory.push(newLocation);
 
@@ -250,12 +243,12 @@ exports.updateShipmentLocation = async (req, res) => {
       .status(200)
       .json({ success: true, currentLocation: shipment.currentLocation });
   } catch (error) {
-    console.error("Error updating location:", error);
+    console.error(error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Notify Customer When Shipper Accepts ----------------
+// ---------------- Notify Customer ----------------
 exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
   try {
     const shipment = await CustomerShipment.findById(shipmentId);
@@ -265,7 +258,7 @@ exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
       user: shipment.customer,
     });
     if (!notif || !notif.subscription) return;
-    if (!notif.settings.shipmentUpdates) return; // respect customer settings
+    if (!notif.settings.shipmentUpdates) return;
 
     const payload = JSON.stringify({
       title: "Shipment Accepted",
@@ -279,11 +272,9 @@ exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
       if (err.statusCode === 410 || err.statusCode === 404) {
         notif.subscription = null;
         await notif.save();
-      } else {
-        console.error("Push notification error:", err);
-      }
+      } else console.error(err);
     }
   } catch (err) {
-    console.error("Error notifying customer:", err);
+    console.error(err);
   }
 };

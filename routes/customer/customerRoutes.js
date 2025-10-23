@@ -1,7 +1,6 @@
 const express = require("express");
 const router = express.Router();
 const multer = require("multer");
-const upload = multer({ dest: "tmp/" }); // Temporary storage before Cloudinary
 
 // ---------------- Controllers ----------------
 const {
@@ -40,6 +39,10 @@ const {
   customerAuth,
 } = require("../../middleware/customer/customerMiddleware");
 
+// ---------------- Multer Memory Storage ----------------
+const storage = multer.memoryStorage();
+const upload = multer({ storage });
+
 // ---------------- Profile ----------------
 router.put(
   "/update-profile",
@@ -48,7 +51,7 @@ router.put(
   updateProfile
 );
 
-// ---------------- Payment Setup ----------------
+// ---------------- Payment ----------------
 router.post("/payment", customerAuth, addOrUpdatePayment);
 router.get("/payment", customerAuth, getPaymentByUser);
 router.get("/payment/:id", customerAuth, getPaymentById);
@@ -61,13 +64,11 @@ router.post("/payment/verify-otp", customerAuth, verifyOtp);
 router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
 
-// ---------------- Push Subscription ----------------
+// ---------------- Push ----------------
 router.post("/notifications/subscribe", customerAuth, subscribeToPush);
 router.post("/test-notification", customerAuth, sendTestNotification);
 
-// ---------------- Customer Shipment CRUD ----------------
-
-// Dynamic multi-file uploads for horses
+// ---------------- Shipments ----------------
 router.post(
   "/shipments",
   customerAuth,
@@ -87,12 +88,14 @@ router.post(
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
-// ---------------- Update Shipment ----------------
 router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
   try {
-    const shipmentBefore = await getShipmentById(
-      { params: { shipmentId: req.params.shipmentId }, user: req.user },
-      { json: () => {} } // dummy response for internal fetch
+    const {
+      fetchShipmentById,
+    } = require("../../controllers/customer/customerShipmentController");
+    const shipmentBefore = await fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
     );
 
     await updateShipment(
@@ -105,17 +108,16 @@ router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
       res
     );
 
-    // If shipment status changed to "accepted" and shipper assigned, notify customer
     if (
       req.body.status === "accepted" &&
       req.body.shipper &&
-      shipmentBefore?.shipment?.status !== "accepted"
+      shipmentBefore?.status !== "accepted"
     ) {
       const shipperName = req.body.shipperName || "Your Shipper";
       await notifyShipmentAccepted(req.params.shipmentId, shipperName);
     }
   } catch (err) {
-    console.error("Error updating shipment route:", err);
+    console.error(err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 });
