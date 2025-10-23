@@ -75,19 +75,17 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 const dynamicHorseUpload = (req, res, next) => {
   const multerFields = [];
 
-  // Step 1: parse text fields first
+  // parse text fields first
   multer().none()(req, res, (err) => {
     if (err) return next(err);
 
-    // Step 2: safely parse numberOfHorses
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
-    if (isNaN(numberOfHorses) || numberOfHorses < 0) {
+    if (isNaN(numberOfHorses) || numberOfHorses < 0)
       return res
         .status(400)
         .json({ success: false, message: "Invalid numberOfHorses" });
-    }
 
-    // Step 3: generate multer fields for each horse
+    // generate multer fields
     for (let i = 0; i < numberOfHorses; i++) {
       multerFields.push({ name: `horses[${i}][photo]`, maxCount: 1 });
       multerFields.push({ name: `horses[${i}][cogins]`, maxCount: 1 });
@@ -97,9 +95,12 @@ const dynamicHorseUpload = (req, res, next) => {
       });
     }
 
-    // Step 4: parse files
-    if (multerFields.length === 0) return next();
-    upload.fields(multerFields)(req, res, next);
+    // parse files
+    if (multerFields.length > 0) {
+      upload.fields(multerFields)(req, res, next);
+    } else {
+      next();
+    }
   });
 };
 
