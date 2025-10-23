@@ -4,31 +4,40 @@ const cloudinary = require("../../utils/cloudinary");
 const webpush = require("web-push");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
+// ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, folder = "shipments") => {
   if (!file) return null;
 
-  // Handle memory storage buffer
-  if (file.buffer) {
-    const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
-      "base64"
-    )}`;
-    const result = await cloudinary.uploader.upload(dataUri, {
-      folder,
-      resource_type: "auto",
-    });
-    return { url: result.secure_url, public_id: result.public_id };
-  }
+  try {
+    let uploadResult;
+    if (file.buffer) {
+      // Convert buffer to base64 string
+      const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
+        "base64"
+      )}`;
+      uploadResult = await cloudinary.uploader.upload(dataUri, {
+        folder,
+        resource_type: "auto",
+      });
+    } else if (file.path) {
+      uploadResult = await cloudinary.uploader.upload(file.path, {
+        folder,
+        resource_type: "auto",
+      });
+    } else {
+      console.log("No valid buffer or path for file:", file);
+      return null;
+    }
 
-  // Fallback for disk storage (path)
-  if (file.path) {
-    const result = await cloudinary.uploader.upload(file.path, {
-      folder,
-      resource_type: "auto",
-    });
-    return { url: result.secure_url, public_id: result.public_id };
+    console.log(
+      `Uploaded ${file.originalname} to Cloudinary:`,
+      uploadResult.secure_url
+    );
+    return { url: uploadResult.secure_url, public_id: uploadResult.public_id };
+  } catch (err) {
+    console.error("Cloudinary upload error for file:", file.originalname, err);
+    return { url: null, public_id: null };
   }
-
-  return null;
 };
 
 // ---------------- Helper: Delete from Cloudinary ----------------
