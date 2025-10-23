@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
-const upload = require("../../middleware/uploadMiddleware");
+const multer = require("multer");
+const upload = multer({ dest: "tmp/" }); // Temporary storage before Cloudinary
 
 // ---------------- Controllers ----------------
 const {
@@ -22,7 +23,17 @@ const {
 const {
   subscribeToPush,
   sendTestNotification,
-} = require("../../controllers/customer/customerPushController"); // Push & Test notifications
+} = require("../../controllers/customer/customerPushController");
+
+const {
+  createShipment,
+  getShipmentsByCustomer,
+  getShipmentById,
+  updateShipment,
+  deleteShipment,
+  updateShipmentLocation,
+  notifyShipmentAccepted,
+} = require("../../controllers/customer/customerShipmentController");
 
 // ---------------- Middleware ----------------
 const {
@@ -51,7 +62,69 @@ router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
 
 // ---------------- Push Subscription ----------------
-router.post("/notifications/subscribe", customerAuth, subscribeToPush); // Subscribe for push
-router.post("/test-notification", customerAuth, sendTestNotification); // Send test notification
+router.post("/notifications/subscribe", customerAuth, subscribeToPush);
+router.post("/test-notification", customerAuth, sendTestNotification);
+
+// ---------------- Customer Shipment CRUD ----------------
+
+// Dynamic multi-file uploads for horses
+router.post(
+  "/shipments",
+  customerAuth,
+  (req, res, next) => {
+    const fields = [];
+    const numberOfHorses = parseInt(req.body.numberOfHorses || "0");
+    for (let i = 0; i < numberOfHorses; i++) {
+      fields.push({ name: `horses[${i}][photo]` });
+      fields.push({ name: `horses[${i}][cogins]` });
+      fields.push({ name: `horses[${i}][healthCertificate]` });
+    }
+    upload.fields(fields)(req, res, next);
+  },
+  createShipment
+);
+
+router.get("/shipments", customerAuth, getShipmentsByCustomer);
+router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
+
+// ---------------- Update Shipment ----------------
+router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
+  try {
+    const shipmentBefore = await getShipmentById(
+      { params: { shipmentId: req.params.shipmentId }, user: req.user },
+      { json: () => {} } // dummy response for internal fetch
+    );
+
+    await updateShipment(
+      {
+        params: { shipmentId: req.params.shipmentId },
+        body: req.body,
+        user: req.user,
+        files: req.files,
+      },
+      res
+    );
+
+    // If shipment status changed to "accepted" and shipper assigned, notify customer
+    if (
+      req.body.status === "accepted" &&
+      req.body.shipper &&
+      shipmentBefore?.shipment?.status !== "accepted"
+    ) {
+      const shipperName = req.body.shipperName || "Your Shipper";
+      await notifyShipmentAccepted(req.params.shipmentId, shipperName);
+    }
+  } catch (err) {
+    console.error("Error updating shipment route:", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+});
+
+router.delete("/shipments/:shipmentId", customerAuth, deleteShipment);
+router.patch(
+  "/shipments/:shipmentId/location",
+  customerAuth,
+  updateShipmentLocation
+);
 
 module.exports = router;
