@@ -28,6 +28,11 @@ exports.createShipment = async (req, res) => {
   try {
     const customerId = req.user._id;
 
+    console.log("=== Incoming Shipment Request ===");
+    console.log("User ID:", customerId);
+    console.log("Request Body:", req.body);
+    console.log("Request Files:", req.files);
+
     // Safely parse numberOfHorses
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
     if (isNaN(numberOfHorses) || numberOfHorses < 0) {
@@ -47,7 +52,7 @@ exports.createShipment = async (req, res) => {
       additionalInfo,
     } = req.body;
 
-    //  Safely parse horses array
+    // Safely parse horses array
     const horseData = req.body.horses
       ? Array.isArray(req.body.horses)
         ? req.body.horses
@@ -70,19 +75,24 @@ exports.createShipment = async (req, res) => {
 
       // Upload files if exist
       if (req.files) {
-        if (req.files[`horses[${i}][photo]`])
+        if (req.files[`horses[${i}][photo]`]) {
           horseObj.photo = await uploadToCloudinary(
             req.files[`horses[${i}][photo]`][0]
           );
-        if (req.files[`horses[${i}][cogins]`])
+        }
+        if (req.files[`horses[${i}][cogins]`]) {
           horseObj.cogins = await uploadToCloudinary(
             req.files[`horses[${i}][cogins]`][0]
           );
-        if (req.files[`horses[${i}][healthCertificate]`])
+        }
+        if (req.files[`horses[${i}][healthCertificate]`]) {
           horseObj.healthCertificate = await uploadToCloudinary(
             req.files[`horses[${i}][healthCertificate]`][0]
           );
+        }
       }
+
+      console.log(`Horse ${i} data:`, horseObj);
 
       horses.push(horseObj);
     }
@@ -103,6 +113,8 @@ exports.createShipment = async (req, res) => {
     });
 
     await shipment.save();
+
+    console.log("Shipment successfully saved:", shipment);
 
     // --- Send notification after creation ---
     const notif = await CustomerNotification.findOne({ user: customerId });

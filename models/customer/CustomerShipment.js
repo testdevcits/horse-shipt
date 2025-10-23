@@ -3,24 +3,24 @@ const mongoose = require("mongoose");
 // ---------------- Horse Schema ----------------
 const horseSchema = new mongoose.Schema({
   registeredName: { type: String, required: true },
-  barnName: { type: String },
-  breed: { type: String },
-  colour: { type: String },
-  age: { type: String },
-  sex: { type: String },
+  barnName: { type: String, default: "" },
+  breed: { type: String, default: "" },
+  colour: { type: String, default: "" },
+  age: { type: String, default: "" },
+  sex: { type: String, default: "" },
   photo: {
-    url: { type: String },
-    public_id: { type: String },
+    url: { type: String, default: null },
+    public_id: { type: String, default: null },
   },
   cogins: {
-    url: { type: String },
-    public_id: { type: String },
+    url: { type: String, default: null },
+    public_id: { type: String, default: null },
   },
   healthCertificate: {
-    url: { type: String },
-    public_id: { type: String },
+    url: { type: String, default: null },
+    public_id: { type: String, default: null },
   },
-  generalInfo: { type: String },
+  generalInfo: { type: String, default: "" },
 });
 
 // ---------------- Location Schema ----------------
@@ -64,19 +64,19 @@ const shipmentSchema = new mongoose.Schema(
     // Pickup Info
     pickupLocation: { type: String, required: true },
     pickupTimeOption: { type: String, required: true },
-    pickupDate: { type: String, required: true },
+    pickupDate: { type: Date, required: true },
 
     // Delivery Info
     deliveryLocation: { type: String, required: true },
     deliveryTimeOption: { type: String, required: true },
-    deliveryDate: { type: String, required: true },
+    deliveryDate: { type: Date, required: true },
 
     // Horses
-    numberOfHorses: { type: Number, required: true },
+    numberOfHorses: { type: Number, required: true, min: 1 },
     horses: [horseSchema],
 
     // Additional Info
-    additionalInfo: { type: String },
+    additionalInfo: { type: String, default: "" },
 
     // Current live location (shipper only)
     currentLocation: {
@@ -99,5 +99,12 @@ shipmentSchema.index(
   { shipper: 1, pickupDate: 1 },
   { unique: true, partialFilterExpression: { shipper: { $type: "objectId" } } }
 );
+
+// ---------------- Pre-save Logging ----------------
+shipmentSchema.pre("save", function (next) {
+  console.log("Saving shipment for customer:", this.customer.toString());
+  console.log("Number of horses:", this.numberOfHorses);
+  next();
+});
 
 module.exports = mongoose.model("CustomerShipment", shipmentSchema);

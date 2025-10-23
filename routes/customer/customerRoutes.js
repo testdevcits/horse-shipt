@@ -75,30 +75,50 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 const dynamicHorseUpload = (req, res, next) => {
   const multerFields = [];
 
-  // Step 1: parse only text fields first
-  const tmpUpload = multer().none(); // parses text fields into req.body
-  tmpUpload(req, res, (err) => {
+  // Step 1: parse text fields first
+  multer().none()(req, res, (err) => {
     if (err) return next(err);
 
     // Step 2: safely parse numberOfHorses
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
-    const validNumberOfHorses =
-      isNaN(numberOfHorses) || numberOfHorses < 0 ? 0 : numberOfHorses;
-
-    // Step 3: generate multer fields for each horse
-    for (let i = 0; i < validNumberOfHorses; i++) {
-      multerFields.push({ name: `horses[${i}][photo]` });
-      multerFields.push({ name: `horses[${i}][cogins]` });
-      multerFields.push({ name: `horses[${i}][healthCertificate]` });
+    if (isNaN(numberOfHorses) || numberOfHorses < 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid numberOfHorses" });
     }
 
-    // Step 4: now parse files
+    // Step 3: generate multer fields for each horse
+    for (let i = 0; i < numberOfHorses; i++) {
+      multerFields.push({ name: `horses[${i}][photo]`, maxCount: 1 });
+      multerFields.push({ name: `horses[${i}][cogins]`, maxCount: 1 });
+      multerFields.push({
+        name: `horses[${i}][healthCertificate]`,
+        maxCount: 1,
+      });
+    }
+
+    // Step 4: parse files
+    if (multerFields.length === 0) return next();
     upload.fields(multerFields)(req, res, next);
   });
 };
 
 // ---------------- Shipments Routes ----------------
-router.post("/shipments", customerAuth, dynamicHorseUpload, createShipment);
+
+// Log all incoming shipment data
+router.post(
+  "/shipments",
+  customerAuth,
+  dynamicHorseUpload,
+  (req, res, next) => {
+    console.log("=== Received shipment data ===");
+    console.log("Body:", req.body);
+    console.log("Files:", req.files);
+    next();
+  },
+  createShipment
+);
+
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
