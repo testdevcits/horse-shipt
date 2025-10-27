@@ -7,21 +7,15 @@ const cloudinary = require("../../config/cloudinary");
 exports.addVehicle = async (req, res) => {
   try {
     const shipperId = req.user._id;
-    const {
-      transportType,
-      vehicleName,
-      vehicleType,
-      trailerType,
-      numberOfStalls,
-      stallSize,
-      notes,
-    } = req.body;
+    const { vehicleType, trailerType, numberOfStalls, stallSize, notes } =
+      req.body;
 
     // Validation
-    if (!vehicleName || !vehicleType || !numberOfStalls || !stallSize) {
+    if (!vehicleType || !numberOfStalls || !stallSize) {
       return res.status(400).json({
         success: false,
-        message: "Please fill all required fields",
+        message:
+          "Please fill all required fields (vehicleType, numberOfStalls, stallSize)",
       });
     }
 
@@ -42,8 +36,7 @@ exports.addVehicle = async (req, res) => {
     // Create vehicle
     const newVehicle = await ShipperVehicle.create({
       shipper: shipperId,
-      transportType,
-      vehicleName,
+      transportType: "Trucking", // fixed value from schema
       vehicleType,
       trailerType,
       numberOfStalls,
@@ -112,33 +105,22 @@ exports.updateVehicle = async (req, res) => {
       });
     }
 
-    // Update fields
-    const {
-      transportType,
-      vehicleName,
-      vehicleType,
-      trailerType,
-      numberOfStalls,
-      stallSize,
-      notes,
-    } = req.body;
+    const { vehicleType, trailerType, numberOfStalls, stallSize, notes } =
+      req.body;
 
-    if (transportType) vehicle.transportType = transportType;
-    if (vehicleName) vehicle.vehicleName = vehicleName;
     if (vehicleType) vehicle.vehicleType = vehicleType;
     if (trailerType) vehicle.trailerType = trailerType;
     if (numberOfStalls) vehicle.numberOfStalls = numberOfStalls;
     if (stallSize) vehicle.stallSize = stallSize;
     if (notes) vehicle.notes = notes;
 
-    // If new images are uploaded, replace old ones
+    // If new images are uploaded, delete old ones and add new ones
     if (req.files && req.files.length > 0) {
       // Delete old images from Cloudinary
       for (const img of vehicle.images) {
         await cloudinary.uploader.destroy(img.public_id);
       }
 
-      // Upload new ones
       let newImages = [];
       for (const file of req.files) {
         const result = await cloudinary.uploader.upload(file.path, {

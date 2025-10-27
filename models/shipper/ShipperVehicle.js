@@ -5,20 +5,15 @@ const shipperVehicleSchema = new mongoose.Schema(
     // Reference to Shipper (User)
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "Shipper",
       required: true,
     },
 
     // Transport Details
     transportType: {
       type: String,
-      enum: ["Trucking", "Air", "Rail", "Sea"],
+      enum: ["Trucking"],
       default: "Trucking",
-    },
-
-    vehicleName: {
-      type: String, // e.g., "Vehicle 1"
-      required: true,
     },
 
     vehicleType: {
