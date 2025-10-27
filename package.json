@@ -31,6 +31,8 @@
     "passport-facebook": "^3.0.0",
     "passport-google-oauth20": "^2.0.0",
     "pdf-lib": "^1.17.1",
+    "pusher": "^5.2.0",
+    "pusher-js": "^8.4.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

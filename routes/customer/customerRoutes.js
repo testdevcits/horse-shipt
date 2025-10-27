@@ -2,6 +2,12 @@ const express = require("express");
 const router = express.Router();
 const multer = require("multer");
 
+// ---------------- Middleware ----------------
+const {
+  customerAuth,
+} = require("../../middleware/customer/customerMiddleware");
+
+// ---------------- Controllers ----------------
 const {
   updateProfile,
   addOrUpdatePayment,
@@ -35,14 +41,24 @@ const {
 } = require("../../controllers/customer/customerShipmentController");
 
 const {
-  customerAuth,
-} = require("../../middleware/customer/customerMiddleware");
+  sendMessage,
+  getMessages,
+} = require("../../controllers/customer/shipmentMessageController");
+
+const {
+  getQuotesByShipment,
+  acceptQuote,
+  addQuote,
+  getMyQuotes,
+} = require("../../controllers/customer/customerQuoteController");
 
 // ---------------- Multer Memory Storage ----------------
 const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
-// ---------------- Profile ----------------
+// ====================================================
+// CUSTOMER PROFILE
+// ====================================================
 router.put(
   "/update-profile",
   customerAuth,
@@ -50,7 +66,9 @@ router.put(
   updateProfile
 );
 
-// ---------------- Payment ----------------
+// ====================================================
+// PAYMENT ROUTES
+// ====================================================
 router.post("/payment", customerAuth, addOrUpdatePayment);
 router.get("/payment", customerAuth, getPaymentByUser);
 router.get("/payment/:id", customerAuth, getPaymentById);
@@ -59,17 +77,23 @@ router.patch("/payment/:id/toggle", customerAuth, togglePaymentStatus);
 router.post("/payment/request-otp", customerAuth, requestOtp);
 router.post("/payment/verify-otp", customerAuth, verifyOtp);
 
-// ---------------- Notifications ----------------
+// ====================================================
+// NOTIFICATIONS
+// ====================================================
 router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
 
-// ---------------- Push ----------------
+// ====================================================
+// PUSH NOTIFICATIONS
+// ====================================================
 router.post("/notifications/subscribe", customerAuth, subscribeToPush);
 router.post("/test-notification", customerAuth, sendTestNotification);
 
-// ---------------- Shipments ----------------
+// ====================================================
+// SHIPMENTS
+// ====================================================
 
-// Accept **any file** dynamically for horses
+// Create shipment (accept any file)
 router.post(
   "/shipments",
   customerAuth,
@@ -124,4 +148,33 @@ router.patch(
   updateShipmentLocation
 );
 
+// ====================================================
+// CHAT ROUTES (FOR CUSTOMER)
+// ====================================================
+
+// Send message to shipper
+router.post("/messages/send", customerAuth, sendMessage);
+
+// Get messages for a specific shipment
+router.get("/messages/:shipmentId", customerAuth, getMessages);
+
+// ====================================================
+// QUOTE ROUTES
+// ====================================================
+
+// Add quote (for future flexibility)
+router.post("/quotes/add", customerAuth, addQuote);
+
+// View all quotes created by this customer
+router.get("/quotes/my", customerAuth, getMyQuotes);
+
+// View all quotes for a specific shipment
+router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
+
+// Accept a quote
+router.put("/quotes/:quoteId/accept", customerAuth, acceptQuote);
+
+// ====================================================
+// EXPORT ROUTER
+// ====================================================
 module.exports = router;

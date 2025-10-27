@@ -2,23 +2,46 @@ const express = require("express");
 const router = express.Router();
 const upload = require("../../middleware/uploadMiddleware");
 
+// ---------------- Middleware ----------------
+const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
+
 // ---------------- Controllers ----------------
 const {
   updateProfile,
-} = require("../../controllers/shipper/shipperController"); // Only profile updates
+} = require("../../controllers/shipper/shipperController");
+
 const {
   getAssignedShipments,
   getShipmentById,
   updateShipmentStatus,
   updateShipmentLocationByShipper,
-  getAvailableShipments, // New: pending shipments for self-assignment
-  acceptShipment, // New: assign shipment to shipper
+  getAvailableShipments, // Pending shipments for self-assignment
+  acceptShipment, // Assign shipment to shipper
 } = require("../../controllers/shipper/shipperShipmentController");
 
-// ---------------- Middleware ----------------
-const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
+// ---------------- Quote Controller ----------------
+const {
+  addQuote,
+  getMyQuotes,
+} = require("../../controllers/shipper/shipperQuoteController");
 
-// ---------------- Shipper Profile ----------------
+// ---------------- Message Controller ----------------
+const {
+  sendMessage,
+  getMessages,
+} = require("../../controllers/shipper/shipmentMessageController");
+
+// ---------------- Vehicle Controller ----------------
+const {
+  addVehicle,
+  getMyVehicles,
+  updateVehicle,
+  deleteVehicle,
+} = require("../../controllers/shipper/shipperVehicleController");
+
+// ====================================================
+// SHIPPER PROFILE
+// ====================================================
 router.put(
   "/update-profile",
   shipperAuth,
@@ -26,7 +49,9 @@ router.put(
   updateProfile
 );
 
-// ---------------- Shipper Shipment Routes ----------------
+// ====================================================
+// SHIPPER SHIPMENT ROUTES
+// ====================================================
 
 // Get all shipments **assigned** to the shipper
 router.get("/shipments", shipperAuth, getAssignedShipments);
@@ -34,7 +59,7 @@ router.get("/shipments", shipperAuth, getAssignedShipments);
 // Get a shipment by ID (only if assigned to this shipper)
 router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
 
-// Update shipment status (e.g., pending -> picked-up -> delivered)
+// Update shipment status (pending → picked-up → delivered)
 router.patch(
   "/shipments/:shipmentId/status",
   shipperAuth,
@@ -48,12 +73,58 @@ router.patch(
   updateShipmentLocationByShipper
 );
 
-// ---------------- New: Shipper Self-Assignment ----------------
+// ====================================================
+// SHIPPER SELF-ASSIGNMENT
+// ====================================================
 
 // Get all pending shipments available for assignment
 router.get("/shipments/available", shipperAuth, getAvailableShipments);
 
-// Accept a shipment (one shipment per date rule enforced)
+// Accept a shipment (only one per date rule enforced)
 router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 
+// ====================================================
+// QUOTE ROUTES (FOR SHIPPER)
+// ====================================================
+
+// Add a new quote for a shipment
+router.post("/quotes/add", shipperAuth, addQuote);
+
+// Get all quotes sent by the shipper
+router.get("/quotes/my", shipperAuth, getMyQuotes);
+
+// ====================================================
+// MESSAGE ROUTES (FOR SHIPPER)
+// ====================================================
+
+// Send message to customer (related to shipment)
+router.post("/messages/send", shipperAuth, sendMessage);
+
+// Get messages for a specific shipment
+router.get("/messages/:shipmentId", shipperAuth, getMessages);
+
+// ====================================================
+// VEHICLE ROUTES (FOR SHIPPER)
+// ====================================================
+
+//  Add a new vehicle (with multiple images)
+router.post("/vehicles", shipperAuth, upload.array("images", 5), addVehicle);
+
+//  Get all vehicles for the logged-in shipper
+router.get("/vehicles", shipperAuth, getMyVehicles);
+
+// ✏️ Update vehicle details
+router.put(
+  "/vehicles/:vehicleId",
+  shipperAuth,
+  upload.array("images", 5),
+  updateVehicle
+);
+
+//  Delete a vehicle
+router.delete("/vehicles/:vehicleId", shipperAuth, deleteVehicle);
+
+// ====================================================
+// EXPORT ROUTER
+// ====================================================
 module.exports = router;
