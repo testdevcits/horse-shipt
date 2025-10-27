@@ -26,6 +26,13 @@ const shipperVehicleSchema = new mongoose.Schema(
       required: true,
     },
 
+    // New field: Trailer Type
+    trailerType: {
+      type: String,
+      enum: ["Stock Trailer", "Slant Load", "Head to Head", "Semi", "Other"],
+      default: "Stock Trailer",
+    },
+
     numberOfStalls: {
       type: Number,
       required: true,
@@ -33,7 +40,7 @@ const shipperVehicleSchema = new mongoose.Schema(
 
     stallSize: {
       type: String,
-      enum: ["Box Stall", "Open Stall", "Large Stall"],
+      enum: ["Single Stall", "Stall and a Half", "Box Stall", "Other"],
       required: true,
     },
 

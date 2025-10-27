@@ -11,11 +11,13 @@ exports.addVehicle = async (req, res) => {
       transportType,
       vehicleName,
       vehicleType,
+      trailerType,
       numberOfStalls,
       stallSize,
       notes,
     } = req.body;
 
+    // Validation
     if (!vehicleName || !vehicleType || !numberOfStalls || !stallSize) {
       return res.status(400).json({
         success: false,
@@ -37,11 +39,13 @@ exports.addVehicle = async (req, res) => {
       }
     }
 
+    // Create vehicle
     const newVehicle = await ShipperVehicle.create({
       shipper: shipperId,
       transportType,
       vehicleName,
       vehicleType,
+      trailerType,
       numberOfStalls,
       stallSize,
       notes,
@@ -108,11 +112,12 @@ exports.updateVehicle = async (req, res) => {
       });
     }
 
-    // Update text fields
+    // Update fields
     const {
       transportType,
       vehicleName,
       vehicleType,
+      trailerType,
       numberOfStalls,
       stallSize,
       notes,
@@ -121,13 +126,14 @@ exports.updateVehicle = async (req, res) => {
     if (transportType) vehicle.transportType = transportType;
     if (vehicleName) vehicle.vehicleName = vehicleName;
     if (vehicleType) vehicle.vehicleType = vehicleType;
+    if (trailerType) vehicle.trailerType = trailerType;
     if (numberOfStalls) vehicle.numberOfStalls = numberOfStalls;
     if (stallSize) vehicle.stallSize = stallSize;
     if (notes) vehicle.notes = notes;
 
-    // If new images are uploaded, upload to Cloudinary
+    // If new images are uploaded, replace old ones
     if (req.files && req.files.length > 0) {
-      // Delete old images
+      // Delete old images from Cloudinary
       for (const img of vehicle.images) {
         await cloudinary.uploader.destroy(img.public_id);
       }
