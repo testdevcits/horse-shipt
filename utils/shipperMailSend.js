@@ -28,7 +28,7 @@ const sendShipperEmail = async (shipperId, subject, text) => {
 
     // Send mail
     await transporter.sendMail({
-      from: `"Load Management" <${process.env.SMTP_USER}>`,
+      from: `"HorseShipt" <${process.env.SMTP_USER}>`,
       to: shipper.email,
       subject,
       text,
