@@ -1,8 +1,11 @@
 const Quote = require("../../models/QuoteModel");
 const Shipment = require("../../models/shipper/shipperModel");
+const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+const shipperMailSend = require("../../utils/shipperMailSend");
+const shipperSmsSend = require("../../utils/shipperSmsSend");
 
 // ====================================================
-// 🚚 SHIPPER SIDE CONTROLLERS
+// SHIPPER SIDE CONTROLLERS
 // ====================================================
 
 // ---------------- Add Quote (for Shipper) ----------------
@@ -47,7 +50,36 @@ exports.addQuote = async (req, res) => {
       status: "pending",
     });
 
-    res.status(201).json({
+    // ===========================
+    // Notify Shipper if allowed
+    // ===========================
+    const shipperSettings = await ShipperSettings.findOne({ shipperId });
+
+    // If settings missing (first time), create defaults (all true)
+    if (!shipperSettings) {
+      await ShipperSettings.create({ shipperId });
+    }
+
+    // If notifications enabled for "quote"
+    const canEmail = shipperSettings?.notifications?.quote?.email ?? true;
+    const canSMS = shipperSettings?.notifications?.quote?.sms ?? true;
+
+    if (canEmail) {
+      await shipperMailSend(
+        shipperId,
+        "Quote Sent Successfully",
+        `You have successfully sent a quote for shipment ${shipmentId}.`
+      );
+    }
+
+    if (canSMS) {
+      await shipperSmsSend(
+        shipperId,
+        `Quote sent successfully for shipment ${shipmentId}.`
+      );
+    }
+
+    return res.status(201).json({
       success: true,
       message: "Quote sent successfully",
       quote,
@@ -90,7 +122,7 @@ exports.getMyQuotes = async (req, res) => {
 };
 
 // ====================================================
-// 👤 CUSTOMER SIDE CONTROLLERS
+// CUSTOMER SIDE CONTROLLERS
 // ====================================================
 
 // ---------------- Get Quotes for a Shipment (for Customer) ----------------
@@ -146,6 +178,31 @@ exports.acceptQuote = async (req, res) => {
       status: "accepted",
       assignedShipper: quote.shipperId,
     });
+
+    // ===========================
+    // Notify Shipper (accepted)
+    // ===========================
+    const shipperSettings = await ShipperSettings.findOne({
+      shipperId: quote.shipperId,
+    });
+
+    const canEmail = shipperSettings?.notifications?.shipment?.email ?? true;
+    const canSMS = shipperSettings?.notifications?.shipment?.sms ?? true;
+
+    if (canEmail) {
+      await shipperMailSend(
+        quote.shipperId,
+        "Quote Accepted",
+        `Your quote for shipment ${quote.shipmentId} has been accepted by the customer!`
+      );
+    }
+
+    if (canSMS) {
+      await shipperSmsSend(
+        quote.shipperId,
+        `Your quote for shipment ${quote.shipmentId} was accepted!`
+      );
+    }
 
     res.status(200).json({
       success: true,

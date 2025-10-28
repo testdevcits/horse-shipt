@@ -1,5 +1,8 @@
 const ShipperShipment = require("../../models/shipper/ShipperShipment");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+const shipperMailSend = require("../../utils/shipperMailSend");
+const shipperSmsSend = require("../../utils/shipperSmsSend");
 
 // ---------------- Get All Shipments Assigned to Shipper ----------------
 exports.getAssignedShipments = async (req, res) => {
@@ -77,7 +80,7 @@ exports.acceptShipment = async (req, res) => {
         message: "Shipment already assigned or completed",
       });
 
-    // Check if this shipment is already assigned to any shipper
+    // Check if shipment already assigned
     const existingAssignment = await ShipperShipment.findOne({
       shipment: shipmentId,
     });
@@ -115,9 +118,24 @@ exports.acceptShipment = async (req, res) => {
     customerShipment.status = "assigned";
     await customerShipment.save();
 
-    res
-      .status(200)
-      .json({ success: true, message: "Shipment accepted", shipperShipment });
+    // ---------------- Send Dynamic Notifications ----------------
+    const settings = await ShipperSettings.findOne({ shipperId });
+
+    if (settings && settings.notifications?.shipment) {
+      const { email, sms } = settings.notifications.shipment;
+
+      const subject = "New Shipment Assigned";
+      const message = `You have been assigned a new shipment.\nPickup: ${customerShipment.pickupLocation}\nDrop: ${customerShipment.dropLocation}`;
+
+      if (email) await shipperMailSend(shipperId, subject, message);
+      if (sms) await shipperSmsSend(shipperId, message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Shipment accepted successfully",
+      shipperShipment,
+    });
   } catch (err) {
     console.error("[ACCEPT SHIPMENT] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -194,12 +212,10 @@ exports.updateShipmentLocationByShipper = async (req, res) => {
       await customerShipment.save();
     }
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        currentLocation: shipperShipment.currentLocation,
-      });
+    res.status(200).json({
+      success: true,
+      currentLocation: shipperShipment.currentLocation,
+    });
   } catch (err) {
     console.error("[UPDATE SHIPMENT LOCATION] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });

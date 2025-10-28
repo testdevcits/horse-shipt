@@ -49,6 +49,12 @@ router.put(
   updateProfile
 );
 
+// ---------------- SETTINGS CONTROLLER ----------------
+const {
+  getSettings,
+  updateSettings,
+} = require("../../controllers/shipper/shipperSettingsController");
+
 // ====================================================
 // SHIPPER SHIPMENT ROUTES
 // ====================================================
@@ -123,6 +129,12 @@ router.put(
 
 //  Delete a vehicle
 router.delete("/vehicles/:vehicleId", shipperAuth, deleteVehicle);
+
+// ====================================================
+// SHIPPER SETTINGS ROUTES
+// ====================================================
+router.get("/settings", shipperAuth, getSettings);
+router.post("/settings/update-notifications", shipperAuth, updateSettings);
 
 // ====================================================
 // EXPORT ROUTER

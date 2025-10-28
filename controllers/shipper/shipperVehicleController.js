@@ -1,4 +1,7 @@
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
+const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+const { sendShipperEmail } = require("../../utils/shipperMailSend");
+const { sendShipperSms } = require("../../utils/shipperSmsSend");
 const cloudinary = require("../../config/cloudinary");
 
 // ====================================================
@@ -36,7 +39,7 @@ exports.addVehicle = async (req, res) => {
     // Create vehicle
     const newVehicle = await ShipperVehicle.create({
       shipper: shipperId,
-      transportType: "Trucking", // fixed value from schema
+      transportType: "Trucking",
       vehicleType,
       trailerType,
       numberOfStalls,
@@ -44,6 +47,29 @@ exports.addVehicle = async (req, res) => {
       notes,
       images: imageArray,
     });
+
+    // -----------------------------------------------
+    // 🔔 Check Notification Settings & Send Alerts
+    // -----------------------------------------------
+    const settings = await ShipperSettings.findOne({ shipperId });
+    if (settings && settings.notifications?.shipment) {
+      const notif = settings.notifications.shipment;
+
+      if (notif.email) {
+        await sendShipperEmail(
+          shipperId,
+          "New Vehicle Added",
+          `Your vehicle (${newVehicle.vehicleType}) has been added successfully.`
+        );
+      }
+
+      if (notif.sms) {
+        await sendShipperSms(
+          shipperId,
+          `Your vehicle (${newVehicle.vehicleType}) has been added successfully.`
+        );
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -116,7 +142,6 @@ exports.updateVehicle = async (req, res) => {
 
     // If new images are uploaded, delete old ones and add new ones
     if (req.files && req.files.length > 0) {
-      // Delete old images from Cloudinary
       for (const img of vehicle.images) {
         await cloudinary.uploader.destroy(img.public_id);
       }
@@ -136,6 +161,27 @@ exports.updateVehicle = async (req, res) => {
     }
 
     await vehicle.save();
+
+    // Optional: notify on update
+    const settings = await ShipperSettings.findOne({ shipperId });
+    if (settings && settings.notifications?.shipment) {
+      const notif = settings.notifications.shipment;
+
+      if (notif.email) {
+        await sendShipperEmail(
+          shipperId,
+          "Vehicle Updated",
+          `Your vehicle (${vehicle.vehicleType}) has been updated successfully.`
+        );
+      }
+
+      if (notif.sms) {
+        await sendShipperSms(
+          shipperId,
+          `Your vehicle (${vehicle.vehicleType}) has been updated successfully.`
+        );
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -172,12 +218,32 @@ exports.deleteVehicle = async (req, res) => {
       });
     }
 
-    // Delete images from Cloudinary
     for (const img of vehicle.images) {
       await cloudinary.uploader.destroy(img.public_id);
     }
 
     await vehicle.deleteOne();
+
+    // Optional: notify on delete
+    const settings = await ShipperSettings.findOne({ shipperId });
+    if (settings && settings.notifications?.shipment) {
+      const notif = settings.notifications.shipment;
+
+      if (notif.email) {
+        await sendShipperEmail(
+          shipperId,
+          "Vehicle Deleted",
+          `Your vehicle (${vehicle.vehicleType}) has been deleted successfully.`
+        );
+      }
+
+      if (notif.sms) {
+        await sendShipperSms(
+          shipperId,
+          `Your vehicle (${vehicle.vehicleType}) has been deleted successfully.`
+        );
+      }
+    }
 
     res.status(200).json({
       success: true,

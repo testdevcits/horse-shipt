@@ -1,5 +1,8 @@
 const ShipmentMessage = require("../../models/ShipmentMessage");
 const CustomerShipment = require("../../models/shipper/ShipperShipment");
+const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+const { sendShipperEmail } = require("../../utils/shipperMailSend");
+const { sendShipperSms } = require("../../utils/shipperSmsSend");
 
 // ----------------------------------------------------
 // Shipper Send Message
@@ -17,8 +20,8 @@ exports.sendMessage = async (req, res) => {
     }
 
     const shipment = await CustomerShipment.findById(shipmentId)
-      .populate("customer", "_id name")
-      .populate("shipper", "_id name");
+      .populate("customer", "_id name email phone")
+      .populate("shipper", "_id name email phone");
 
     if (!shipment) {
       return res.status(404).json({
@@ -37,6 +40,7 @@ exports.sendMessage = async (req, res) => {
       });
     }
 
+    // Create and save message
     const newMessage = new ShipmentMessage({
       shipment: shipment._id,
       senderType: "shipper",
@@ -47,6 +51,30 @@ exports.sendMessage = async (req, res) => {
     });
 
     await newMessage.save();
+
+    // ------------------------------------------------
+    // 🔔 Send Notification (Based on Shipper Settings)
+    // ------------------------------------------------
+    const settings = await ShipperSettings.findOne({ shipperId });
+
+    if (settings && settings.notifications?.message) {
+      const notif = settings.notifications.message;
+
+      if (notif.email) {
+        await sendShipperEmail(
+          shipperId,
+          "New Message Sent",
+          `You sent a message to ${shipment.customer.name}: "${message}"`
+        );
+      }
+
+      if (notif.sms) {
+        await sendShipperSms(
+          shipperId,
+          `You sent a message to ${shipment.customer.name}: "${message}"`
+        );
+      }
+    }
 
     return res.status(201).json({
       success: true,

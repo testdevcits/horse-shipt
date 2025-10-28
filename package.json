@@ -33,6 +33,7 @@
     "pdf-lib": "^1.17.1",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0",
+    "twilio": "^5.10.3",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
