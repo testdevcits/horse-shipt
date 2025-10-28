@@ -1,7 +1,7 @@
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 
 // =====================================================
-// Get Shipper Notification Settings
+// Get Shipper Notification Settings (Logged-in Shipper)
 // =====================================================
 exports.getSettings = async (req, res) => {
   try {
@@ -59,6 +59,43 @@ exports.updateSettings = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to update shipper settings",
+    });
+  }
+};
+
+// =====================================================
+// Get Shipper Notification Settings by Shipper ID
+// =====================================================
+exports.getSettingsById = async (req, res) => {
+  try {
+    const { shipperId } = req.params;
+
+    if (!shipperId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipper ID is required",
+      });
+    }
+
+    const settings = await ShipperSettings.findOne({ shipperId });
+
+    if (!settings) {
+      return res.status(404).json({
+        success: false,
+        message: "Settings not found for this Shipper ID",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipper settings fetched successfully by ID",
+      data: settings,
+    });
+  } catch (error) {
+    console.error("Error fetching shipper settings by ID:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch shipper settings by ID",
     });
   }
 };

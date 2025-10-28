@@ -53,6 +53,7 @@ router.put(
 const {
   getSettings,
   updateSettings,
+  getSettingsById,
 } = require("../../controllers/shipper/shipperSettingsController");
 
 // ====================================================
@@ -135,6 +136,8 @@ router.delete("/vehicles/:vehicleId", shipperAuth, deleteVehicle);
 // ====================================================
 router.get("/settings", shipperAuth, getSettings);
 router.post("/settings/update-notifications", shipperAuth, updateSettings);
+// get settings by shipperId
+router.get("/settings/:shipperId", shipperAuth, getSettingsById);
 
 // ====================================================
 // EXPORT ROUTER
