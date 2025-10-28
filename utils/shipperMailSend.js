@@ -1,4 +1,3 @@
-// utils/shipperMailSend.js
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 
@@ -8,7 +7,7 @@ const Shipper = require("../models/shipper/shipperModel");
  * @param {String} subject - Email subject
  * @param {String} text - Email body text
  */
-const shipperMailSend = async (shipperId, subject, text) => {
+const sendShipperEmail = async (shipperId, subject, text) => {
   try {
     const shipper = await Shipper.findById(shipperId);
     if (!shipper || !shipper.email) {
@@ -41,4 +40,4 @@ const shipperMailSend = async (shipperId, subject, text) => {
   }
 };
 
-module.exports = shipperMailSend;
+module.exports = { sendShipperEmail };

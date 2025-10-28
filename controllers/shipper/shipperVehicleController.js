@@ -49,12 +49,12 @@ exports.addVehicle = async (req, res) => {
     });
 
     // -----------------------------------------------
-    // 🔔 Check Notification Settings & Send Alerts
+    // Check Notification Settings & Send Alerts
     // -----------------------------------------------
     const settings = await ShipperSettings.findOne({ shipperId });
-    if (settings && settings.notifications?.shipment) {
-      const notif = settings.notifications.shipment;
+    const notif = settings?.notifications?.shipment;
 
+    if (notif) {
       if (notif.email) {
         await sendShipperEmail(
           shipperId,
@@ -134,13 +134,14 @@ exports.updateVehicle = async (req, res) => {
     const { vehicleType, trailerType, numberOfStalls, stallSize, notes } =
       req.body;
 
+    // Update fields
     if (vehicleType) vehicle.vehicleType = vehicleType;
     if (trailerType) vehicle.trailerType = trailerType;
     if (numberOfStalls) vehicle.numberOfStalls = numberOfStalls;
     if (stallSize) vehicle.stallSize = stallSize;
     if (notes) vehicle.notes = notes;
 
-    // If new images are uploaded, delete old ones and add new ones
+    // Replace images if new ones uploaded
     if (req.files && req.files.length > 0) {
       for (const img of vehicle.images) {
         await cloudinary.uploader.destroy(img.public_id);
@@ -156,17 +157,16 @@ exports.updateVehicle = async (req, res) => {
           url: result.secure_url,
         });
       }
-
       vehicle.images = newImages;
     }
 
     await vehicle.save();
 
-    // Optional: notify on update
+    // Notify on update
     const settings = await ShipperSettings.findOne({ shipperId });
-    if (settings && settings.notifications?.shipment) {
-      const notif = settings.notifications.shipment;
+    const notif = settings?.notifications?.shipment;
 
+    if (notif) {
       if (notif.email) {
         await sendShipperEmail(
           shipperId,
@@ -218,17 +218,18 @@ exports.deleteVehicle = async (req, res) => {
       });
     }
 
+    // Delete old images from Cloudinary
     for (const img of vehicle.images) {
       await cloudinary.uploader.destroy(img.public_id);
     }
 
     await vehicle.deleteOne();
 
-    // Optional: notify on delete
+    // Notify on delete
     const settings = await ShipperSettings.findOne({ shipperId });
-    if (settings && settings.notifications?.shipment) {
-      const notif = settings.notifications.shipment;
+    const notif = settings?.notifications?.shipment;
 
+    if (notif) {
       if (notif.email) {
         await sendShipperEmail(
           shipperId,
