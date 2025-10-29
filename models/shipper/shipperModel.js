@@ -1,6 +1,9 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// -------------------------
+// Sub-Schemas
+// -------------------------
 const loginHistorySchema = new mongoose.Schema({
   deviceId: { type: String, default: null },
   ip: { type: String, default: null },
@@ -13,6 +16,15 @@ const locationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
+// Common image structure for Cloudinary uploads
+const imageSchema = new mongoose.Schema({
+  url: { type: String, default: null }, // Cloudinary image URL
+  public_id: { type: String, default: null }, // Cloudinary public ID
+});
+
+// -------------------------
+// Main Shipper Schema
+// -------------------------
 const shipperSchema = new mongoose.Schema(
   {
     // Unique Shipper ID
@@ -29,7 +41,13 @@ const shipperSchema = new mongoose.Schema(
     // OAuth fields (Google login)
     provider: { type: String, enum: ["local", "google"], default: "local" },
     providerId: { type: String },
-    profilePicture: { type: String },
+    profilePicture: { type: String }, // Google default image (if OAuth)
+
+    // Uploaded images via Cloudinary
+    profileImage: imageSchema, // Profile Image
+    bannerImage: imageSchema, // Banner Image
+
+    // Additional user info
     firstName: { type: String },
     lastName: { type: String },
     locale: { type: String },
@@ -50,8 +68,9 @@ const shipperSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ---------------- Password Hashing ----------------
-// Only hash if password changed AND account is local
+// -------------------------
+// Password Hashing (only for local accounts)
+// -------------------------
 shipperSchema.pre("save", async function (next) {
   if (!this.isModified("password") || this.provider === "google") return next();
   const salt = await bcrypt.genSalt(10);
@@ -59,10 +78,15 @@ shipperSchema.pre("save", async function (next) {
   next();
 });
 
-// ---------------- Password Verification ----------------
+// -------------------------
+// Password Verification
+// -------------------------
 shipperSchema.methods.matchPassword = async function (enteredPassword) {
   if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
 };
 
+// -------------------------
+// Export Model
+// -------------------------
 module.exports = mongoose.model("Shipper", shipperSchema);

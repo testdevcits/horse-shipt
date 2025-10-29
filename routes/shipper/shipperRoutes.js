@@ -39,9 +39,16 @@ const {
   deleteVehicle,
 } = require("../../controllers/shipper/shipperVehicleController");
 
+// ---------------- IMAGE UPDATE CONTROLLERS ----------------
+const {
+  updateProfileImage,
+  updateBannerImage,
+} = require("../../controllers/shipper/shipperImageController");
+
 // ====================================================
 // SHIPPER PROFILE
 // ====================================================
+
 router.put(
   "/update-profile",
   shipperAuth,
@@ -49,7 +56,24 @@ router.put(
   updateProfile
 );
 
+// Update Shipper Profile Image
+router.put(
+  "/update-profile-image",
+  shipperAuth,
+  upload.single("image"),
+  updateProfileImage
+);
+
+// Update Shipper Banner Image
+router.put(
+  "/update-banner-image",
+  shipperAuth,
+  upload.single("image"),
+  updateBannerImage
+);
+
 // ---------------- SETTINGS CONTROLLER ----------------
+
 const {
   getSettings,
   updateSettings,
