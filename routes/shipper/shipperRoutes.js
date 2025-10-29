@@ -53,6 +53,15 @@ const {
   updateCurrentLocation,
 } = require("../../controllers/shipper/shipperLocationController");
 
+// ----------------   Add New Preferred Area   ----------------
+
+const {
+  addPreferredArea,
+  getPreferredAreas,
+  updatePreferredArea,
+  deletePreferredArea,
+} = require("../../controllers/shipper/shipperPreferredAreaController");
+
 // ====================================================
 // SHIPPER PROFILE
 // ====================================================
@@ -181,6 +190,22 @@ router.get("/current-location", shipperAuth, getCurrentLocation);
 // Add or Update Current Location
 // ====================================================
 router.put("/update-location", shipperAuth, updateCurrentLocation);
+
+// ====================================================
+// Add New Preferred Area
+// ====================================================
+
+router.post("/preferred-areas", shipperAuth, addPreferredArea);
+
+// GET /api/shipper/preferred-areas
+router.get("/preferred-areas", shipperAuth, getPreferredAreas);
+
+// PUT /api/shipper/preferred-areas/:areaId
+router.put("/preferred-areas/:areaId", shipperAuth, updatePreferredArea);
+
+// DELETE /api/shipper/preferred-areas/:areaId
+
+router.delete("/preferred-areas/:areaId", shipperAuth, deletePreferredArea);
 
 // ====================================================
 // EXPORT ROUTER
