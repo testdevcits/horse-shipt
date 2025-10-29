@@ -15,20 +15,45 @@ cloudinary.config({
 // ===================================================
 exports.getShipperProfile = async (req, res) => {
   try {
-    const shipper = await Shipper.findById(req.user.id).select(
-      "name email role profileImage bannerImage"
-    );
+    const shipper = await Shipper.findById(req.user.id)
+      .select(
+        "uniqueId name email role firstName lastName emailVerified " +
+          "profilePicture profileImage bannerImage currentLocation isLogin"
+      )
+      .lean();
 
     if (!shipper) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipper not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
     }
+
+    // Handle default profile & banner images
+    const defaultProfile =
+      shipper.profileImage?.url ||
+      shipper.profilePicture ||
+      "/images/default_profile.png";
+
+    const defaultBanner =
+      shipper.bannerImage?.url || "/images/default_banner.png";
 
     res.status(200).json({
       success: true,
       message: "Shipper profile fetched successfully",
-      data: shipper,
+      data: {
+        uniqueId: shipper.uniqueId,
+        name: shipper.name,
+        email: shipper.email,
+        role: shipper.role,
+        firstName: shipper.firstName,
+        lastName: shipper.lastName,
+        emailVerified: shipper.emailVerified,
+        currentLocation: shipper.currentLocation,
+        isLogin: shipper.isLogin,
+        profileImage: defaultProfile,
+        bannerImage: defaultBanner,
+      },
     });
   } catch (error) {
     console.error("Get Shipper Profile error:", error);

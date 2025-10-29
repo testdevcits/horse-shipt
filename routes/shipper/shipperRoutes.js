@@ -46,6 +46,13 @@ const {
   getShipperProfile,
 } = require("../../controllers/shipper/shipperImageController");
 
+// ----------------   SHIPPER LOCATION   ----------------
+
+const {
+  getCurrentLocation,
+  updateCurrentLocation,
+} = require("../../controllers/shipper/shipperLocationController");
+
 // ====================================================
 // SHIPPER PROFILE
 // ====================================================
@@ -164,6 +171,16 @@ router.get("/settings", shipperAuth, getSettings);
 router.post("/settings/update-notifications", shipperAuth, updateSettings);
 // get settings by shipperId
 router.get("/settings/:shipperId", shipperAuth, getSettingsById);
+
+// ====================================================
+// Get Current Location
+// ====================================================
+router.get("/current-location", shipperAuth, getCurrentLocation);
+
+// ====================================================
+// Add or Update Current Location
+// ====================================================
+router.put("/update-location", shipperAuth, updateCurrentLocation);
 
 // ====================================================
 // EXPORT ROUTER
