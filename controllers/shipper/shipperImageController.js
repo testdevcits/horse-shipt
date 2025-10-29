@@ -11,7 +11,7 @@ cloudinary.config({
 });
 
 // ===================================================
-//Get Shipper Profile
+// Get Shipper Profile
 // ===================================================
 exports.getShipperProfile = async (req, res) => {
   try {
@@ -29,7 +29,6 @@ exports.getShipperProfile = async (req, res) => {
       });
     }
 
-    // Handle default profile & banner images
     const defaultProfile =
       shipper.profileImage?.url ||
       shipper.profilePicture ||
@@ -65,7 +64,7 @@ exports.getShipperProfile = async (req, res) => {
 };
 
 // ===================================================
-// Update Profile Image
+// Update Profile Image (Replace Old Image)
 // ===================================================
 exports.updateProfileImage = async (req, res) => {
   try {
@@ -76,21 +75,31 @@ exports.updateProfileImage = async (req, res) => {
     }
 
     const shipperId = req.user.id;
+    const shipper = await Shipper.findById(shipperId);
 
-    // Upload to Cloudinary
+    if (!shipper) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipper not found" });
+    }
+
+    // Delete old image if exists
+    if (shipper.profileImage?.public_id) {
+      await cloudinary.uploader.destroy(shipper.profileImage.public_id);
+    }
+
+    // Upload new image
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "shipperProfileImages",
+      overwrite: true,
     });
 
-    // Update in MongoDB
-    const shipper = await Shipper.findByIdAndUpdate(
-      shipperId,
-      {
-        "profileImage.url": result.secure_url,
-        "profileImage.public_id": result.public_id,
-      },
-      { new: true }
-    );
+    shipper.profileImage = {
+      url: result.secure_url,
+      public_id: result.public_id,
+    };
+
+    await shipper.save();
 
     res.status(200).json({
       success: true,
@@ -99,14 +108,15 @@ exports.updateProfileImage = async (req, res) => {
     });
   } catch (error) {
     console.error("Update Profile Image error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to upload profile image" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload profile image",
+    });
   }
 };
 
 // ===================================================
-// Update Banner Image
+// Update Banner Image (Replace Old Image)
 // ===================================================
 exports.updateBannerImage = async (req, res) => {
   try {
@@ -117,21 +127,31 @@ exports.updateBannerImage = async (req, res) => {
     }
 
     const shipperId = req.user.id;
+    const shipper = await Shipper.findById(shipperId);
 
-    // Upload to Cloudinary
+    if (!shipper) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipper not found" });
+    }
+
+    // Delete old banner if exists
+    if (shipper.bannerImage?.public_id) {
+      await cloudinary.uploader.destroy(shipper.bannerImage.public_id);
+    }
+
+    // Upload new banner
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "shipperBannerImages",
+      overwrite: true,
     });
 
-    // Update in MongoDB
-    const shipper = await Shipper.findByIdAndUpdate(
-      shipperId,
-      {
-        "bannerImage.url": result.secure_url,
-        "bannerImage.public_id": result.public_id,
-      },
-      { new: true }
-    );
+    shipper.bannerImage = {
+      url: result.secure_url,
+      public_id: result.public_id,
+    };
+
+    await shipper.save();
 
     res.status(200).json({
       success: true,
@@ -140,8 +160,9 @@ exports.updateBannerImage = async (req, res) => {
     });
   } catch (error) {
     console.error("Update Banner Image error:", error);
-    res
-      .status(500)
-      .json({ success: false, message: "Failed to upload banner image" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload banner image",
+    });
   }
 };
