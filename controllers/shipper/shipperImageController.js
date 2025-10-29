@@ -11,17 +11,48 @@ cloudinary.config({
 });
 
 // ===================================================
+//Get Shipper Profile
+// ===================================================
+exports.getShipperProfile = async (req, res) => {
+  try {
+    const shipper = await Shipper.findById(req.user.id).select(
+      "name email role profileImage bannerImage"
+    );
+
+    if (!shipper) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipper not found" });
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Shipper profile fetched successfully",
+      data: shipper,
+    });
+  } catch (error) {
+    console.error("Get Shipper Profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch shipper profile",
+    });
+  }
+};
+
+// ===================================================
 // Update Profile Image
 // ===================================================
 exports.updateProfileImage = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
     }
 
     const shipperId = req.user.id;
 
-    // Upload to Cloudinary folder
+    // Upload to Cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "shipperProfileImages",
     });
@@ -37,12 +68,15 @@ exports.updateProfileImage = async (req, res) => {
     );
 
     res.status(200).json({
+      success: true,
       message: "Profile image updated successfully",
       profileImage: shipper.profileImage,
     });
   } catch (error) {
-    console.error("Cloudinary upload error:", error);
-    res.status(500).json({ message: "Failed to upload profile image" });
+    console.error("Update Profile Image error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to upload profile image" });
   }
 };
 
@@ -52,12 +86,14 @@ exports.updateProfileImage = async (req, res) => {
 exports.updateBannerImage = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ message: "No file uploaded" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
     }
 
     const shipperId = req.user.id;
 
-    // Upload to Cloudinary folder
+    // Upload to Cloudinary
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "shipperBannerImages",
     });
@@ -73,11 +109,14 @@ exports.updateBannerImage = async (req, res) => {
     );
 
     res.status(200).json({
+      success: true,
       message: "Banner image updated successfully",
       bannerImage: shipper.bannerImage,
     });
   } catch (error) {
-    console.error("Cloudinary upload error:", error);
-    res.status(500).json({ message: "Failed to upload banner image" });
+    console.error("Update Banner Image error:", error);
+    res
+      .status(500)
+      .json({ success: false, message: "Failed to upload banner image" });
   }
 };

@@ -43,6 +43,7 @@ const {
 const {
   updateProfileImage,
   updateBannerImage,
+  getShipperProfile,
 } = require("../../controllers/shipper/shipperImageController");
 
 // ====================================================
@@ -56,7 +57,9 @@ router.put(
   updateProfile
 );
 
-// Update Shipper Profile Image
+// ======================================================
+router.get("/profile", shipperAuth, getShipperProfile);
+
 router.put(
   "/update-profile-image",
   shipperAuth,
@@ -64,7 +67,6 @@ router.put(
   updateProfileImage
 );
 
-// Update Shipper Banner Image
 router.put(
   "/update-banner-image",
   shipperAuth,
