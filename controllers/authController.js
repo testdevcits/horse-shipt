@@ -29,8 +29,6 @@ const generateUniqueId = async (role) => {
 // ----------------- Signup -----------------
 exports.signup = async (req, res) => {
   try {
-    console.log("[SIGNUP] Request body:", req.body);
-
     const {
       role,
       email,
@@ -51,17 +49,16 @@ exports.signup = async (req, res) => {
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    // Prevent duplicate emails across both models
+    // Prevent duplicate emails
     const existingShipper = await Shipper.findOne({ email });
     const existingCustomer = await Customer.findOne({ email });
-    if (existingShipper || existingCustomer) {
+    if (existingShipper || existingCustomer)
       return res
         .status(409)
         .json({
           success: false,
           errors: ["Email already registered with another account/role"],
         });
-    }
 
     const uniqueId = await generateUniqueId(role);
 
@@ -82,16 +79,16 @@ exports.signup = async (req, res) => {
           : [],
     };
 
-    // 🔐 Local provider: save plain password (schema will hash it)
+    // ✅ For local accounts, just assign plain password. Schema pre-save will hash it
     if (provider === "local") {
       if (!password)
         return res
           .status(400)
           .json({ success: false, errors: ["Password is required"] });
-      userData.password = password.trim();
+      userData.password = password;
     }
 
-    // 🌐 Google provider handling
+    // Google OAuth handling
     if (provider === "google" && profile) {
       userData.providerId = profile.sub;
       userData.profilePicture = profile.picture || null;
@@ -118,8 +115,6 @@ exports.signup = async (req, res) => {
 // ----------------- Login -----------------
 exports.login = async (req, res) => {
   try {
-    console.log("🔐 [LOGIN] Incoming request:", req.body);
-
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
@@ -138,16 +133,15 @@ exports.login = async (req, res) => {
         .status(401)
         .json({ success: false, errors: ["Invalid credentials"] });
 
-    // 🌐 Google login
+    // Google login
     if (provider === "google" && profile) {
-      if (user.providerId !== profile.sub) {
+      if (user.providerId !== profile.sub)
         return res
           .status(401)
           .json({ success: false, errors: ["Google account mismatch"] });
-      }
     } else {
-      // 🔐 Local login — check password
-      const isMatch = await bcrypt.compare(password, user.password);
+      // Local login — compare password
+      const isMatch = await user.matchPassword(password);
       if (!isMatch)
         return res
           .status(401)
@@ -181,7 +175,6 @@ exports.login = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
-
     const Model = getModel(role);
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });

@@ -1,7 +1,6 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
-// ----------------- Sub-Schemas -----------------
 const loginHistorySchema = new mongoose.Schema({
   deviceId: { type: String, default: null },
   ip: { type: String, default: null },
@@ -14,7 +13,6 @@ const locationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-// ----------------- Customer Schema -----------------
 const customerSchema = new mongoose.Schema(
   {
     uniqueId: { type: String, required: true, unique: true },
@@ -23,7 +21,6 @@ const customerSchema = new mongoose.Schema(
     password: { type: String },
     role: { type: String, default: "customer" },
 
-    // OAuth fields
     provider: { type: String, enum: ["local", "google"], default: "local" },
     providerId: { type: String },
     profilePicture: { type: String },
@@ -42,18 +39,16 @@ const customerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ----------------- Password Hashing -----------------
-// Hash password ONLY when:
-// 1. password is modified
-// 2. provider is local
+// ---------------- Password Hashing ----------------
+// Only hash if provider is local AND password is modified
 customerSchema.pre("save", async function (next) {
-  if (!this.isModified("password") || this.provider === "google") return next();
+  if (!this.isModified("password") || this.provider !== "local") return next();
   const salt = await bcrypt.genSalt(10);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
-// ----------------- Password Verification -----------------
+// ---------------- Password Verification ----------------
 customerSchema.methods.matchPassword = async function (enteredPassword) {
   if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
