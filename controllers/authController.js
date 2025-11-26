@@ -3,6 +3,7 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
+// ----------------- Utility Functions -----------------
 const getModel = (role) => {
   if (role === "shipper") return Shipper;
   if (role === "customer") return Customer;
@@ -17,51 +18,49 @@ const generateUniqueId = async (role) => {
   let exists = true;
 
   while (exists) {
-    const num = Math.floor(1000 + Math.random() * 9000);
-    id = `${prefix}${num}`;
-    exists = await Model.findOne({ uniqueId: id });
+    const randomNum = Math.floor(1000 + Math.random() * 9000);
+    id = `${prefix}${randomNum}`;
+    const existing = await Model.findOne({ uniqueId: id });
+    if (!existing) exists = false;
   }
-
   return id;
 };
 
-// ======================================================
-// SIGNUP
-// ======================================================
+// ----------------- Signup -----------------
 exports.signup = async (req, res) => {
   try {
-    console.log("[SIGNUP] Request:", req.body);
+    console.log("[SIGNUP] Request body:", req.body);
 
     const {
       role,
       email,
       password,
       name,
-      provider,
+      provider = "local",
       profile,
       location,
       deviceId,
     } = req.body;
 
-    if (!role || !email) {
-      return res
-        .status(400)
-        .json({ success: false, errors: ["Role and email are required"] });
-    }
+    if (!role || !email)
+      return res.status(400).json({
+        success: false,
+        errors: ["Role and email are required"],
+      });
 
     const Model = getModel(role);
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    // Prevent same email across both roles
-    const emailUsed =
-      (await Customer.findOne({ email })) || (await Shipper.findOne({ email }));
-
-    if (emailUsed)
+    // Prevent duplicate emails across both models
+    const existingShipper = await Shipper.findOne({ email });
+    const existingCustomer = await Customer.findOne({ email });
+    if (existingShipper || existingCustomer) {
       return res.status(409).json({
         success: false,
         errors: ["Email already registered with another account/role"],
       });
+    }
 
     const uniqueId = await generateUniqueId(role);
 
@@ -70,9 +69,9 @@ exports.signup = async (req, res) => {
       name: name || profile?.name || email.split("@")[0],
       email,
       role,
-      provider: provider || "local",
-      emailVerified: provider === "google",
-      isLogin: provider === "google",
+      provider,
+      emailVerified: provider === "google" ? true : true, // FIXED
+      isLogin: provider === "google" ? true : false,
       isActive: true,
       currentDevice: deviceId || null,
       currentLocation: location || undefined,
@@ -81,28 +80,25 @@ exports.signup = async (req, res) => {
           ? [
               {
                 deviceId: deviceId || null,
-                ip: req.ip || null,
+                ip: req.ip,
                 loginAt: new Date(),
               },
             ]
           : [],
     };
 
-    // ------------------------------
-    // LOCAL Signup (NO Provider sent)
-    // ------------------------------
-    if (!provider || provider === "local") {
+    // 🔐 Handle local provider
+    if (provider === "local") {
       if (!password)
         return res
           .status(400)
           .json({ success: false, errors: ["Password is required"] });
 
-      userData.password = password.trim();
+      const salt = await bcrypt.genSalt(10);
+      userData.password = await bcrypt.hash(password, salt);
     }
 
-    // ------------------------------
-    // GOOGLE Signup
-    // ------------------------------
+    // 🌐 Google provider handling
     if (provider === "google" && profile) {
       userData.providerId = profile.sub;
       userData.profilePicture = profile.picture || null;
@@ -117,18 +113,17 @@ exports.signup = async (req, res) => {
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    res
-      .status(201)
-      .json({ success: true, data: { ...user.toObject(), token } });
+    res.status(201).json({
+      success: true,
+      data: { ...user.toObject(), token },
+    });
   } catch (err) {
-    console.error("[SIGNUP ERROR]:", err);
-    return res.status(500).json({ success: false, errors: ["Server Error"] });
+    console.error("[SIGNUP ERROR]", err);
+    res.status(500).json({ success: false, errors: ["Server Error"] });
   }
 };
 
-// ======================================================
-// LOGIN
-// ======================================================
+// ----------------- Login -----------------
 exports.login = async (req, res) => {
   try {
     console.log("🔐 [LOGIN] Incoming request:", req.body);
@@ -136,77 +131,40 @@ exports.login = async (req, res) => {
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
-    if (!role || !email) {
-      return res.status(400).json({
-        success: false,
-        errors: ["Role and email are required"],
-      });
-    }
+    if (!role || !email)
+      return res
+        .status(400)
+        .json({ success: false, errors: ["Role and email are required"] });
 
     const Model = getModel(role);
-    if (!Model) {
+    if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
-    }
 
-    let user;
+    let user = await Model.findOne({ email });
+    if (!user)
+      return res
+        .status(401)
+        .json({ success: false, errors: ["Invalid credentials"] });
 
-    // -------------------------
-    // GOOGLE Login
-    // -------------------------
+    // 🌐 Google login
     if (provider === "google" && profile) {
-      user = await Model.findOne({
-        email,
-        providerId: profile.sub,
-      });
-
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          errors: ["Google user not found. Please signup first."],
-        });
-      }
-    } else {
-      // -------------------------
-      // LOCAL Login
-      // -------------------------
-      user = await Model.findOne({ email });
-
-      if (!user) {
+      if (user.providerId !== profile.sub) {
         return res
           .status(401)
-          .json({ success: false, errors: ["Invalid credentials"] });
+          .json({ success: false, errors: ["Google account mismatch"] });
       }
-
-      if (!user.emailVerified) {
-        return res
-          .status(403)
-          .json({ success: false, errors: ["Email not verified"] });
-      }
-
-      if (!password) {
-        return res
-          .status(400)
-          .json({ success: false, errors: ["Password required"] });
-      }
-
+    } else {
+      // 🔐 Local login — check password
       console.log("🔍 Plain password:", password);
       console.log("🔍 Hashed password:", user.password);
 
-      const isMatch = await bcrypt.compare(password.trim(), user.password);
-
+      const isMatch = await bcrypt.compare(password, user.password);
       console.log("🔍 bcrypt result:", isMatch);
 
-      if (!isMatch) {
+      if (!isMatch)
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
-      }
-
-      if (!user.isActive) {
-        return res
-          .status(403)
-          .json({ success: false, errors: ["Account is blocked"] });
-      }
     }
 
     // Update login info
@@ -215,7 +173,7 @@ exports.login = async (req, res) => {
     user.currentLocation = location || user.currentLocation;
     user.loginHistory.push({
       deviceId: deviceId || null,
-      ip: req.ip || null,
+      ip: req.ip,
       loginAt: new Date(),
     });
 
@@ -223,12 +181,38 @@ exports.login = async (req, res) => {
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    return res.status(200).json({
-      success: true,
-      data: { ...user.toObject(), token },
-    });
+    res
+      .status(200)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
-    console.error("🔥 [LOGIN ERROR]:", err);
-    return res.status(500).json({ success: false, errors: ["Server Error"] });
+    console.error("[LOGIN ERROR]", err);
+    res.status(500).json({ success: false, errors: ["Server Error"] });
+  }
+};
+
+// ----------------- Logout -----------------
+exports.logout = async (req, res) => {
+  try {
+    const { role, userId } = req.body;
+
+    const Model = getModel(role);
+    if (!Model)
+      return res.status(400).json({ success: false, errors: ["Invalid role"] });
+
+    const user = await Model.findById(userId);
+    if (!user)
+      return res
+        .status(404)
+        .json({ success: false, errors: ["User not found"] });
+
+    user.isLogin = false;
+    user.currentDevice = null;
+
+    await user.save();
+
+    res.status(200).json({ success: true, message: "Logged out successfully" });
+  } catch (err) {
+    console.error("[LOGOUT ERROR]", err);
+    res.status(500).json({ success: false, errors: ["Server Error"] });
   }
 };
