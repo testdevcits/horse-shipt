@@ -135,12 +135,10 @@ exports.login = async (req, res) => {
       req.body;
 
     if (!role || !email || (!password && !provider)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          errors: ["Role, email and password are required"],
-        });
+      return res.status(400).json({
+        success: false,
+        errors: ["Role, email and password are required"],
+      });
     }
 
     const Model = getModel(role);
@@ -149,35 +147,41 @@ exports.login = async (req, res) => {
 
     let user;
 
+    // Google login
     if (provider === "google" && profile) {
       user = await Model.findOne({ email, providerId: profile.sub });
       if (!user)
-        return res
-          .status(404)
-          .json({
-            success: false,
-            errors: ["Google user not found. Please signup first."],
-          });
+        return res.status(404).json({
+          success: false,
+          errors: ["Google user not found. Please signup first."],
+        });
     } else {
+      // Local login
       user = await Model.findOne({ email });
       if (!user)
         return res
           .status(401)
-          .json({ success: false, errors: ["Invalid credentials"] });
+          .json({ success: false, errors: ["User not found"] });
 
       if (!user.emailVerified)
         return res
           .status(403)
           .json({ success: false, errors: ["Email not verified"] });
 
-      console.log("[LOGIN DEBUG] Plain password:", password);
-      console.log("[LOGIN DEBUG] Hashed password:", user.password);
+      const trimmedPassword = password.trim();
+      console.log(
+        "[LOGIN DEBUG] Password from request:",
+        `"${trimmedPassword}"`
+      );
+      console.log("[LOGIN DEBUG] Hashed password from DB:", user.password);
 
-      const isMatch = await bcrypt.compare(password, user.password);
+      const isMatch = await bcrypt.compare(trimmedPassword, user.password);
+      console.log("[LOGIN DEBUG] Password match result:", isMatch);
+
       if (!isMatch)
         return res
           .status(401)
-          .json({ success: false, errors: ["Invalid credentials"] });
+          .json({ success: false, errors: ["Password incorrect"] });
 
       if (!user.isActive)
         return res
