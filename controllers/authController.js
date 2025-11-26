@@ -3,18 +3,12 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
-// ------------------------------------------------------
-// Helper: Role → Model
-// ------------------------------------------------------
 const getModel = (role) => {
   if (role === "shipper") return Shipper;
   if (role === "customer") return Customer;
   return null;
 };
 
-// ------------------------------------------------------
-// Helper: Unique ID Generator
-// ------------------------------------------------------
 const generateUniqueId = async (role) => {
   const prefix = role === "shipper" ? "HS" : "HC";
   const Model = getModel(role);
@@ -32,7 +26,7 @@ const generateUniqueId = async (role) => {
 };
 
 // ======================================================
-// SIGNUP CONTROLLER
+// SIGNUP
 // ======================================================
 exports.signup = async (req, res) => {
   try {
@@ -59,9 +53,7 @@ exports.signup = async (req, res) => {
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    // ----------------------------------------------------------------
-    // Prevent duplicated email across Customer + Shipper
-    // ----------------------------------------------------------------
+    // Prevent same email across both roles
     const emailUsed =
       (await Customer.findOne({ email })) || (await Shipper.findOne({ email }));
 
@@ -96,22 +88,21 @@ exports.signup = async (req, res) => {
           : [],
     };
 
-    // ----------------------------------------------------------------
-    // LOCAL SIGNUP → Hash password
-    // (Hashing is handled by schema pre-save hook)
-    // ----------------------------------------------------------------
-    if (provider === "local") {
+    // ------------------------------
+    // LOCAL Signup (NO Provider sent)
+    // ------------------------------
+    if (!provider || provider === "local") {
       if (!password)
         return res
           .status(400)
           .json({ success: false, errors: ["Password is required"] });
 
-      userData.password = password.trim(); // trimmed for safety
+      userData.password = password.trim();
     }
 
-    // ----------------------------------------------------------------
-    // GOOGLE SIGNUP
-    // ----------------------------------------------------------------
+    // ------------------------------
+    // GOOGLE Signup
+    // ------------------------------
     if (provider === "google" && profile) {
       userData.providerId = profile.sub;
       userData.profilePicture = profile.picture || null;
@@ -124,14 +115,11 @@ exports.signup = async (req, res) => {
     const user = new Model(userData);
     await user.save();
 
-    console.log("[SIGNUP] User Created:", user._id);
-
     const token = generateToken({ id: user._id, role: user.role });
 
-    res.status(201).json({
-      success: true,
-      data: { ...user.toObject(), token },
-    });
+    res
+      .status(201)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("[SIGNUP ERROR]:", err);
     return res.status(500).json({ success: false, errors: ["Server Error"] });
@@ -139,7 +127,7 @@ exports.signup = async (req, res) => {
 };
 
 // ======================================================
-// LOGIN CONTROLLER
+// LOGIN
 // ======================================================
 exports.login = async (req, res) => {
   try {
@@ -148,10 +136,10 @@ exports.login = async (req, res) => {
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
-    if (!role || !email || (!password && !provider)) {
+    if (!role || !email) {
       return res.status(400).json({
         success: false,
-        errors: ["Role, email and password are required"],
+        errors: ["Role and email are required"],
       });
     }
 
@@ -162,9 +150,14 @@ exports.login = async (req, res) => {
 
     let user;
 
-    // 👉 Google login
+    // -------------------------
+    // GOOGLE Login
+    // -------------------------
     if (provider === "google" && profile) {
-      user = await Model.findOne({ email, providerId: profile.sub });
+      user = await Model.findOne({
+        email,
+        providerId: profile.sub,
+      });
 
       if (!user) {
         return res.status(404).json({
@@ -173,11 +166,12 @@ exports.login = async (req, res) => {
         });
       }
     } else {
-      // 👉 Normal login
+      // -------------------------
+      // LOCAL Login
+      // -------------------------
       user = await Model.findOne({ email });
 
       if (!user) {
-        console.log("❌ No user found with this email");
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
@@ -189,10 +183,16 @@ exports.login = async (req, res) => {
           .json({ success: false, errors: ["Email not verified"] });
       }
 
+      if (!password) {
+        return res
+          .status(400)
+          .json({ success: false, errors: ["Password required"] });
+      }
+
       console.log("🔍 Plain password:", password);
       console.log("🔍 Hashed password:", user.password);
 
-      const isMatch = await bcrypt.compare(password, user.password);
+      const isMatch = await bcrypt.compare(password.trim(), user.password);
 
       console.log("🔍 bcrypt result:", isMatch);
 
@@ -209,7 +209,7 @@ exports.login = async (req, res) => {
       }
     }
 
-    // 👉 Update login info
+    // Update login info
     user.isLogin = true;
     user.currentDevice = deviceId || user.currentDevice;
     user.currentLocation = location || user.currentLocation;
@@ -220,7 +220,6 @@ exports.login = async (req, res) => {
     });
 
     await user.save();
-    console.log("✅ User logged in:", user._id);
 
     const token = generateToken({ id: user._id, role: user.role });
 
@@ -230,37 +229,6 @@ exports.login = async (req, res) => {
     });
   } catch (err) {
     console.error("🔥 [LOGIN ERROR]:", err);
-    return res.status(500).json({ success: false, errors: ["Server Error"] });
-  }
-};
-
-// ======================================================
-// LOGOUT CONTROLLER
-// ======================================================
-exports.logout = async (req, res) => {
-  try {
-    const { role, userId } = req.body;
-
-    const Model = getModel(role);
-    if (!Model)
-      return res.status(400).json({ success: false, errors: ["Invalid role"] });
-
-    const user = await Model.findById(userId);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, errors: ["User not found"] });
-
-    user.isLogin = false;
-    user.currentDevice = null;
-
-    await user.save();
-
-    return res
-      .status(200)
-      .json({ success: true, message: "Logged out successfully" });
-  } catch (err) {
-    console.error("[LOGOUT ERROR]:", err);
     return res.status(500).json({ success: false, errors: ["Server Error"] });
   }
 };
