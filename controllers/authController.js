@@ -143,83 +143,84 @@ exports.signup = async (req, res) => {
 // ======================================================
 exports.login = async (req, res) => {
   try {
-    console.log("[LOGIN] Request:", req.body);
+    console.log("🔐 [LOGIN] Incoming request:", req.body);
 
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
     if (!role || !email || (!password && !provider)) {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          errors: ["Role, email and password are required"],
-        });
+      return res.status(400).json({
+        success: false,
+        errors: ["Role, email and password are required"],
+      });
     }
 
     const Model = getModel(role);
-    if (!Model)
+    if (!Model) {
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
+    }
 
     let user;
 
-    // ----------------------------------------------------------
-    // GOOGLE LOGIN
-    // ----------------------------------------------------------
+    // 👉 Google login
     if (provider === "google" && profile) {
       user = await Model.findOne({ email, providerId: profile.sub });
 
-      if (!user)
+      if (!user) {
         return res.status(404).json({
           success: false,
           errors: ["Google user not found. Please signup first."],
         });
+      }
     } else {
-      // ----------------------------------------------------------
-      // LOCAL LOGIN
-      // ----------------------------------------------------------
+      // 👉 Normal login
       user = await Model.findOne({ email });
-      if (!user)
+
+      if (!user) {
+        console.log("❌ No user found with this email");
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
+      }
 
-      if (!user.emailVerified)
+      if (!user.emailVerified) {
         return res
           .status(403)
           .json({ success: false, errors: ["Email not verified"] });
+      }
 
-      // Clean password before compare
-      const cleanPassword = password.trim();
+      console.log("🔍 Plain password:", password);
+      console.log("🔍 Hashed password:", user.password);
 
-      const isMatch = await user.matchPassword(cleanPassword);
-      if (!isMatch)
+      const isMatch = await bcrypt.compare(password, user.password);
+
+      console.log("🔍 bcrypt result:", isMatch);
+
+      if (!isMatch) {
         return res
           .status(401)
           .json({ success: false, errors: ["Invalid credentials"] });
+      }
 
-      if (!user.isActive)
+      if (!user.isActive) {
         return res
           .status(403)
           .json({ success: false, errors: ["Account is blocked"] });
+      }
     }
 
-    // ----------------------------------------------------------
-    // UPDATE LOGIN STATUS
-    // ----------------------------------------------------------
+    // 👉 Update login info
     user.isLogin = true;
     user.currentDevice = deviceId || user.currentDevice;
     user.currentLocation = location || user.currentLocation;
-
     user.loginHistory.push({
-      deviceId,
+      deviceId: deviceId || null,
       ip: req.ip || null,
       loginAt: new Date(),
     });
 
     await user.save();
-
-    console.log("[LOGIN] User Logged In:", user._id);
+    console.log("✅ User logged in:", user._id);
 
     const token = generateToken({ id: user._id, role: user.role });
 
@@ -228,7 +229,7 @@ exports.login = async (req, res) => {
       data: { ...user.toObject(), token },
     });
   } catch (err) {
-    console.error("[LOGIN ERROR]:", err);
+    console.error("🔥 [LOGIN ERROR]:", err);
     return res.status(500).json({ success: false, errors: ["Server Error"] });
   }
 };
