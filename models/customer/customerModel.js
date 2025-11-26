@@ -26,7 +26,7 @@ const customerSchema = new mongoose.Schema(
     // Role
     role: { type: String, default: "customer" },
 
-    // OAuth fields (Google login)
+    // OAuth fields
     provider: { type: String, enum: ["local", "google"], default: "local" },
     providerId: { type: String },
     profilePicture: { type: String },
@@ -36,7 +36,7 @@ const customerSchema = new mongoose.Schema(
     emailVerified: { type: Boolean, default: false },
     rawProfile: { type: Object },
 
-    // Location (optional for future use)
+    // Location
     currentLocation: locationSchema,
 
     // Login control
@@ -51,11 +51,21 @@ const customerSchema = new mongoose.Schema(
 );
 
 // ---------------- Password Hashing ----------------
-// Only hash if password changed AND account is local
+// Hash password ONLY when:
+// 1. password is modified
+// 2. provider is local
 customerSchema.pre("save", async function (next) {
-  if (!this.isModified("password") || this.provider === "google") return next();
-  const salt = await bcrypt.genSalt(10);
-  this.password = await bcrypt.hash(this.password, salt);
+  // If password unmodified → do not hash
+  if (!this.isModified("password")) {
+    return next();
+  }
+
+  // Only hash for local accounts
+  if (this.provider === "local" && this.password) {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+  }
+
   next();
 });
 

@@ -70,7 +70,7 @@ exports.signup = async (req, res) => {
       email,
       role,
       provider,
-      emailVerified: provider === "google" ? true : true, // FIXED
+      emailVerified: provider === "google" ? true : true,
       isLogin: provider === "google" ? true : false,
       isActive: true,
       currentDevice: deviceId || null,
@@ -140,7 +140,7 @@ exports.login = async (req, res) => {
     if (!Model)
       return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    let user = await Model.findOne({ email });
+    const user = await Model.findOne({ email });
     if (!user)
       return res
         .status(401)
