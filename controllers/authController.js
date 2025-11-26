@@ -43,10 +43,9 @@ exports.signup = async (req, res) => {
     } = req.body;
 
     if (!role || !email)
-      return res.status(400).json({
-        success: false,
-        errors: ["Role and email are required"],
-      });
+      return res
+        .status(400)
+        .json({ success: false, errors: ["Role and email are required"] });
 
     const Model = getModel(role);
     if (!Model)
@@ -56,10 +55,12 @@ exports.signup = async (req, res) => {
     const existingShipper = await Shipper.findOne({ email });
     const existingCustomer = await Customer.findOne({ email });
     if (existingShipper || existingCustomer) {
-      return res.status(409).json({
-        success: false,
-        errors: ["Email already registered with another account/role"],
-      });
+      return res
+        .status(409)
+        .json({
+          success: false,
+          errors: ["Email already registered with another account/role"],
+        });
     }
 
     const uniqueId = await generateUniqueId(role);
@@ -70,32 +71,24 @@ exports.signup = async (req, res) => {
       email,
       role,
       provider,
-      emailVerified: provider === "google" ? true : true,
+      emailVerified: provider === "google" ? true : false,
       isLogin: provider === "google" ? true : false,
       isActive: true,
       currentDevice: deviceId || null,
       currentLocation: location || undefined,
       loginHistory:
         provider === "google"
-          ? [
-              {
-                deviceId: deviceId || null,
-                ip: req.ip,
-                loginAt: new Date(),
-              },
-            ]
+          ? [{ deviceId: deviceId || null, ip: req.ip, loginAt: new Date() }]
           : [],
     };
 
-    // 🔐 Handle local provider
+    // 🔐 Local provider: save plain password (schema will hash it)
     if (provider === "local") {
       if (!password)
         return res
           .status(400)
           .json({ success: false, errors: ["Password is required"] });
-
-      const salt = await bcrypt.genSalt(10);
-      userData.password = await bcrypt.hash(password, salt);
+      userData.password = password.trim();
     }
 
     // 🌐 Google provider handling
@@ -113,10 +106,9 @@ exports.signup = async (req, res) => {
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    res.status(201).json({
-      success: true,
-      data: { ...user.toObject(), token },
-    });
+    res
+      .status(201)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("[SIGNUP ERROR]", err);
     res.status(500).json({ success: false, errors: ["Server Error"] });
@@ -155,12 +147,7 @@ exports.login = async (req, res) => {
       }
     } else {
       // 🔐 Local login — check password
-      console.log("🔍 Plain password:", password);
-      console.log("🔍 Hashed password:", user.password);
-
       const isMatch = await bcrypt.compare(password, user.password);
-      console.log("🔍 bcrypt result:", isMatch);
-
       if (!isMatch)
         return res
           .status(401)

@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// ----------------- Sub-Schemas -----------------
 const loginHistorySchema = new mongoose.Schema({
   deviceId: { type: String, default: null },
   ip: { type: String, default: null },
@@ -13,17 +14,13 @@ const locationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
+// ----------------- Customer Schema -----------------
 const customerSchema = new mongoose.Schema(
   {
-    // Unique Customer ID
     uniqueId: { type: String, required: true, unique: true },
-
-    // Basic Info
     name: { type: String },
     email: { type: String, required: true, unique: true },
     password: { type: String },
-
-    // Role
     role: { type: String, default: "customer" },
 
     // OAuth fields
@@ -36,40 +33,27 @@ const customerSchema = new mongoose.Schema(
     emailVerified: { type: Boolean, default: false },
     rawProfile: { type: Object },
 
-    // Location
     currentLocation: locationSchema,
-
-    // Login control
     isLogin: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     currentDevice: { type: String },
-
-    // Login history
     loginHistory: [loginHistorySchema],
   },
   { timestamps: true }
 );
 
-// ---------------- Password Hashing ----------------
+// ----------------- Password Hashing -----------------
 // Hash password ONLY when:
 // 1. password is modified
 // 2. provider is local
 customerSchema.pre("save", async function (next) {
-  // If password unmodified → do not hash
-  if (!this.isModified("password")) {
-    return next();
-  }
-
-  // Only hash for local accounts
-  if (this.provider === "local" && this.password) {
-    const salt = await bcrypt.genSalt(10);
-    this.password = await bcrypt.hash(this.password, salt);
-  }
-
+  if (!this.isModified("password") || this.provider === "google") return next();
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
   next();
 });
 
-// ---------------- Password Verification ----------------
+// ----------------- Password Verification -----------------
 customerSchema.methods.matchPassword = async function (enteredPassword) {
   if (!this.password) return false;
   return await bcrypt.compare(enteredPassword, this.password);
