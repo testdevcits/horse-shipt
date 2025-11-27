@@ -17,8 +17,8 @@ exports.getShipperProfile = async (req, res) => {
   try {
     const shipper = await Shipper.findById(req.user.id)
       .select(
-        "uniqueId name email role firstName lastName emailVerified " +
-          "profilePicture profileImage bannerImage currentLocation isLogin"
+        "uniqueId name email role firstName lastName locale emailVerified " +
+          "profileImage bannerImage currentLocation isLogin"
       )
       .lean();
 
@@ -29,13 +29,16 @@ exports.getShipperProfile = async (req, res) => {
       });
     }
 
+    // Handle string-based image URLs
     const defaultProfile =
-      shipper.profileImage?.url ||
-      shipper.profilePicture ||
-      "/images/default_profile.png";
+      shipper.profileImage && shipper.profileImage.trim() !== ""
+        ? shipper.profileImage
+        : "/images/default_profile.png";
 
     const defaultBanner =
-      shipper.bannerImage?.url || "/images/default_banner.png";
+      shipper.bannerImage && shipper.bannerImage.trim() !== ""
+        ? shipper.bannerImage
+        : "/images/default_banner.png";
 
     res.status(200).json({
       success: true,
@@ -47,6 +50,7 @@ exports.getShipperProfile = async (req, res) => {
         role: shipper.role,
         firstName: shipper.firstName,
         lastName: shipper.lastName,
+        locale: shipper.locale || "",
         emailVerified: shipper.emailVerified,
         currentLocation: shipper.currentLocation,
         isLogin: shipper.isLogin,
