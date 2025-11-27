@@ -29,15 +29,15 @@ exports.getShipperProfile = async (req, res) => {
       });
     }
 
-    // Handle string-based image URLs
+    // --- Safe Image Handling ---
     const defaultProfile =
-      shipper.profileImage && shipper.profileImage.trim() !== ""
-        ? shipper.profileImage
+      shipper.profileImage?.url && typeof shipper.profileImage.url === "string"
+        ? shipper.profileImage.url
         : "/images/default_profile.png";
 
     const defaultBanner =
-      shipper.bannerImage && shipper.bannerImage.trim() !== ""
-        ? shipper.bannerImage
+      shipper.bannerImage?.url && typeof shipper.bannerImage.url === "string"
+        ? shipper.bannerImage.url
         : "/images/default_banner.png";
 
     res.status(200).json({
