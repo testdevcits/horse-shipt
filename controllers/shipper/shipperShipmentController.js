@@ -20,7 +20,7 @@ exports.getAssignedShipments = async (req, res) => {
   }
 };
 
-// ---------------- Get Shipment by ID ----------------
+// ---------------- Get Shipment by ID (Assigned to this Shipper) ----------------
 exports.getShipmentById = async (req, res) => {
   try {
     const shipperId = req.user._id;
@@ -29,36 +29,58 @@ exports.getShipmentById = async (req, res) => {
     const shipperShipment = await ShipperShipment.findOne({
       _id: shipmentId,
       shipper: shipperId,
-    }).populate("shipment");
+    }).populate({
+      path: "shipment",
+      populate: {
+        path: "customer",
+        select: "name email",
+      },
+    });
 
-    if (!shipperShipment)
+    if (!shipperShipment) {
       return res.status(404).json({
         success: false,
         message: "Shipment not found or not assigned",
       });
+    }
 
-    res.status(200).json({ success: true, shipment: shipperShipment });
+    res.status(200).json({
+      success: true,
+      shipment: shipperShipment,
+    });
   } catch (err) {
     console.error("[GET SHIPMENT BY ID] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
 
-// ---------------- Get Available Shipments ----------------
+// ---------------- Get Available Shipments (Marketplace) ----------------
 exports.getAvailableShipments = async (req, res) => {
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const today = new Date();
 
-    // Only fetch pending shipments (created by customer) that are not yet assigned
     const shipments = await CustomerShipment.find({
-      status: "pending",
+      publish: true,
+      status: "open_for_offers",
+      shipper: null,
       pickupDate: { $gte: today },
-    }).sort({ pickupDate: 1 });
+    })
+      .populate("customer", "name email")
+      .sort({ pickupDate: 1 });
 
-    res.status(200).json({ success: true, shipments });
+    res.status(200).json({
+      success: true,
+      shipments,
+    });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
 
