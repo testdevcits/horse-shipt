@@ -71,6 +71,7 @@ const shipmentSchema = new mongoose.Schema(
         "in_transit",
         "delivered",
         "cancelled",
+        "open_for_offers", // <--- add this
       ],
       default: "pending",
     },
