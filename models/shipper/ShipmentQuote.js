@@ -1,0 +1,119 @@
+const mongoose = require("mongoose");
+
+const quoteSchema = new mongoose.Schema(
+  {
+    // ================= RELATIONS =================
+    shipment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerShipment",
+      required: true,
+      index: true,
+    },
+
+    shipper: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shipper",
+      required: true,
+      index: true,
+    },
+
+    // ================= PRICING =================
+    totalPrice: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    currency: {
+      type: String,
+      default: "USD",
+    },
+
+    // ================= PAYMENT =================
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "card", "bank"],
+      required: true,
+    },
+
+    paymentDue: {
+      type: String,
+      enum: ["pickup", "delivery"],
+      required: true,
+    },
+
+    // ================= TIMING =================
+    pickupTime: {
+      type: String, // "HH:mm"
+      required: true,
+    },
+
+    estimatedArrivalTime: {
+      type: String, // "HH:mm"
+      required: true,
+    },
+
+    estimatedDeliveryDays: {
+      type: Number,
+      min: 0,
+    },
+
+    // ================= TRANSPORT DETAILS =================
+    transportType: {
+      type: String,
+      enum: ["trailer", "truck"],
+      required: true,
+    },
+
+    stallsRequired: {
+      type: Number,
+      min: 1,
+      required: true,
+    },
+
+    // ================= MESSAGE =================
+    notes: {
+      type: String,
+      default: "",
+      maxlength: 1000,
+    },
+
+    // ================= STATUS =================
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected", "expired"],
+      default: "pending",
+      index: true,
+    },
+
+    // ================= META =================
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    expiresAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  { timestamps: true }
+);
+
+// ================= INDEXES =================
+
+// Prevent same shipper from sending multiple offers for same shipment
+quoteSchema.index({ shipment: 1, shipper: 1 }, { unique: true });
+
+// Fast customer quote listing
+quoteSchema.index({ shipment: 1, status: 1 });
+
+// ================= MIDDLEWARE =================
+quoteSchema.pre("save", function (next) {
+  if (this.isModified("status") && this.status !== "pending") {
+    this.isActive = false;
+  }
+  next();
+});
+
+module.exports = mongoose.model("ShipmentQuote", quoteSchema);

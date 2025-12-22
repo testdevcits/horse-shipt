@@ -8,18 +8,22 @@ const horseSchema = new mongoose.Schema({
   colour: { type: String, default: "" },
   age: { type: String, default: "" },
   sex: { type: String, default: "" },
+
   photo: {
     url: { type: String, default: null },
     public_id: { type: String, default: null },
   },
+
   cogins: {
     url: { type: String, default: null },
     public_id: { type: String, default: null },
   },
+
   healthCertificate: {
     url: { type: String, default: null },
     public_id: { type: String, default: null },
   },
+
   generalInfo: { type: String, default: "" },
 });
 
@@ -33,21 +37,31 @@ const locationSchema = new mongoose.Schema({
 // ---------------- Shipment Schema ----------------
 const shipmentSchema = new mongoose.Schema(
   {
-    // Reference to Customer
+    // ================= CUSTOMER & SHIPPER =================
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
       required: true,
     },
 
-    // Assigned Shipper
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shipper",
-      default: null, // Assigned after acceptance
+      default: null,
     },
 
-    // Shipment Status
+    // ================= VISIBILITY CONTROL =================
+    publish: {
+      type: Boolean,
+      default: false, // true => visible to all shippers
+    },
+
+    publishedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ================= SHIPMENT STATUS =================
     status: {
       type: String,
       enum: [
@@ -61,30 +75,34 @@ const shipmentSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // Pickup Info
+    // ================= PICKUP INFO =================
     pickupLocation: { type: String, required: true },
     pickupTimeOption: { type: String, required: true },
     pickupDate: { type: Date, required: true },
 
-    // Delivery Info
+    // ================= DELIVERY INFO =================
     deliveryLocation: { type: String, required: true },
     deliveryTimeOption: { type: String, required: true },
     deliveryDate: { type: Date, required: true },
 
-    // Horses
-    numberOfHorses: { type: Number, required: true, min: 1 },
+    // ================= HORSES =================
+    numberOfHorses: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+
     horses: [horseSchema],
 
-    // Additional Info
+    // ================= EXTRA INFO =================
     additionalInfo: { type: String, default: "" },
 
-    // Current live location (shipper only)
+    // ================= LIVE TRACKING =================
     currentLocation: {
       type: locationSchema,
       default: null,
     },
 
-    // Route history
     locationHistory: {
       type: [locationSchema],
       default: [],
@@ -93,17 +111,30 @@ const shipmentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ---------------- Compound Index ----------------
-// Prevent a shipper from accepting multiple shipments on the same pickup date
+// ---------------- INDEXES ----------------
+
+// Prevent a shipper from accepting multiple shipments on same pickup date
 shipmentSchema.index(
   { shipper: 1, pickupDate: 1 },
-  { unique: true, partialFilterExpression: { shipper: { $type: "objectId" } } }
+  {
+    unique: true,
+    partialFilterExpression: {
+      shipper: { $type: "objectId" },
+    },
+  }
 );
 
-// ---------------- Pre-save Logging ----------------
+// Optimize shipper marketplace queries
+shipmentSchema.index({ publish: 1, status: 1 });
+
+// ---------------- PRE-SAVE HOOK ----------------
 shipmentSchema.pre("save", function (next) {
+  if (this.publish && !this.publishedAt) {
+    this.publishedAt = new Date();
+  }
+
   console.log("Saving shipment for customer:", this.customer.toString());
-  console.log("Number of horses:", this.numberOfHorses);
+  console.log("Published:", this.publish);
   next();
 });
 

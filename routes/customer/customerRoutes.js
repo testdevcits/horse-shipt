@@ -38,6 +38,7 @@ const {
   updateShipmentLocation,
   notifyShipmentAccepted,
   fetchShipmentById,
+  publishShipment,
 } = require("../../controllers/customer/customerShipmentController");
 
 const {
@@ -109,6 +110,8 @@ router.post(
 
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
+
+router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
 
 router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
   try {

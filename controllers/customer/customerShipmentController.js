@@ -59,22 +59,32 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 
 // ---------------- Create Shipment ----------------
 exports.createShipment = async (req, res) => {
+  console.log("================================================");
+  console.log("CREATE SHIPMENT API HIT");
+  console.log("Time:", new Date().toISOString());
+  console.log("================================================");
+
   try {
-    const customerId = req.user._id;
+    const customerId = req.user?._id;
 
-    console.log("=== Incoming Shipment Request ===");
-    console.log("User ID:", customerId);
-    console.log("Request Body:", req.body);
-    console.log("Files:", req.files);
+    console.log("Customer ID:", customerId);
+    console.log("Raw Request Body:", req.body);
+    console.log("Uploaded Files Count:", req.files?.length || 0);
 
+    // ---------------- Validate number of horses ----------------
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
+
+    console.log("Parsed numberOfHorses:", numberOfHorses);
+
     if (isNaN(numberOfHorses) || numberOfHorses < 1) {
+      console.error("Invalid numberOfHorses");
       return res.status(400).json({
         success: false,
         message: "Invalid numberOfHorses",
       });
     }
 
+    // ---------------- Extract shipment fields ----------------
     const {
       pickupLocation,
       pickupTimeOption,
@@ -83,24 +93,39 @@ exports.createShipment = async (req, res) => {
       deliveryTimeOption,
       deliveryDate,
       additionalInfo,
+      publish,
     } = req.body;
 
-    // Map files for easy access
+    console.log("Pickup:", pickupLocation, pickupDate);
+    console.log("Delivery:", deliveryLocation, deliveryDate);
+    console.log("Publish Flag:", publish);
+
+    // ---------------- File Mapping ----------------
     const fileMap = {};
-    (req.files || []).forEach((f) => {
-      fileMap[f.fieldname] = f;
+    (req.files || []).forEach((file) => {
+      fileMap[file.fieldname] = file;
+      console.log("File mapped:", file.fieldname);
     });
 
-    const horseData = req.body.horses
-      ? Array.isArray(req.body.horses)
+    // ---------------- Parse Horse Data ----------------
+    let horseData = [];
+
+    if (req.body.horses) {
+      horseData = Array.isArray(req.body.horses)
         ? req.body.horses
-        : JSON.parse(req.body.horses)
-      : [];
+        : JSON.parse(req.body.horses);
+    }
+
+    console.log("Horse Data Count:", horseData.length);
 
     const horses = [];
 
+    // ---------------- Build Horse Objects ----------------
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
+
+      console.log(`Processing Horse #${i + 1}`, h);
+
       const horseObj = {
         registeredName: h.registeredName || "",
         barnName: h.barnName || "",
@@ -115,14 +140,27 @@ exports.createShipment = async (req, res) => {
       const coginsFile = fileMap[`horses[${i}][cogins]`];
       const healthFile = fileMap[`horses[${i}][healthCertificate]`];
 
-      if (photoFile) horseObj.photo = await uploadToCloudinary(photoFile);
-      if (coginsFile) horseObj.cogins = await uploadToCloudinary(coginsFile);
-      if (healthFile)
+      if (photoFile) {
+        console.log(`Uploading photo for horse ${i + 1}`);
+        horseObj.photo = await uploadToCloudinary(photoFile);
+      }
+
+      if (coginsFile) {
+        console.log(`Uploading cogins for horse ${i + 1}`);
+        horseObj.cogins = await uploadToCloudinary(coginsFile);
+      }
+
+      if (healthFile) {
+        console.log(`Uploading health certificate for horse ${i + 1}`);
         horseObj.healthCertificate = await uploadToCloudinary(healthFile);
+      }
 
       horses.push(horseObj);
     }
 
+    console.log("Horses processed successfully");
+
+    // ---------------- Create Shipment ----------------
     const shipment = new CustomerShipment({
       customer: customerId,
       pickupLocation,
@@ -134,64 +172,145 @@ exports.createShipment = async (req, res) => {
       numberOfHorses,
       additionalInfo: additionalInfo || "",
       horses,
+      publish: publish === "true" || publish === true,
       status: "pending",
     });
 
-    await shipment.save();
-    console.log("Shipment saved:", shipment);
+    console.log("Shipment Object Before Save:", shipment);
 
-    // Send push notification if enabled
+    await shipment.save();
+
+    console.log(" Shipment saved successfully");
+    console.log(" Shipment ID:", shipment._id);
+
+    // ---------------- Push Notification ----------------
+    console.log("Checking notification settings...");
+
     const notif = await CustomerNotification.findOne({ user: customerId });
-    if (notif && notif.subscription && notif.settings.shipmentUpdates) {
+
+    if (notif?.subscription && notif?.settings?.shipmentUpdates) {
+      console.log("Sending push notification");
+
       const payload = JSON.stringify({
         title: "Shipment Created",
         body: `Your shipment for ${pickupDate} has been created successfully.`,
         type: "shipment_update",
       });
+
       try {
         await webpush.sendNotification(notif.subscription, payload);
+        console.log("Push notification sent");
       } catch (err) {
+        console.error("Push notification failed", err);
+
         if (err.statusCode === 410 || err.statusCode === 404) {
           notif.subscription = null;
           await notif.save();
-        } else console.error(err);
+          console.log("Cleared invalid subscription");
+        }
       }
     }
 
+    console.log("CREATE SHIPMENT COMPLETED");
+    console.log("================================================");
+
     res.status(201).json({ success: true, shipment });
   } catch (error) {
-    console.error("Error creating shipment:", error);
+    console.error("CREATE SHIPMENT ERROR:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Get Shipments ----------------
+// ---------------- Get Shipments By Customer ----------------
 exports.getShipmentsByCustomer = async (req, res) => {
+  console.log("GET SHIPMENTS BY CUSTOMER");
+  console.log("Customer ID:", req.user._id);
+
   try {
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
     }).sort({ createdAt: -1 });
+
+    console.log("Shipments Found:", shipments.length);
+
     res.status(200).json({ success: true, shipments });
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching shipments:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
+// ---------------- Get Shipment By ID ----------------
 exports.getShipmentById = async (req, res) => {
+  console.log("GET SHIPMENT BY ID");
+  console.log("Shipment ID:", req.params.shipmentId);
+  console.log("Customer ID:", req.user._id);
+
   try {
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
     );
-    if (!shipment)
+
+    if (!shipment) {
+      console.warn("⚠️ Shipment not found");
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
+    }
+
+    console.log("Shipment fetched successfully");
     res.status(200).json({ success: true, shipment });
   } catch (error) {
-    console.error(error);
+    console.error("Error fetching shipment:", error);
     res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+exports.getAvailableShipments = async (req, res) => {
+  try {
+    console.log("Shipper dashboard fetching available shipments");
+
+    const shipments = await CustomerShipment.find({
+      publish: true,
+      status: "pending",
+      shipper: null,
+    })
+      .populate("customer", "name phone")
+      .sort({ publishedAt: -1 });
+
+    console.log("Available shipments:", shipments.length);
+
+    res.status(200).json({
+      success: true,
+      shipments,
+    });
+  } catch (err) {
+    console.error("Error fetching available shipments", err);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+exports.publishShipment = async (req, res) => {
+  try {
+    const shipment = await CustomerShipment.findOne({
+      _id: req.params.shipmentId,
+      customer: req.user._id,
+    });
+
+    if (!shipment) {
+      return res.status(404).json({ message: "Shipment not found" });
+    }
+
+    shipment.publish = true;
+    shipment.status = "open_for_offers";
+    shipment.publishedAt = new Date();
+
+    await shipment.save();
+
+    res.json({ success: true, shipment });
+  } catch (err) {
+    res.status(500).json({ message: "Server error" });
   }
 };
 
@@ -264,29 +383,69 @@ exports.updateShipment = async (req, res) => {
 
 // ---------------- Delete Shipment ----------------
 exports.deleteShipment = async (req, res) => {
+  console.log("Delete shipment request");
+
   try {
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
     );
-    if (!shipment)
+
+    if (!shipment) {
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
-
-    for (const h of shipment.horses) {
-      if (h.photo?.public_id) await deleteFromCloudinary(h.photo.public_id);
-      if (h.cogins?.public_id) await deleteFromCloudinary(h.cogins.public_id);
-      if (h.healthCertificate?.public_id)
-        await deleteFromCloudinary(h.healthCertificate.public_id);
     }
 
-    await shipment.remove();
-    res
-      .status(200)
-      .json({ success: true, message: "Shipment deleted successfully" });
+    // Prevent delete after publish
+    if (shipment.publish === true) {
+      return res.status(400).json({
+        success: false,
+        message: "Published shipment cannot be deleted",
+      });
+    }
+
+    // Prevent delete after moving forward
+    if (shipment.status !== "draft") {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment cannot be deleted at this stage",
+      });
+    }
+
+    console.log("Deleting shipment:", shipment._id);
+
+    // Delete horse files
+    for (const h of shipment.horses) {
+      if (h.photo?.public_id) {
+        console.log("Deleting photo:", h.photo.public_id);
+        await deleteFromCloudinary(h.photo.public_id);
+      }
+
+      if (h.cogins?.public_id) {
+        console.log("Deleting cogins:", h.cogins.public_id);
+        await deleteFromCloudinary(h.cogins.public_id);
+      }
+
+      if (h.healthCertificate?.public_id) {
+        console.log(
+          "Deleting health certificate:",
+          h.healthCertificate.public_id
+        );
+        await deleteFromCloudinary(h.healthCertificate.public_id);
+      }
+    }
+
+    await shipment.deleteOne();
+
+    console.log("Shipment deleted successfully");
+
+    res.status(200).json({
+      success: true,
+      message: "Shipment deleted successfully",
+    });
   } catch (error) {
-    console.error(error);
+    console.error("Delete shipment error:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
