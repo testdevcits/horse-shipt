@@ -75,16 +75,13 @@ exports.getShipmentById = async (req, res) => {
 ========================================================= */
 exports.getAvailableShipments = async (req, res) => {
   try {
-    const today = new Date();
-
     const shipments = await CustomerShipment.find({
       publish: true,
       status: "open_for_offers",
-      shipper: null,
-      pickupDate: { $gte: today },
+      shipper: null, // Not assigned to any shipper yet
     })
-      .populate("customer", "name email")
-      .sort({ pickupDate: 1 });
+      .populate("customer", "name email") // Include customer info
+      .sort({ pickupDate: 1 }); // Optional: sort by pickup date
 
     res.status(200).json({
       success: true,
