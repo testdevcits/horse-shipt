@@ -80,8 +80,8 @@ exports.getAvailableShipments = async (req, res) => {
       status: "open_for_offers",
       shipper: null, // Not assigned to any shipper yet
     })
-      .populate("customer", "name email") // Include customer info
-      .sort({ pickupDate: 1 }); // Optional: sort by pickup date
+      .populate("customer", "name email")
+      .sort({ pickupDate: 1 });
 
     res.status(200).json({
       success: true,
