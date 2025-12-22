@@ -37,7 +37,6 @@ const locationSchema = new mongoose.Schema({
 // ---------------- Shipment Schema ----------------
 const shipmentSchema = new mongoose.Schema(
   {
-    // ================= CUSTOMER & SHIPPER =================
     customer: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
@@ -50,10 +49,9 @@ const shipmentSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ================= VISIBILITY CONTROL =================
     publish: {
       type: Boolean,
-      default: false, // true => visible to all shippers
+      default: false,
     },
 
     publishedAt: {
@@ -61,7 +59,6 @@ const shipmentSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ================= SHIPMENT STATUS =================
     status: {
       type: String,
       enum: [
@@ -71,82 +68,48 @@ const shipmentSchema = new mongoose.Schema(
         "in_transit",
         "delivered",
         "cancelled",
-        "open_for_offers", // <--- add this
+        "open_for_offers",
       ],
       default: "pending",
     },
 
-    // ================= PICKUP INFO =================
     pickupLocation: { type: String, required: true },
     pickupTimeOption: { type: String, required: true },
     pickupDate: { type: Date, required: true },
 
-    // ================= DELIVERY INFO =================
     deliveryLocation: { type: String, required: true },
     deliveryTimeOption: { type: String, required: true },
     deliveryDate: { type: Date, required: true },
 
-    // ================= HORSES =================
-    numberOfHorses: {
-      type: Number,
-      required: true,
-      min: 1,
-    },
+    numberOfHorses: { type: Number, required: true, min: 1 },
 
     horses: [horseSchema],
 
-    // ================= EXTRA INFO =================
     additionalInfo: { type: String, default: "" },
 
-    // ================= LIVE TRACKING =================
-    currentLocation: {
-      type: locationSchema,
-      default: null,
-    },
+    currentLocation: { type: locationSchema, default: null },
 
-    locationHistory: {
-      type: [locationSchema],
-      default: [],
-    },
+    locationHistory: { type: [locationSchema], default: [] },
   },
   { timestamps: true }
 );
 
 // ---------------- INDEXES ----------------
-
-// Prevent a shipper from accepting multiple shipments on same pickup date
 shipmentSchema.index(
   { shipper: 1, pickupDate: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      shipper: { $type: "objectId" },
-    },
-  }
+  { unique: true, partialFilterExpression: { shipper: { $type: "objectId" } } }
 );
 
-// Optimize shipper marketplace queries
 shipmentSchema.index({ publish: 1, status: 1 });
 
 // ---------------- PRE-SAVE HOOK ----------------
 shipmentSchema.pre("save", function (next) {
   try {
-    // Automatically set publishedAt when publishing
-    if (this.publish && !this.publishedAt) {
+    if (this.isModified("publish") && this.publish && !this.publishedAt) {
       this.publishedAt = new Date();
     }
-
-    // Safe logging
-    if (this.customer) {
-      console.log("Saving shipment for customer:", this.customer.toString());
-    } else {
-      console.warn("Shipment saved without a customer ID!");
-    }
-
-    console.log("Published:", this.publish);
     next();
   } catch (err) {
-    console.error("Error in shipment pre-save hook:", err);
     next(err);
   }
 });

@@ -49,12 +49,10 @@ exports.getShipmentById = async (req, res) => {
     });
 
     if (!shipperShipment) {
-      return res
-        .status(404)
-        .json({
-          success: false,
-          message: "Shipment not found or not assigned",
-        });
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found or not assigned",
+      });
     }
 
     res.status(200).json({ success: true, shipment: shipperShipment });
@@ -69,18 +67,25 @@ exports.getShipmentById = async (req, res) => {
 ========================================================= */
 exports.getAvailableShipments = async (req, res) => {
   try {
+    console.log("Fetching all available published shipments for shippers...");
+
     const shipments = await CustomerShipment.find({
-      publish: true,
-      status: "open_for_offers",
-      shipper: null,
+      publish: true, // Only published shipments
+      status: "open_for_offers", // Only shipments open for offers
+      shipper: null, // Not yet assigned
     })
-      .populate("customer", "name email phone")
-      .sort({ pickupDate: 1 });
+      .populate("customer", "name email phone") // Include customer info
+      .sort({ pickupDate: 1 }); // Sort by pickup date ascending
+
+    console.log(`Found ${shipments.length} available shipments.`);
 
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
 
@@ -105,22 +110,18 @@ exports.acceptShipment = async (req, res) => {
         .json({ success: false, message: "Shipment not found" });
 
     if (customerShipment.status !== "open_for_offers") {
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Shipment is not available for offers",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Shipment is not available for offers",
+      });
     }
 
     const existing = await ShipperShipment.findOne({ shipment: shipmentId });
     if (existing)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Shipment already accepted by another shipper",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already accepted by another shipper",
+      });
 
     const shipperShipment = await ShipperShipment.create({
       shipper: shipperId,
@@ -141,13 +142,11 @@ exports.acceptShipment = async (req, res) => {
         await shipperSmsSend(shipperId, msg);
     }
 
-    res
-      .status(200)
-      .json({
-        success: true,
-        message: "Shipment accepted successfully",
-        shipperShipment,
-      });
+    res.status(200).json({
+      success: true,
+      message: "Shipment accepted successfully",
+      shipperShipment,
+    });
   } catch (err) {
     console.error("[ACCEPT SHIPMENT] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
