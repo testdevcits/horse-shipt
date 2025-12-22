@@ -1,40 +1,56 @@
+const mongoose = require("mongoose");
 const ShipperShipment = require("../../models/shipper/ShipperShipment");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const shipperMailSend = require("../../utils/shipperMailSend");
 const shipperSmsSend = require("../../utils/shipperSmsSend");
 
-// ---------------- Get All Shipments Assigned to Shipper ----------------
+/* =========================================================
+   GET ALL ASSIGNED SHIPMENTS (FOR SHIPPER DASHBOARD)
+========================================================= */
 exports.getAssignedShipments = async (req, res) => {
   try {
     const shipperId = req.user._id;
 
     const shipments = await ShipperShipment.find({ shipper: shipperId })
-      .populate("shipment")
+      .populate({
+        path: "shipment",
+        populate: { path: "customer", select: "name email" },
+      })
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, shipments });
+    res.status(200).json({
+      success: true,
+      shipments,
+    });
   } catch (err) {
     console.error("[GET ASSIGNED SHIPMENTS] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Get Shipment by ID (Assigned to this Shipper) ----------------
+/* =========================================================
+   GET SINGLE ASSIGNED SHIPMENT BY ID
+========================================================= */
 exports.getShipmentById = async (req, res) => {
   try {
     const shipperId = req.user._id;
     const { shipmentId } = req.params;
+
+    // Prevent CastError
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipment ID",
+      });
+    }
 
     const shipperShipment = await ShipperShipment.findOne({
       _id: shipmentId,
       shipper: shipperId,
     }).populate({
       path: "shipment",
-      populate: {
-        path: "customer",
-        select: "name email",
-      },
+      populate: { path: "customer", select: "name email" },
     });
 
     if (!shipperShipment) {
@@ -50,14 +66,13 @@ exports.getShipmentById = async (req, res) => {
     });
   } catch (err) {
     console.error("[GET SHIPMENT BY ID] Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Get Available Shipments (Marketplace) ----------------
+/* =========================================================
+   GET AVAILABLE SHIPMENTS (MARKETPLACE)
+========================================================= */
 exports.getAvailableShipments = async (req, res) => {
   try {
     const today = new Date();
@@ -77,80 +92,70 @@ exports.getAvailableShipments = async (req, res) => {
     });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
-// ---------------- Accept Shipment ----------------
+/* =========================================================
+   ACCEPT SHIPMENT
+========================================================= */
 exports.acceptShipment = async (req, res) => {
   try {
     const shipperId = req.user._id;
     const { shipmentId } = req.params;
 
-    const customerShipment = await CustomerShipment.findById(shipmentId);
-    if (!customerShipment)
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
-
-    if (customerShipment.status !== "pending")
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
       return res.status(400).json({
         success: false,
-        message: "Shipment already assigned or completed",
-      });
-
-    // Check if shipment already assigned
-    const existingAssignment = await ShipperShipment.findOne({
-      shipment: shipmentId,
-    });
-    if (existingAssignment)
-      return res.status(400).json({
-        success: false,
-        message: "Shipment is already accepted by another shipper",
-      });
-
-    // Check if shipper already has shipment on same pickup date
-    const conflictingShipment = await ShipperShipment.findOne({
-      shipper: shipperId,
-    }).populate("shipment");
-    if (
-      conflictingShipment &&
-      conflictingShipment.shipment.pickupDate === customerShipment.pickupDate
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "You already have a shipment on this pickup date",
+        message: "Invalid shipment ID",
       });
     }
 
-    // Assign shipment to shipper
-    const shipperShipment = new ShipperShipment({
+    const customerShipment = await CustomerShipment.findById(shipmentId);
+    if (!customerShipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    // ✅ FIXED STATUS CHECK
+    if (customerShipment.status !== "open_for_offers") {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment is not available for offers",
+      });
+    }
+
+    // Already accepted?
+    const existing = await ShipperShipment.findOne({ shipment: shipmentId });
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already accepted by another shipper",
+      });
+    }
+
+    // Create shipper shipment
+    const shipperShipment = await ShipperShipment.create({
       shipper: shipperId,
       shipment: shipmentId,
       status: "assigned",
-      currentLocation: null,
-      locationHistory: [],
     });
-    await shipperShipment.save();
 
-    // Update customer shipment status
+    // Update customer shipment
     customerShipment.status = "assigned";
+    customerShipment.shipper = shipperId;
     await customerShipment.save();
 
-    // ---------------- Send Dynamic Notifications ----------------
+    /* -------- Notifications -------- */
     const settings = await ShipperSettings.findOne({ shipperId });
-
-    if (settings && settings.notifications?.shipment) {
-      const { email, sms } = settings.notifications.shipment;
-
-      const subject = "New Shipment Assigned";
-      const message = `You have been assigned a new shipment.\nPickup: ${customerShipment.pickupLocation}\nDrop: ${customerShipment.dropLocation}`;
-
-      if (email) await shipperMailSend(shipperId, subject, message);
-      if (sms) await shipperSmsSend(shipperId, message);
+    if (settings?.notifications?.shipment) {
+      const msg = `New shipment assigned.\nPickup: ${customerShipment.pickupLocation}\nDelivery: ${customerShipment.deliveryLocation}`;
+      if (settings.notifications.shipment.email)
+        await shipperMailSend(shipperId, "Shipment Assigned", msg);
+      if (settings.notifications.shipment.sms)
+        await shipperSmsSend(shipperId, msg);
     }
 
     res.status(200).json({
@@ -164,82 +169,48 @@ exports.acceptShipment = async (req, res) => {
   }
 };
 
-// ---------------- Update Shipment Status ----------------
+/* =========================================================
+   UPDATE SHIPMENT STATUS
+========================================================= */
 exports.updateShipmentStatus = async (req, res) => {
   try {
     const shipperId = req.user._id;
     const { shipmentId } = req.params;
     const { status } = req.body;
 
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid shipment ID",
+      });
+    }
+
     const shipperShipment = await ShipperShipment.findOne({
       _id: shipmentId,
       shipper: shipperId,
     });
 
-    if (!shipperShipment)
+    if (!shipperShipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found or not assigned",
+        message: "Shipment not found",
       });
+    }
 
     shipperShipment.status = status;
     await shipperShipment.save();
 
-    // Update customer shipment accordingly
     const customerShipment = await CustomerShipment.findById(
       shipperShipment.shipment
     );
     if (customerShipment) {
-      customerShipment.status = status === "picked_up" ? "in_transit" : status;
+      customerShipment.status = status;
       await customerShipment.save();
     }
 
     res.status(200).json({ success: true, shipment: shipperShipment });
   } catch (err) {
     console.error("[UPDATE SHIPMENT STATUS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-};
-
-// ---------------- Update Shipment Live Location ----------------
-exports.updateShipmentLocationByShipper = async (req, res) => {
-  try {
-    const shipperId = req.user._id;
-    const { shipmentId } = req.params;
-    const { latitude, longitude } = req.body;
-
-    const shipperShipment = await ShipperShipment.findOne({
-      _id: shipmentId,
-      shipper: shipperId,
-    });
-
-    if (!shipperShipment)
-      return res.status(404).json({
-        success: false,
-        message: "Shipment not found or not assigned",
-      });
-
-    const newLocation = { latitude, longitude, updatedAt: new Date() };
-    shipperShipment.currentLocation = newLocation;
-    shipperShipment.locationHistory.push(newLocation);
-    await shipperShipment.save();
-
-    // Also update customer shipment location
-    const customerShipment = await CustomerShipment.findById(
-      shipperShipment.shipment
-    );
-    if (customerShipment) {
-      customerShipment.currentLocation = newLocation;
-      customerShipment.locationHistory.push(newLocation);
-      await customerShipment.save();
-    }
-
-    res.status(200).json({
-      success: true,
-      currentLocation: shipperShipment.currentLocation,
-    });
-  } catch (err) {
-    console.error("[UPDATE SHIPMENT LOCATION] Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

@@ -14,7 +14,6 @@ const {
   getAssignedShipments,
   getShipmentById,
   updateShipmentStatus,
-  updateShipmentLocationByShipper,
   getAvailableShipments, // Pending shipments for self-assignment
   acceptShipment, // Assign shipment to shipper
 } = require("../../controllers/shipper/shipperShipmentController");
@@ -113,13 +112,6 @@ router.patch(
   "/shipments/:shipmentId/status",
   shipperAuth,
   updateShipmentStatus
-);
-
-// Update shipment live location
-router.patch(
-  "/shipments/:shipmentId/location",
-  shipperAuth,
-  updateShipmentLocationByShipper
 );
 
 // ====================================================
