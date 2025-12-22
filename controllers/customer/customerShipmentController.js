@@ -2,6 +2,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 const cloudinary = require("../../utils/cloudinary");
 const webpush = require("web-push");
+const mongoose = require("mongoose");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, folder = "shipments") => {
