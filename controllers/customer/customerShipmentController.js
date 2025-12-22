@@ -293,8 +293,21 @@ exports.getAvailableShipments = async (req, res) => {
 
 exports.publishShipment = async (req, res) => {
   try {
+    //  Ensure user is authenticated
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const { shipmentId } = req.params;
+
+    //  Validate shipmentId
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
+      return res.status(400).json({ message: "Invalid shipment ID" });
+    }
+
+    //  Find shipment for this user
     const shipment = await CustomerShipment.findOne({
-      _id: req.params.shipmentId,
+      _id: shipmentId,
       customer: req.user._id,
     });
 
@@ -302,15 +315,23 @@ exports.publishShipment = async (req, res) => {
       return res.status(404).json({ message: "Shipment not found" });
     }
 
+    //  Update shipment fields
     shipment.publish = true;
     shipment.status = "open_for_offers";
     shipment.publishedAt = new Date();
 
-    await shipment.save();
+    //  Save shipment
+    const savedShipment = await shipment.save();
 
-    res.json({ success: true, shipment });
+    console.log(
+      `Shipment ${savedShipment._id} published by customer ${req.user._id}`
+    );
+
+    //  Return success response
+    res.json({ success: true, shipment: savedShipment });
   } catch (err) {
-    res.status(500).json({ message: "Server error" });
+    console.error("Publish shipment error:", err);
+    res.status(500).json({ message: err.message || "Server error" });
   }
 };
 

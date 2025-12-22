@@ -129,13 +129,25 @@ shipmentSchema.index({ publish: 1, status: 1 });
 
 // ---------------- PRE-SAVE HOOK ----------------
 shipmentSchema.pre("save", function (next) {
-  if (this.publish && !this.publishedAt) {
-    this.publishedAt = new Date();
-  }
+  try {
+    // Automatically set publishedAt when publishing
+    if (this.publish && !this.publishedAt) {
+      this.publishedAt = new Date();
+    }
 
-  console.log("Saving shipment for customer:", this.customer.toString());
-  console.log("Published:", this.publish);
-  next();
+    // Safe logging
+    if (this.customer) {
+      console.log("Saving shipment for customer:", this.customer.toString());
+    } else {
+      console.warn("Shipment saved without a customer ID!");
+    }
+
+    console.log("Published:", this.publish);
+    next();
+  } catch (err) {
+    console.error("Error in shipment pre-save hook:", err);
+    next(err);
+  }
 });
 
 module.exports = mongoose.model("CustomerShipment", shipmentSchema);
