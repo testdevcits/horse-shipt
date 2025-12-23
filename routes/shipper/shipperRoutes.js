@@ -85,13 +85,15 @@ router.put(
 // ====================================================
 
 router.get("/shipments", shipperAuth, getAssignedShipments);
+
+router.get("/shipments/available", shipperAuth, getAvailableShipments);
 router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
 router.patch(
   "/shipments/:shipmentId/status",
   shipperAuth,
   updateShipmentStatus
 );
-router.get("/shipments/available", shipperAuth, getAvailableShipments);
+
 router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 
 // ====================================================
