@@ -105,7 +105,7 @@ const {
 router.get("/shipments", shipperAuth, getAssignedShipments);
 
 // Get a shipment by ID (only if assigned to this shipper)
-router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
+// router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
 
 // Update shipment status (pending → picked-up → delivered)
 router.patch(
