@@ -1,12 +1,6 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 
-/**
- * Send email to a shipper by ID
- * @param {ObjectId} shipperId - Shipper's MongoDB ID
- * @param {string} subject - Email subject
- * @param {string} text - Email body text
- */
 const sendShipperEmail = async (shipperId, subject, text) => {
   try {
     const shipper = await Shipper.findById(shipperId);
@@ -18,14 +12,6 @@ const sendShipperEmail = async (shipperId, subject, text) => {
       return;
     }
 
-    console.log(`[SHIPPER MAIL DEBUG] Preparing to send email`);
-    console.log(`[SHIPPER MAIL DEBUG] Shipper ID: ${shipperId}`);
-    console.log(`[SHIPPER MAIL DEBUG] Shipper Email: ${shipper.email}`);
-    console.log(`[SHIPPER MAIL DEBUG] Subject: ${subject}`);
-    console.log(`[SHIPPER MAIL DEBUG] Text: ${text}`);
-    console.log(`[SHIPPER MAIL DEBUG] SMTP Host: ${process.env.SMTP_HOST}`);
-    console.log(`[SHIPPER MAIL DEBUG] SMTP User: ${process.env.SMTP_USER}`);
-
     const transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: Number(process.env.SMTP_PORT) || 587,
@@ -36,9 +22,7 @@ const sendShipperEmail = async (shipperId, subject, text) => {
       },
     });
 
-    // Optional: Verify connection before sending
     await transporter.verify();
-    console.log(`[SHIPPER MAIL DEBUG] SMTP transporter verified`);
 
     const info = await transporter.sendMail({
       from: `"HorseShipt" <${process.env.SMTP_USER}>`,
@@ -47,9 +31,9 @@ const sendShipperEmail = async (shipperId, subject, text) => {
       text,
     });
 
-    console.log(`[SHIPPER MAIL DEBUG] Email sent successfully`);
-    console.log(`[SHIPPER MAIL DEBUG] Message ID: ${info.messageId}`);
-    console.log(`[SHIPPER MAIL DEBUG] Response: ${info.response}`);
+    console.log(
+      `[SHIPPER MAIL DEBUG] Email sent successfully: ${info.messageId}`
+    );
   } catch (error) {
     console.error(
       `[SHIPPER MAIL ERROR] Error sending email to shipper ID: ${shipperId}`,

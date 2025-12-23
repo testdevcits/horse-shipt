@@ -13,24 +13,32 @@ const shipperSmsSend = async (shipperId, message) => {
     const shipper = await Shipper.findById(shipperId);
 
     if (!shipper) {
-      console.warn("Shipper not found:", shipperId);
+      console.warn(`[SHIPPER SMS DEBUG] Shipper not found: ${shipperId}`);
       return;
     }
 
     if (!shipper.phone || !shipper.phone.startsWith("+")) {
-      console.warn(`Invalid phone number for shipper: ${shipper._id}`);
+      console.warn(
+        `[SHIPPER SMS DEBUG] Invalid phone number for shipper: ${shipper._id}`
+      );
       return;
     }
 
-    await client.messages.create({
+    console.log(`[SHIPPER SMS DEBUG] Sending SMS to: ${shipper.phone}`);
+    console.log(`[SHIPPER SMS DEBUG] Message: ${message}`);
+
+    const sms = await client.messages.create({
       from: process.env.TWILIO_PHONE,
       to: shipper.phone,
       body: message,
     });
 
-    console.log(`SMS sent to ${shipper.phone}`);
+    console.log(`[SHIPPER SMS DEBUG] SMS sent successfully. SID: ${sms.sid}`);
   } catch (error) {
-    console.error("Error sending shipper SMS:", error);
+    console.error(
+      `[SHIPPER SMS ERROR] Error sending SMS to shipper ID: ${shipperId}`,
+      error
+    );
   }
 };
 
