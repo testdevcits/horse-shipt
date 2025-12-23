@@ -1,8 +1,8 @@
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
-const { sendQuoteEmail } = require("../../utils/sendQuoteEmail"); // updated import
-const shipperSmsSend = require("../../utils/shipperSmsSend");
+const { sendQuoteEmail } = require("../../utils/sendQuoteEmail"); // new email utility
+const { sendQuoteSms } = require("../../utils/sendQuoteSms"); // new SMS utility
 const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
 
 // ====================================================
@@ -102,7 +102,7 @@ exports.addQuote = async (req, res) => {
     }
 
     if (canSMS) {
-      await shipperSmsSend(
+      await sendQuoteSms(
         shipperId,
         `Quote sent successfully for shipment ${shipment}.`
       );
@@ -240,7 +240,7 @@ exports.acceptQuote = async (req, res) => {
     }
 
     if (canSMS) {
-      await shipperSmsSend(
+      await sendQuoteSms(
         quote.shipper,
         `Your quote for shipment ${quote.shipment} was accepted.`
       );
