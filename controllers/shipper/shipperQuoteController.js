@@ -10,18 +10,9 @@ const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
 // ====================================================
 
 // ---------------- ADD QUOTE (SHIPPER) ----------------
-// ---------------- ADD QUOTE (SHIPPER) ----------------
 exports.addQuote = async (req, res) => {
-  console.log("====================================");
-  console.log("ADD QUOTE API HIT");
-  console.log("Time:", new Date().toISOString());
-  console.log("User:", req.user?._id);
-  console.log("Request Body:", req.body);
-  console.log("====================================");
-
   try {
     const shipperId = req.user._id;
-
     const {
       shipment,
       totalPrice,
@@ -37,7 +28,6 @@ exports.addQuote = async (req, res) => {
     } = req.body;
 
     // -------- VALIDATION --------
-    console.log("Validating request fields...");
     if (
       !shipment ||
       !totalPrice ||
@@ -48,51 +38,34 @@ exports.addQuote = async (req, res) => {
       !transportType ||
       !stallsRequired
     ) {
-      console.warn("Validation failed");
-
       return res.status(400).json({
         success: false,
         message: "All required fields must be provided",
       });
     }
 
-    console.log("Validation passed");
-
     // -------- CHECK SHIPMENT --------
-    console.log("Checking if shipment exists:", shipment);
     const shipmentExists = await CustomerShipment.findById(shipment);
-
     if (!shipmentExists) {
-      console.warn("Shipment not found");
-
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
 
-    console.log("Shipment found");
-
     // -------- PREVENT DUPLICATE QUOTE --------
-    console.log("Checking for duplicate quote...");
     const alreadyQuoted = await ShipmentQuote.findOne({
       shipment,
       shipper: shipperId,
     });
-
     if (alreadyQuoted) {
-      console.warn("Duplicate quote detected");
-
       return res.status(400).json({
         success: false,
         message: "You have already sent a quote for this shipment",
       });
     }
 
-    console.log("No duplicate quote found");
-
     // -------- CREATE QUOTE --------
-    console.log("Creating quote...");
     const quote = await ShipmentQuote.create({
       shipment,
       shipper: shipperId,
@@ -111,42 +84,29 @@ exports.addQuote = async (req, res) => {
       contractFile: null,
     });
 
-    console.log("Quote created successfully", quote._id);
-
     // -------- NOTIFICATIONS --------
-    console.log("Fetching shipper notification settings...");
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
-
     if (!shipperSettings) {
-      console.log("Shipper settings not found, creating default...");
       shipperSettings = await ShipperSettings.create({ shipperId });
     }
 
     const canEmail = shipperSettings?.notifications?.quote?.email ?? true;
     const canSMS = shipperSettings?.notifications?.quote?.sms ?? true;
 
-    console.log("Notification preferences:", { canEmail, canSMS });
-
     if (canEmail) {
-      console.log("Sending email notification...");
       await shipperMailSend(
         shipperId,
         "Quote Sent Successfully",
         `Your quote for shipment ${shipment} has been sent successfully.`
       );
-      console.log("Email sent");
     }
 
     if (canSMS) {
-      console.log("Sending SMS notification...");
       await shipperSmsSend(
         shipperId,
         `Quote sent successfully for shipment ${shipment}.`
       );
-      console.log("SMS sent");
     }
-
-    console.log("ADD QUOTE COMPLETED SUCCESSFULLY");
 
     return res.status(201).json({
       success: true,
@@ -154,9 +114,7 @@ exports.addQuote = async (req, res) => {
       quote,
     });
   } catch (err) {
-    console.error("[ADD QUOTE ERROR]");
-    console.error(err);
-
+    console.error("[ADD QUOTE ERROR]:", err);
     return res.status(500).json({
       success: false,
       message: "Failed to send quote",
@@ -169,7 +127,6 @@ exports.addQuote = async (req, res) => {
 exports.getMyQuotes = async (req, res) => {
   try {
     const shipperId = req.user._id;
-
     const quotes = await ShipmentQuote.find({ shipper: shipperId })
       .populate(
         "shipment",
@@ -200,7 +157,6 @@ exports.getMyQuotes = async (req, res) => {
 exports.getQuotesByShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
       .sort({ createdAt: -1 });
@@ -225,7 +181,7 @@ exports.acceptQuote = async (req, res) => {
   try {
     const { quoteId } = req.params;
     const contractFile = req.file; // File uploaded using multer
-    const { acceptedTerms } = req.body; // Boolean: customer accepts terms
+    const { acceptedTerms } = req.body;
 
     if (!contractFile || !acceptedTerms) {
       return res.status(400).json({
@@ -245,7 +201,7 @@ exports.acceptQuote = async (req, res) => {
 
     // ---------------- UPLOAD CONTRACT TO CLOUDINARY ----------------
     const uploadedFile = await cloudinary.uploader.upload(contractFile.path, {
-      resource_type: "raw", // PDF
+      resource_type: "raw",
       folder: "contracts",
     });
 
@@ -267,10 +223,11 @@ exports.acceptQuote = async (req, res) => {
       contractPdf: uploadedFile.secure_url,
     });
 
-    // Notify shipper
+    // -------- NOTIFICATIONS BASED ON SETTINGS --------
     const shipperSettings = await ShipperSettings.findOne({
       shipperId: quote.shipper,
     });
+
     const canEmail = shipperSettings?.notifications?.shipment?.email ?? true;
     const canSMS = shipperSettings?.notifications?.shipment?.sms ?? true;
 
@@ -281,6 +238,7 @@ exports.acceptQuote = async (req, res) => {
         `Your quote for shipment ${quote.shipment} has been accepted.`
       );
     }
+
     if (canSMS) {
       await shipperSmsSend(
         quote.shipper,

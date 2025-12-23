@@ -5,19 +5,20 @@ const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 
 /**
  * Send SMS to a shipper using Twilio
- * @param {ObjectId} shipperId - Shipper's MongoDB ID
- * @param {String} message - Message body
+ * @param {ObjectId} shipperId - Shipper MongoDB ID
+ * @param {String} message - SMS body
  */
-const sendShipperSms = async (shipperId, message) => {
+const shipperSmsSend = async (shipperId, message) => {
   try {
     const shipper = await Shipper.findById(shipperId);
+
     if (!shipper) {
       console.warn("Shipper not found:", shipperId);
       return;
     }
 
     if (!shipper.phone || !shipper.phone.startsWith("+")) {
-      console.warn(`Invalid or missing phone for shipper: ${shipper._id}`);
+      console.warn(`Invalid phone number for shipper: ${shipper._id}`);
       return;
     }
 
@@ -27,10 +28,10 @@ const sendShipperSms = async (shipperId, message) => {
       body: message,
     });
 
-    console.log(`SMS sent successfully to ${shipper.phone}`);
+    console.log(`SMS sent to ${shipper.phone}`);
   } catch (error) {
-    console.error("Error sending shipper SMS:", error.message);
+    console.error("Error sending shipper SMS:", error);
   }
 };
 
-module.exports = { sendShipperSms };
+module.exports = shipperSmsSend;
