@@ -31,34 +31,26 @@ exports.getAssignedShipments = async (req, res) => {
 ========================================================= */
 exports.getShipmentById = async (req, res) => {
   try {
-    const shipperId = req.user._id;
     const { shipmentId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid shipment ID" });
-    }
+    const shipment = await CustomerShipment.findById(shipmentId).populate(
+      "customer",
+      "name email phone"
+    );
 
-    const shipperShipment = await ShipperShipment.findOne({
-      _id: shipmentId,
-      shipper: shipperId,
-    }).populate({
-      path: "shipment",
-      populate: { path: "customer", select: "name email phone" },
-    });
-
-    if (!shipperShipment) {
+    if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found or not assigned",
+        message: "Shipment not found",
       });
     }
 
-    res.status(200).json({ success: true, shipment: shipperShipment });
-  } catch (err) {
-    console.error("[GET SHIPMENT BY ID] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(200).json({ success: true, shipment });
+  } catch (error) {
+    res.status(400).json({
+      success: false,
+      message: "Invalid shipment ID",
+    });
   }
 };
 

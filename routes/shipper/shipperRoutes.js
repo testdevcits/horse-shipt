@@ -120,6 +120,7 @@ router.patch(
 
 // Get all pending shipments available for assignment
 router.get("/shipments/available", shipperAuth, getAvailableShipments);
+router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
 
 // Accept a shipment (only one per date rule enforced)
 router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
