@@ -61,7 +61,7 @@ const quoteSchema = new mongoose.Schema(
     // ================= TRANSPORT DETAILS =================
     transportType: {
       type: String,
-      enum: ["trailer", "truck"],
+      enum: ["trailer", "truck", "Trucking"],
       required: true,
     },
 
