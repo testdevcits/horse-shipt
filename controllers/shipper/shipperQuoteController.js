@@ -94,7 +94,7 @@ exports.addQuote = async (req, res) => {
     const canSMS = shipperSettings?.notifications?.quote?.sms ?? true;
 
     if (canEmail) {
-      await shipperMailSend(
+      await sendShipperEmail(
         shipperId,
         "Quote Sent Successfully",
         `Your quote for shipment ${shipment} has been sent successfully.`

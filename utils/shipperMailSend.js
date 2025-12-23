@@ -3,8 +3,11 @@ const Shipper = require("../models/shipper/shipperModel");
 
 /**
  * Send email to a shipper by ID
+ * @param {ObjectId} shipperId - Shipper's MongoDB ID
+ * @param {string} subject - Email subject
+ * @param {string} text - Email body text
  */
-const shipperMailSend = async (shipperId, subject, text) => {
+const sendShipperEmail = async (shipperId, subject, text) => {
   try {
     const shipper = await Shipper.findById(shipperId);
 
@@ -33,6 +36,10 @@ const shipperMailSend = async (shipperId, subject, text) => {
       },
     });
 
+    // Optional: Verify connection before sending
+    await transporter.verify();
+    console.log(`[SHIPPER MAIL DEBUG] SMTP transporter verified`);
+
     const info = await transporter.sendMail({
       from: `"HorseShipt" <${process.env.SMTP_USER}>`,
       to: shipper.email,
@@ -51,4 +58,4 @@ const shipperMailSend = async (shipperId, subject, text) => {
   }
 };
 
-module.exports = shipperMailSend;
+module.exports = { sendShipperEmail };
