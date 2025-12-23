@@ -1,26 +1,44 @@
-const Quote = require("../../models/QuoteModel");
-const Shipment = require("../../models/shipper/shipperModel");
+const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
+const CustomerShipment = require("../../models/customer/CustomerShipment");
 
-// ---------------- Add Quote (for Shipper) ----------------
+// ====================================================
+// ADD QUOTE (SHIPPER)
+// ====================================================
 exports.addQuote = async (req, res) => {
   try {
     const { shipmentId, price, message, estimatedDeliveryDays } = req.body;
     const shipperId = req.user._id;
 
-    if (!shipmentId || !price)
+    if (!shipmentId || !price) {
       return res.status(400).json({
         success: false,
         message: "Shipment ID and price are required",
       });
+    }
 
-    const existingQuote = await Quote.findOne({ shipmentId, shipperId });
-    if (existingQuote)
+    // Check shipment exists
+    const shipment = await CustomerShipment.findById(shipmentId);
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    // Prevent duplicate quote
+    const alreadyQuoted = await CustomerQuote.findOne({
+      shipmentId,
+      shipperId,
+    });
+
+    if (alreadyQuoted) {
       return res.status(400).json({
         success: false,
         message: "You already sent a quote for this shipment",
       });
+    }
 
-    const quote = await Quote.create({
+    const quote = await CustomerQuote.create({
       shipmentId,
       shipperId,
       price,
@@ -29,70 +47,115 @@ exports.addQuote = async (req, res) => {
       status: "pending",
     });
 
-    res.status(201).json({ success: true, quote });
+    res.status(201).json({
+      success: true,
+      message: "Quote sent successfully",
+      quote,
+    });
   } catch (err) {
     console.error("Add Quote Error:", err);
-    res.status(500).json({ success: false, message: "Failed to send quote" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to send quote",
+      error: err.message,
+    });
   }
 };
 
-// ---------------- Get My Quotes (for Shipper) ----------------
+// ====================================================
+// GET MY QUOTES (SHIPPER)
+// ====================================================
 exports.getMyQuotes = async (req, res) => {
   try {
     const shipperId = req.user._id;
-    const quotes = await Quote.find({ shipperId }).populate("shipmentId");
-    res.status(200).json({ success: true, quotes });
+
+    const quotes = await CustomerQuote.find({ shipperId })
+      .populate(
+        "shipmentId",
+        "pickupLocation dropoffLocation status pickupDate"
+      )
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      quotes,
+    });
   } catch (err) {
     console.error("Get My Quotes Error:", err);
-    res.status(500).json({ success: false, message: "Failed to fetch quotes" });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch quotes",
+    });
   }
 };
 
-// ---------------- Get Quotes for My Shipment (for Customer) ----------------
+// ====================================================
+// GET QUOTES FOR A SHIPMENT (CUSTOMER)
+// ====================================================
 exports.getQuotesByShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-    const quotes = await Quote.find({ shipmentId })
-      .populate("shipperId", "name email phone")
+
+    const quotes = await CustomerQuote.find({ shipmentId })
+      .populate("shipperId", "name email phone companyName")
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, quotes });
+    res.status(200).json({
+      success: true,
+      quotes,
+    });
   } catch (err) {
     console.error("Get Quotes Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch quotes",
+    });
   }
 };
 
-// ---------------- Accept a Quote (for Customer) ----------------
+// ====================================================
+// ACCEPT QUOTE (CUSTOMER)
+// ====================================================
 exports.acceptQuote = async (req, res) => {
   try {
     const { quoteId } = req.params;
 
-    const quote = await Quote.findById(quoteId);
-    if (!quote)
-      return res
-        .status(404)
-        .json({ success: false, message: "Quote not found" });
+    const quote = await CustomerQuote.findById(quoteId);
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found",
+      });
+    }
 
-    // Mark accepted quote
+    // Accept selected quote
     quote.status = "accepted";
     await quote.save();
 
     // Reject other quotes for same shipment
-    await Quote.updateMany(
-      { shipmentId: quote.shipmentId, _id: { $ne: quote._id } },
+    await CustomerQuote.updateMany(
+      {
+        shipmentId: quote.shipmentId,
+        _id: { $ne: quote._id },
+      },
       { status: "rejected" }
     );
 
-    // Update Shipment
-    await Shipment.findByIdAndUpdate(quote.shipmentId, {
-      status: "accepted",
+    // Assign shipment to shipper
+    await CustomerShipment.findByIdAndUpdate(quote.shipmentId, {
+      status: "assigned",
       assignedShipper: quote.shipperId,
     });
 
-    res.json({ success: true, message: "Quote accepted successfully" });
+    res.status(200).json({
+      success: true,
+      message: "Quote accepted successfully",
+    });
   } catch (err) {
     console.error("Accept Quote Error:", err);
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to accept quote",
+    });
   }
 };

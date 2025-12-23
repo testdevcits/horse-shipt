@@ -1,68 +1,63 @@
 const express = require("express");
 const router = express.Router();
-const upload = require("../../middleware/uploadMiddleware");
+const path = require("path");
 
 // ---------------- Middleware ----------------
 const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
+const upload = require("../../middleware/uploadMiddleware");
 
 // ---------------- Controllers ----------------
 const {
   updateProfile,
 } = require("../../controllers/shipper/shipperController");
-
 const {
   getAssignedShipments,
   getShipmentById,
   updateShipmentStatus,
-  getAvailableShipments, // Pending shipments for self-assignment
-  acceptShipment, // Assign shipment to shipper
+  getAvailableShipments,
+  acceptShipment,
 } = require("../../controllers/shipper/shipperShipmentController");
 
-// ---------------- Quote Controller ----------------
 const {
   addQuote,
   getMyQuotes,
+  getQuotesByShipment,
+  acceptQuote,
 } = require("../../controllers/shipper/shipperQuoteController");
 
-// ---------------- Message Controller ----------------
 const {
   sendMessage,
   getMessages,
 } = require("../../controllers/shipper/shipmentMessageController");
-
-// ---------------- Vehicle Controller ----------------
 const {
   addVehicle,
   getMyVehicles,
   updateVehicle,
   deleteVehicle,
 } = require("../../controllers/shipper/shipperVehicleController");
-
-// ---------------- IMAGE UPDATE CONTROLLERS ----------------
 const {
   updateProfileImage,
   updateBannerImage,
   getShipperProfile,
 } = require("../../controllers/shipper/shipperImageController");
-
-// ----------------   SHIPPER LOCATION   ----------------
-
 const {
   getCurrentLocation,
   updateCurrentLocation,
 } = require("../../controllers/shipper/shipperLocationController");
-
-// ----------------   Add New Preferred Area   ----------------
-
 const {
   addPreferredArea,
   getPreferredAreas,
   updatePreferredArea,
   deletePreferredArea,
 } = require("../../controllers/shipper/shipperPreferredAreaController");
+const {
+  getSettings,
+  updateSettings,
+  getSettingsById,
+} = require("../../controllers/shipper/shipperSettingsController");
 
 // ====================================================
-// SHIPPER PROFILE
+// SHIPPER PROFILE ROUTES
 // ====================================================
 
 router.put(
@@ -71,17 +66,13 @@ router.put(
   upload.single("profilePicture"),
   updateProfile
 );
-
-// ======================================================
 router.get("/profile", shipperAuth, getShipperProfile);
-
 router.put(
   "/update-profile-image",
   shipperAuth,
   upload.single("image"),
   updateProfileImage
 );
-
 router.put(
   "/update-banner-image",
   shipperAuth,
@@ -89,115 +80,82 @@ router.put(
   updateBannerImage
 );
 
-// ---------------- SETTINGS CONTROLLER ----------------
-
-const {
-  getSettings,
-  updateSettings,
-  getSettingsById,
-} = require("../../controllers/shipper/shipperSettingsController");
-
 // ====================================================
 // SHIPPER SHIPMENT ROUTES
 // ====================================================
 
-// Get all shipments **assigned** to the shipper
 router.get("/shipments", shipperAuth, getAssignedShipments);
-
-// Get a shipment by ID (only if assigned to this shipper)
-// router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
-
-// Update shipment status (pending → picked-up → delivered)
+router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
 router.patch(
   "/shipments/:shipmentId/status",
   shipperAuth,
   updateShipmentStatus
 );
-
-// ====================================================
-// SHIPPER SELF-ASSIGNMENT
-// ====================================================
-
-// Get all pending shipments available for assignment
 router.get("/shipments/available", shipperAuth, getAvailableShipments);
-router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
-
-// Accept a shipment (only one per date rule enforced)
 router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 
 // ====================================================
-// QUOTE ROUTES (FOR SHIPPER)
+// QUOTE ROUTES
 // ====================================================
 
-// Add a new quote for a shipment
+// Shipper routes
 router.post("/quotes/add", shipperAuth, addQuote);
-
-// Get all quotes sent by the shipper
 router.get("/quotes/my", shipperAuth, getMyQuotes);
 
+// Customer routes
+router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
+
+// Accept a quote (customer uploads Contract.pdf)
+router.post(
+  "/quotes/accept/:quoteId",
+  shipperAuth,
+  upload.single("contractFile"), // handled by uploadMiddleware
+  acceptQuote
+);
+
 // ====================================================
-// MESSAGE ROUTES (FOR SHIPPER)
+// MESSAGE ROUTES
 // ====================================================
 
-// Send message to customer (related to shipment)
 router.post("/messages/send", shipperAuth, sendMessage);
-
-// Get messages for a specific shipment
 router.get("/messages/:shipmentId", shipperAuth, getMessages);
 
 // ====================================================
-// VEHICLE ROUTES (FOR SHIPPER)
+// VEHICLE ROUTES
 // ====================================================
 
-//  Add a new vehicle (with multiple images)
 router.post("/vehicles", shipperAuth, upload.array("images", 5), addVehicle);
-
-//  Get all vehicles for the logged-in shipper
 router.get("/vehicles", shipperAuth, getMyVehicles);
-
-// ✏️ Update vehicle details
 router.put(
   "/vehicles/:vehicleId",
   shipperAuth,
   upload.array("images", 5),
   updateVehicle
 );
-
-//  Delete a vehicle
 router.delete("/vehicles/:vehicleId", shipperAuth, deleteVehicle);
 
 // ====================================================
 // SHIPPER SETTINGS ROUTES
 // ====================================================
+
 router.get("/settings", shipperAuth, getSettings);
 router.post("/settings/update-notifications", shipperAuth, updateSettings);
-// get settings by shipperId
 router.get("/settings/:shipperId", shipperAuth, getSettingsById);
 
 // ====================================================
-// Get Current Location
+// LOCATION ROUTES
 // ====================================================
-router.get("/current-location", shipperAuth, getCurrentLocation);
 
-// ====================================================
-// Add or Update Current Location
-// ====================================================
+router.get("/current-location", shipperAuth, getCurrentLocation);
 router.put("/update-location", shipperAuth, updateCurrentLocation);
 
 // ====================================================
-// Add New Preferred Area
+// PREFERRED AREAS ROUTES
 // ====================================================
 
 router.post("/preferred-areas", shipperAuth, addPreferredArea);
-
-// GET /api/shipper/preferred-areas
 router.get("/preferred-areas", shipperAuth, getPreferredAreas);
-
-// PUT /api/shipper/preferred-areas/:areaId
 router.put("/preferred-areas/:areaId", shipperAuth, updatePreferredArea);
-
-// DELETE /api/shipper/preferred-areas/:areaId
-
 router.delete("/preferred-areas/:areaId", shipperAuth, deletePreferredArea);
 
 // ====================================================

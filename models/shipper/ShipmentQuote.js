@@ -86,6 +86,17 @@ const quoteSchema = new mongoose.Schema(
       index: true,
     },
 
+    // ================= CUSTOMER TERMS =================
+    termsAccepted: {
+      type: Boolean,
+      default: false, // Customer must accept terms before accepting quote
+    },
+
+    contractFile: {
+      type: String, // Path or URL to uploaded Contract.pdf
+      default: null,
+    },
+
     // ================= META =================
     isActive: {
       type: Boolean,

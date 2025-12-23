@@ -3,6 +3,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const shipperMailSend = require("../../utils/shipperMailSend");
 const shipperSmsSend = require("../../utils/shipperSmsSend");
+const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
 
 // ====================================================
 // SHIPPER SIDE CONTROLLERS
@@ -12,7 +13,6 @@ const shipperSmsSend = require("../../utils/shipperSmsSend");
 exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
-
     const {
       shipment,
       totalPrice,
@@ -81,14 +81,14 @@ exports.addQuote = async (req, res) => {
       stallsRequired,
       notes,
       status: "pending",
+      termsAccepted: false,
+      contractFile: null,
     });
 
     // -------- NOTIFICATIONS --------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
-
-    if (!shipperSettings) {
+    if (!shipperSettings)
       shipperSettings = await ShipperSettings.create({ shipperId });
-    }
 
     const canEmail = shipperSettings?.notifications?.quote?.email ?? true;
     const canSMS = shipperSettings?.notifications?.quote?.sms ?? true;
@@ -100,7 +100,6 @@ exports.addQuote = async (req, res) => {
         `Your quote for shipment ${shipment} has been sent successfully.`
       );
     }
-
     if (canSMS) {
       await shipperSmsSend(
         shipperId,
@@ -182,6 +181,16 @@ exports.getQuotesByShipment = async (req, res) => {
 exports.acceptQuote = async (req, res) => {
   try {
     const { quoteId } = req.params;
+    const contractFile = req.file; // File uploaded using multer
+    const { acceptedTerms } = req.body; // Boolean: customer accepts terms
+
+    if (!contractFile || !acceptedTerms) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You must accept terms and upload Contract.pdf before accepting quote",
+      });
+    }
 
     const quote = await ShipmentQuote.findById(quoteId);
     if (!quote) {
@@ -191,27 +200,34 @@ exports.acceptQuote = async (req, res) => {
       });
     }
 
-    // -------- ACCEPT THIS QUOTE --------
+    // ---------------- UPLOAD CONTRACT TO CLOUDINARY ----------------
+    const uploadedFile = await cloudinary.uploader.upload(contractFile.path, {
+      resource_type: "raw", // PDF
+      folder: "contracts",
+    });
+
+    quote.contractFile = uploadedFile.secure_url;
+    quote.termsAccepted = true;
     quote.status = "accepted";
     await quote.save();
 
-    // -------- REJECT OTHERS --------
+    // Reject other quotes
     await ShipmentQuote.updateMany(
       { shipment: quote.shipment, _id: { $ne: quote._id } },
       { status: "rejected" }
     );
 
-    // -------- UPDATE SHIPMENT --------
+    // Update shipment
     await CustomerShipment.findByIdAndUpdate(quote.shipment, {
       status: "assigned",
       assignedShipper: quote.shipper,
+      contractPdf: uploadedFile.secure_url,
     });
 
-    // -------- NOTIFY SHIPPER --------
+    // Notify shipper
     const shipperSettings = await ShipperSettings.findOne({
       shipperId: quote.shipper,
     });
-
     const canEmail = shipperSettings?.notifications?.shipment?.email ?? true;
     const canSMS = shipperSettings?.notifications?.shipment?.sms ?? true;
 
@@ -222,7 +238,6 @@ exports.acceptQuote = async (req, res) => {
         `Your quote for shipment ${quote.shipment} has been accepted.`
       );
     }
-
     if (canSMS) {
       await shipperSmsSend(
         quote.shipper,

@@ -1,11 +1,12 @@
 const express = require("express");
 const router = express.Router();
-const multer = require("multer");
 
 // ---------------- Middleware ----------------
 const {
   customerAuth,
 } = require("../../middleware/customer/customerMiddleware");
+
+const upload = require("../../middleware/uploadMiddleware");
 
 // ---------------- Controllers ----------------
 const {
@@ -53,23 +54,21 @@ const {
   getMyQuotes,
 } = require("../../controllers/customer/customerQuoteController");
 
-// ---------------- Multer Memory Storage ----------------
-const storage = multer.memoryStorage();
-const upload = multer({ storage });
-
 // ====================================================
 // CUSTOMER PROFILE
 // ====================================================
+
 router.put(
   "/update-profile",
   customerAuth,
-  upload.single("profilePicture"),
+  upload.single("profilePicture"), // Cloudinary
   updateProfile
 );
 
 // ====================================================
 // PAYMENT ROUTES
 // ====================================================
+
 router.post("/payment", customerAuth, addOrUpdatePayment);
 router.get("/payment", customerAuth, getPaymentByUser);
 router.get("/payment/:id", customerAuth, getPaymentById);
@@ -81,12 +80,14 @@ router.post("/payment/verify-otp", customerAuth, verifyOtp);
 // ====================================================
 // NOTIFICATIONS
 // ====================================================
+
 router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
 
 // ====================================================
 // PUSH NOTIFICATIONS
 // ====================================================
+
 router.post("/notifications/subscribe", customerAuth, subscribeToPush);
 router.post("/test-notification", customerAuth, sendTestNotification);
 
@@ -94,13 +95,13 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 // SHIPMENTS
 // ====================================================
 
-// Create shipment (accept any file)
+// Create shipment (images / docs → Cloudinary)
 router.post(
   "/shipments",
   customerAuth,
   upload.any(),
   (req, res, next) => {
-    console.log("=== Received shipment data ===");
+    console.log("=== Shipment Create Debug ===");
     console.log("Body:", req.body);
     console.log("Files:", req.files);
     next();
@@ -111,38 +112,45 @@ router.post(
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
+// Publish shipment
 router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
 
-router.put("/shipments/:shipmentId", customerAuth, async (req, res) => {
-  try {
-    const shipmentBefore = await fetchShipmentById(
-      req.params.shipmentId,
-      req.user._id
-    );
+// Update shipment
+router.put(
+  "/shipments/:shipmentId",
+  customerAuth,
+  upload.any(),
+  async (req, res) => {
+    try {
+      const shipmentBefore = await fetchShipmentById(
+        req.params.shipmentId,
+        req.user._id
+      );
 
-    await updateShipment(
-      {
-        params: { shipmentId: req.params.shipmentId },
-        body: req.body,
-        user: req.user,
-        files: req.files,
-      },
-      res
-    );
+      await updateShipment(
+        {
+          params: { shipmentId: req.params.shipmentId },
+          body: req.body,
+          user: req.user,
+          files: req.files,
+        },
+        res
+      );
 
-    if (
-      req.body.status === "accepted" &&
-      req.body.shipper &&
-      shipmentBefore?.status !== "accepted"
-    ) {
-      const shipperName = req.body.shipperName || "Your Shipper";
-      await notifyShipmentAccepted(req.params.shipmentId, shipperName);
+      if (
+        req.body.status === "accepted" &&
+        req.body.shipper &&
+        shipmentBefore?.status !== "accepted"
+      ) {
+        const shipperName = req.body.shipperName || "Your Shipper";
+        await notifyShipmentAccepted(req.params.shipmentId, shipperName);
+      }
+    } catch (err) {
+      console.error("Error updating shipment:", err);
+      res.status(500).json({ success: false, message: "Server Error" });
     }
-  } catch (err) {
-    console.error("Error updating shipment:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
   }
-});
+);
 
 router.delete("/shipments/:shipmentId", customerAuth, deleteShipment);
 router.patch(
@@ -152,29 +160,26 @@ router.patch(
 );
 
 // ====================================================
-// CHAT ROUTES (FOR CUSTOMER)
+// CHAT ROUTES
 // ====================================================
 
-// Send message to shipper
 router.post("/messages/send", customerAuth, sendMessage);
-
-// Get messages for a specific shipment
 router.get("/messages/:shipmentId", customerAuth, getMessages);
 
 // ====================================================
 // QUOTE ROUTES
 // ====================================================
 
-// Add quote (for future flexibility)
+// Optional: customer creates a quote
 router.post("/quotes/add", customerAuth, addQuote);
 
-// View all quotes created by this customer
+// Customer’s quotes
 router.get("/quotes/my", customerAuth, getMyQuotes);
 
-// View all quotes for a specific shipment
+// Quotes for a shipment
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 
-// Accept a quote
+// Accept a quote (no file here — contract handled on shipper side)
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuote);
 
 // ====================================================
