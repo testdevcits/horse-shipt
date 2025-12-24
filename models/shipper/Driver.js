@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 const driverSchema = new mongoose.Schema(
   {
@@ -25,5 +26,23 @@ const driverSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ================= Pre-save hook to hash password =================
+driverSchema.pre("save", async function (next) {
+  if (!this.isModified("password")) return next(); // only hash if password is new or modified
+
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ================= Method to compare password =================
+driverSchema.methods.comparePassword = async function (plainPassword) {
+  return await bcrypt.compare(plainPassword, this.password);
+};
 
 module.exports = mongoose.model("Driver", driverSchema);

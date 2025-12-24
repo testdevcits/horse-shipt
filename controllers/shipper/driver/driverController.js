@@ -1,5 +1,4 @@
 const Driver = require("../../../models/shipper/Driver");
-const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 // ====================================================
@@ -9,6 +8,7 @@ exports.driverLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Find driver by email
     const driver = await Driver.findOne({ email });
     if (!driver) {
       return res.status(404).json({
@@ -17,7 +17,8 @@ exports.driverLogin = async (req, res) => {
       });
     }
 
-    const isMatch = await bcrypt.compare(password, driver.password);
+    // Use schema method to compare password
+    const isMatch = await driver.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
         success: false,
@@ -25,6 +26,7 @@ exports.driverLogin = async (req, res) => {
       });
     }
 
+    // Generate JWT token
     const token = jwt.sign(
       {
         id: driver._id,
@@ -34,6 +36,7 @@ exports.driverLogin = async (req, res) => {
       { expiresIn: "7d" }
     );
 
+    // Respond with token and driver data
     res.json({
       success: true,
       token,
@@ -41,6 +44,9 @@ exports.driverLogin = async (req, res) => {
         id: driver._id,
         name: driver.name,
         email: driver.email,
+        phone: driver.phone,
+        licenseNumber: driver.licenseNumber,
+        notes: driver.notes,
       },
     });
   } catch (error) {

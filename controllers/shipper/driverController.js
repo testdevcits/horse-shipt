@@ -9,6 +9,7 @@ exports.addDriver = async (req, res) => {
 
     const { name, email, password, phone, licenseNumber, notes } = req.body;
 
+    // ----------------- Check if driver already exists -----------------
     const existingDriver = await Driver.findOne({ email });
     if (existingDriver) {
       console.log("[ADD DRIVER] Driver already exists:", email);
@@ -18,15 +19,18 @@ exports.addDriver = async (req, res) => {
       });
     }
 
-    const driver = await Driver.create({
+    // ----------------- Create new driver -----------------
+    const driver = new Driver({
       name,
       email,
-      password, // Ideally hash password before saving
+      password, // will be hashed automatically by schema
       phone,
       licenseNumber,
       notes,
       shipper: req.shipper._id, // assign shipper from auth middleware
     });
+
+    await driver.save(); // use save() instead of create() to trigger pre-save hooks
 
     console.log("[ADD DRIVER] Driver created:", driver._id);
     res.status(201).json({ success: true, driver });
