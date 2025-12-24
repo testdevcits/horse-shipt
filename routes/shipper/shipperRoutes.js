@@ -56,6 +56,15 @@ const {
   getSettingsById,
 } = require("../../controllers/shipper/shipperSettingsController");
 
+// ---------------- DRIVER CONTROLLER ----------------
+const {
+  addDriver,
+  getMyDrivers,
+  assignVehiclesToDriver,
+  updateDriver,
+  deleteDriver,
+} = require("../../controllers/shipper/driverController");
+
 // ====================================================
 // SHIPPER PROFILE ROUTES
 // ====================================================
@@ -100,18 +109,13 @@ router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 // QUOTE ROUTES
 // ====================================================
 
-// Shipper routes
 router.post("/quotes/add", shipperAuth, addQuote);
 router.get("/quotes/my", shipperAuth, getMyQuotes);
-
-// Customer routes
 router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
-
-// Accept a quote (customer uploads Contract.pdf)
 router.post(
   "/quotes/accept/:quoteId",
   shipperAuth,
-  upload.single("contractFile"), // handled by uploadMiddleware
+  upload.single("contractFile"),
   acceptQuote
 );
 
@@ -159,6 +163,25 @@ router.post("/preferred-areas", shipperAuth, addPreferredArea);
 router.get("/preferred-areas", shipperAuth, getPreferredAreas);
 router.put("/preferred-areas/:areaId", shipperAuth, updatePreferredArea);
 router.delete("/preferred-areas/:areaId", shipperAuth, deletePreferredArea);
+
+// ====================================================
+// DRIVER ROUTES
+// ====================================================
+
+// Add new driver
+router.post("/drivers/add", shipperAuth, addDriver);
+
+// Get all drivers for this shipper
+router.get("/drivers/my", shipperAuth, getMyDrivers);
+
+// Assign vehicles to driver
+router.post("/drivers/assign-vehicles", shipperAuth, assignVehiclesToDriver);
+
+// Update driver
+router.put("/drivers/:driverId", shipperAuth, updateDriver);
+
+// Delete driver
+router.delete("/drivers/:driverId", shipperAuth, deleteDriver);
 
 // ====================================================
 // EXPORT ROUTER
