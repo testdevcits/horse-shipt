@@ -105,6 +105,7 @@ const shipperRoutes = require("./routes/shipper/shipperRoutes");
 app.use("/api/auth", authRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/shipper", shipperRoutes);
+app.use("/api/driver", shipperRoutes);
 
 // -------------------------
 // Default Route
