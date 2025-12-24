@@ -2,14 +2,27 @@ const express = require("express");
 const router = express.Router();
 const path = require("path");
 
-// ---------------- Middleware ----------------
+// ================= MIDDLEWARE =================
 const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
 const upload = require("../../middleware/uploadMiddleware");
 
-// ---------------- Controllers ----------------
+// ----- DRIVER AUTH MIDDLEWARE -----
+const driverAuth = require("../../middleware/shipper/driverAuth");
+
+// ================= CONTROLLERS =================
+
+// -------- Shipper Profile --------
 const {
   updateProfile,
 } = require("../../controllers/shipper/shipperController");
+
+const {
+  updateProfileImage,
+  updateBannerImage,
+  getShipperProfile,
+} = require("../../controllers/shipper/shipperImageController");
+
+// -------- Shipments --------
 const {
   getAssignedShipments,
   getShipmentById,
@@ -18,6 +31,7 @@ const {
   acceptShipment,
 } = require("../../controllers/shipper/shipperShipmentController");
 
+// -------- Quotes --------
 const {
   addQuote,
   getMyQuotes,
@@ -25,38 +39,42 @@ const {
   acceptQuote,
 } = require("../../controllers/shipper/shipperQuoteController");
 
+// -------- Messages --------
 const {
   sendMessage,
   getMessages,
 } = require("../../controllers/shipper/shipmentMessageController");
+
+// -------- Vehicles --------
 const {
   addVehicle,
   getMyVehicles,
   updateVehicle,
   deleteVehicle,
 } = require("../../controllers/shipper/shipperVehicleController");
-const {
-  updateProfileImage,
-  updateBannerImage,
-  getShipperProfile,
-} = require("../../controllers/shipper/shipperImageController");
+
+// -------- Location --------
 const {
   getCurrentLocation,
   updateCurrentLocation,
 } = require("../../controllers/shipper/shipperLocationController");
+
+// -------- Preferred Areas --------
 const {
   addPreferredArea,
   getPreferredAreas,
   updatePreferredArea,
   deletePreferredArea,
 } = require("../../controllers/shipper/shipperPreferredAreaController");
+
+// -------- Settings --------
 const {
   getSettings,
   updateSettings,
   getSettingsById,
 } = require("../../controllers/shipper/shipperSettingsController");
 
-// ---------------- DRIVER CONTROLLER ----------------
+// -------- Drivers (Shipper Admin) --------
 const {
   addDriver,
   getMyDrivers,
@@ -64,6 +82,12 @@ const {
   updateDriver,
   deleteDriver,
 } = require("../../controllers/shipper/driverController");
+
+// -------- Driver Auth / Self --------
+const {
+  driverLogin,
+  getDriverDashboard,
+} = require("../../controllers/shipper/driver/driverController");
 
 // ====================================================
 // SHIPPER PROFILE ROUTES
@@ -75,13 +99,16 @@ router.put(
   upload.single("profilePicture"),
   updateProfile
 );
+
 router.get("/profile", shipperAuth, getShipperProfile);
+
 router.put(
   "/update-profile-image",
   shipperAuth,
   upload.single("image"),
   updateProfileImage
 );
+
 router.put(
   "/update-banner-image",
   shipperAuth,
@@ -94,9 +121,9 @@ router.put(
 // ====================================================
 
 router.get("/shipments", shipperAuth, getAssignedShipments);
-
 router.get("/shipments/available", shipperAuth, getAvailableShipments);
 router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
+
 router.patch(
   "/shipments/:shipmentId/status",
   shipperAuth,
@@ -112,6 +139,7 @@ router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 router.post("/quotes/add", shipperAuth, addQuote);
 router.get("/quotes/my", shipperAuth, getMyQuotes);
 router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
+
 router.post(
   "/quotes/accept/:quoteId",
   shipperAuth,
@@ -131,13 +159,16 @@ router.get("/messages/:shipmentId", shipperAuth, getMessages);
 // ====================================================
 
 router.post("/vehicles", shipperAuth, upload.array("images", 5), addVehicle);
+
 router.get("/vehicles", shipperAuth, getMyVehicles);
+
 router.put(
   "/vehicles/:vehicleId",
   shipperAuth,
   upload.array("images", 5),
   updateVehicle
 );
+
 router.delete("/vehicles/:vehicleId", shipperAuth, deleteVehicle);
 
 // ====================================================
@@ -145,7 +176,9 @@ router.delete("/vehicles/:vehicleId", shipperAuth, deleteVehicle);
 // ====================================================
 
 router.get("/settings", shipperAuth, getSettings);
+
 router.post("/settings/update-notifications", shipperAuth, updateSettings);
+
 router.get("/settings/:shipperId", shipperAuth, getSettingsById);
 
 // ====================================================
@@ -161,27 +194,32 @@ router.put("/update-location", shipperAuth, updateCurrentLocation);
 
 router.post("/preferred-areas", shipperAuth, addPreferredArea);
 router.get("/preferred-areas", shipperAuth, getPreferredAreas);
+
 router.put("/preferred-areas/:areaId", shipperAuth, updatePreferredArea);
+
 router.delete("/preferred-areas/:areaId", shipperAuth, deletePreferredArea);
 
-// ---------------- DRIVER ROUTES ----------------
+// ====================================================
+// DRIVER ROUTES (SHIPPER ADMIN)
+// ====================================================
 
-// Add a new driver
-router.post("/drivers", shipperAuth, addDriver); // changed from /drivers/add
-
-// Get all drivers for this shipper
-router.get("/drivers", shipperAuth, getMyDrivers); // changed from /drivers/my
-
-// Assign vehicles to a driver
+router.post("/drivers", shipperAuth, addDriver);
+router.get("/drivers", shipperAuth, getMyDrivers);
 router.post("/drivers/assign-vehicles", shipperAuth, assignVehiclesToDriver);
-
-// Update driver
 router.put("/drivers/:driverId", shipperAuth, updateDriver);
-
-// Delete driver
 router.delete("/drivers/:driverId", shipperAuth, deleteDriver);
 
 // ====================================================
-// EXPORT ROUTER
+// DRIVER LOGIN & SELF ROUTES (NO SHIPPER AUTH)
+// ====================================================
+
+// Driver Login
+router.post("/driver/login", driverLogin);
+
+// Driver Profile + Assigned Vehicles
+router.get("/driver/me", driverAuth, getDriverDashboard);
+
+// ====================================================
+// EXPORT
 // ====================================================
 module.exports = router;
