@@ -23,7 +23,6 @@ exports.shipperAuth = async (req, res, next) => {
       });
     }
 
-    // Only check Shipper model
     const user = await Shipper.findById(decoded.id);
     if (!user) {
       return res
@@ -37,7 +36,8 @@ exports.shipperAuth = async (req, res, next) => {
         .json({ success: false, message: "Account is blocked" });
     }
 
-    req.user = user;
+    req.user = user; // existing
+    req.shipper = user; //  set req.shipper for backward compatibility
     next();
   } catch (err) {
     console.error("ShipperMiddleware Error:", err);

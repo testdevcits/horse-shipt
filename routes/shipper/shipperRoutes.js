@@ -164,17 +164,15 @@ router.get("/preferred-areas", shipperAuth, getPreferredAreas);
 router.put("/preferred-areas/:areaId", shipperAuth, updatePreferredArea);
 router.delete("/preferred-areas/:areaId", shipperAuth, deletePreferredArea);
 
-// ====================================================
-// DRIVER ROUTES
-// ====================================================
+// ---------------- DRIVER ROUTES ----------------
 
-// Add new driver
-router.post("/drivers/add", shipperAuth, addDriver);
+// Add a new driver
+router.post("/drivers", shipperAuth, addDriver); // changed from /drivers/add
 
 // Get all drivers for this shipper
-router.get("/drivers/my", shipperAuth, getMyDrivers);
+router.get("/drivers", shipperAuth, getMyDrivers); // changed from /drivers/my
 
-// Assign vehicles to driver
+// Assign vehicles to a driver
 router.post("/drivers/assign-vehicles", shipperAuth, assignVehiclesToDriver);
 
 // Update driver
