@@ -6,6 +6,8 @@ const MongoStore = require("connect-mongo");
 const passport = require("passport");
 const path = require("path");
 const fs = require("fs");
+const http = require("http"); // 🔹 Added for HTTP server
+const { Server } = require("socket.io"); // 🔹 Added Socket.IO
 const connectDB = require("./config/db");
 
 // -------------------------
@@ -27,14 +29,14 @@ const app = express();
 // CORS Configuration
 // -------------------------
 const allowedOrigins = [
-  "http://localhost:3000", // local dev
-  "https://horse-shipt-frontend.vercel.app", // production frontend
+  "http://localhost:3000",
+  "https://horse-shipt-frontend.vercel.app",
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow Postman / mobile apps
+      if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) callback(null, true);
       else callback(new Error("CORS policy: Origin not allowed"));
     },
@@ -61,9 +63,9 @@ app.use(
       collectionName: "sessions",
     }),
     cookie: {
-      secure: process.env.NODE_ENV === "production", // true only in HTTPS
+      secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 24, // 1 day
+      maxAge: 1000 * 60 * 60 * 24,
     },
   })
 );
@@ -79,8 +81,6 @@ require("./config/passport");
 // Upload Directory Setup
 // -------------------------
 let uploadPath;
-
-// If running on Vercel/AWS (read-only /var/task), use tmp folder
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
   uploadPath = path.join("/tmp", "uploads/profilePictures");
 } else {
@@ -92,7 +92,6 @@ if (!fs.existsSync(uploadPath)) {
   console.log("Upload directory ready:", uploadPath);
 }
 
-// Serve uploaded images
 app.use("/uploads/profilePictures", express.static(uploadPath));
 
 // -------------------------
@@ -133,10 +132,34 @@ app.use((err, req, res, next) => {
 });
 
 // -------------------------
-// Start Server
+// 🔹 Setup HTTP server + Socket.IO
+// -------------------------
+const server = http.createServer(app);
+
+const io = new Server(server, {
+  cors: {
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT"],
+  },
+});
+
+// 🔹 Make io accessible in controllers
+app.set("io", io);
+
+// 🔹 Socket.IO connection handler
+io.on("connection", (socket) => {
+  console.log("⚡ Socket connected:", socket.id);
+
+  socket.on("disconnect", () => {
+    console.log("⚡ Socket disconnected:", socket.id);
+  });
+});
+
+// -------------------------
+// Start server
 // -------------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+server.listen(PORT, () => {
   console.log(
     `🐎 Server running in ${
       process.env.NODE_ENV || "development"

@@ -1,7 +1,7 @@
 const Shipper = require("../../models/shipper/shipperModel");
 
 // ===================================================
-// ✅ Get Shipper Current Location
+//  Get Shipper Current Location
 // ===================================================
 exports.getCurrentLocation = async (req, res) => {
   try {
@@ -43,7 +43,7 @@ exports.getCurrentLocation = async (req, res) => {
 };
 
 // ===================================================
-// ✅ Add or Update Shipper Current Location
+//  Add or Update Shipper Current Location
 // ===================================================
 exports.updateCurrentLocation = async (req, res) => {
   try {
@@ -65,7 +65,7 @@ exports.updateCurrentLocation = async (req, res) => {
           updatedAt: new Date(),
         },
       },
-      { new: true, select: "currentLocation" }
+      { new: true }
     );
 
     if (!shipper) {
@@ -74,6 +74,15 @@ exports.updateCurrentLocation = async (req, res) => {
         message: "Shipper not found",
       });
     }
+
+    // -----------------------------
+    // 🔹 Emit live location via Socket.IO
+    // -----------------------------
+    const io = req.app.get("io");
+    io.to(`shipper-${req.user.id}`).emit("location:update", {
+      shipperId: req.user.id,
+      location: shipper.currentLocation,
+    });
 
     res.status(200).json({
       success: true,
