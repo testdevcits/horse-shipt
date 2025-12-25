@@ -152,3 +152,38 @@ exports.deleteDriver = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ====================================================
+// ACTIVATE / DEACTIVATE DRIVER (TOGGLE)
+// ====================================================
+exports.toggleDriverStatus = async (req, res) => {
+  try {
+    const { driverId } = req.params;
+
+    const driver = await Driver.findById(driverId);
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+
+    // Toggle status
+    driver.isActive = !driver.isActive;
+    await driver.save();
+
+    res.json({
+      success: true,
+      message: `Driver account ${
+        driver.isActive ? "activated" : "deactivated"
+      } successfully`,
+      isActive: driver.isActive,
+    });
+  } catch (error) {
+    console.error("[TOGGLE DRIVER STATUS]", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

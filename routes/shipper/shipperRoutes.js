@@ -81,12 +81,15 @@ const {
   assignVehiclesToDriver,
   updateDriver,
   deleteDriver,
+  toggleDriverStatus,
 } = require("../../controllers/shipper/driverController");
 
 // -------- Driver Auth / Self --------
 const {
   driverLogin,
   getDriverDashboard,
+  updateDriverProfileImage,
+  deleteDriverProfileImage,
 } = require("../../controllers/shipper/driver/driverController");
 
 // ====================================================
@@ -208,6 +211,12 @@ router.get("/drivers", shipperAuth, getMyDrivers);
 router.post("/drivers/assign-vehicles", shipperAuth, assignVehiclesToDriver);
 router.put("/drivers/:driverId", shipperAuth, updateDriver);
 router.delete("/drivers/:driverId", shipperAuth, deleteDriver);
+// Toggle Active / Deactive (NEW)
+router.patch(
+  "/drivers/:driverId/toggle-status",
+  shipperAuth,
+  toggleDriverStatus
+);
 
 // ====================================================
 // DRIVER LOGIN & SELF ROUTES (NO SHIPPER AUTH)
@@ -218,6 +227,15 @@ router.post("/driver/login", driverLogin);
 
 // Driver Profile + Assigned Vehicles
 router.get("/driver/me", driverAuth, getDriverDashboard);
+// Driver profile image (SELF ONLY)
+router.put(
+  "/driver/profile-image",
+  driverAuth,
+  upload.single("image"),
+  updateDriverProfileImage
+);
+
+router.delete("/driver/profile-image", driverAuth, deleteDriverProfileImage);
 
 // ====================================================
 // EXPORT

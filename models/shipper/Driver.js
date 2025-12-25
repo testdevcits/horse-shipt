@@ -1,8 +1,18 @@
 const mongoose = require("mongoose");
 const bcrypt = require("bcryptjs");
 
+// ================= Cloudinary Image Schema =================
+const imageSchema = new mongoose.Schema(
+  {
+    url: { type: String, default: null },
+    public_id: { type: String, default: null },
+  },
+  { _id: false }
+);
+
 const driverSchema = new mongoose.Schema(
   {
+    // ================= BASIC INFO =================
     name: { type: String, required: true },
     email: { type: String, required: true, unique: true },
     password: { type: String, required: true },
@@ -10,26 +20,35 @@ const driverSchema = new mongoose.Schema(
     licenseNumber: { type: String, required: true },
     notes: { type: String, default: "" },
 
-    // Optional: reference to the shipper who owns this driver
+    // ================= PROFILE IMAGE =================
+    profileImage: {
+      type: imageSchema,
+      default: { url: null, public_id: null },
+    },
+
+    // ================= RELATIONS =================
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shipper",
     },
 
-    // Assigned vehicles
     assignedVehicles: [
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "ShipperVehicle",
       },
     ],
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
   { timestamps: true }
 );
 
 // ================= Pre-save hook to hash password =================
 driverSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next(); // only hash if password is new or modified
+  if (!this.isModified("password")) return next();
 
   try {
     const salt = await bcrypt.genSalt(10);
@@ -40,7 +59,7 @@ driverSchema.pre("save", async function (next) {
   }
 });
 
-// ================= Method to compare password =================
+// ================= Compare password method =================
 driverSchema.methods.comparePassword = async function (plainPassword) {
   return await bcrypt.compare(plainPassword, this.password);
 };
