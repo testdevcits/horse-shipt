@@ -9,22 +9,16 @@ exports.driverLogin = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Find driver by email
     const driver = await Driver.findOne({ email });
     if (!driver) {
-      return res.status(404).json({
+      return res.status(401).json({
         success: false,
-        message: "Driver not found",
+        message: "Invalid credentials",
       });
     }
 
-    // Block deactivated drivers
-    if (driver.isActive === false) {
-      return res.status(403).json({
-        success: false,
-        message: "Your account is deactivated. Contact shipper.",
-      });
-    }
-
+    // Check password first
     const isMatch = await driver.comparePassword(password);
     if (!isMatch) {
       return res.status(401).json({
@@ -33,12 +27,22 @@ exports.driverLogin = async (req, res) => {
       });
     }
 
+    // After password is correct, check if driver is active
+    if (!driver.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is deactivated. Contact shipper.",
+      });
+    }
+
+    // Generate JWT token
     const token = jwt.sign(
       { id: driver._id, role: "driver" },
       process.env.JWT_SECRET,
       { expiresIn: "7d" }
     );
 
+    // Send driver data
     res.json({
       success: true,
       token,
