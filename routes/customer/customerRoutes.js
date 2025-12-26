@@ -49,9 +49,8 @@ const {
 
 const {
   getQuotesByShipment,
+  getQuoteById,
   acceptQuote,
-  addQuote,
-  getMyQuotes,
 } = require("../../controllers/customer/customerQuoteController");
 
 // ====================================================
@@ -170,16 +169,8 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 // QUOTE ROUTES
 // ====================================================
 
-// Optional: customer creates a quote
-router.post("/quotes/add", customerAuth, addQuote);
-
-// Customer’s quotes
-router.get("/quotes/my", customerAuth, getMyQuotes);
-
-// Quotes for a shipment
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
-
-// Accept a quote (no file here — contract handled on shipper side)
+router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuote);
 
 // ====================================================

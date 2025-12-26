@@ -17,6 +17,13 @@ const quoteSchema = new mongoose.Schema(
       index: true,
     },
 
+    // ================= VEHICLE =================
+    vehicle: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ShipperVehicle",
+      required: true,
+    },
+
     // ================= PRICING =================
     totalPrice: {
       type: Number,
@@ -89,11 +96,11 @@ const quoteSchema = new mongoose.Schema(
     // ================= CUSTOMER TERMS =================
     termsAccepted: {
       type: Boolean,
-      default: false, // Customer must accept terms before accepting quote
+      default: false,
     },
 
     contractFile: {
-      type: String, // Path or URL to uploaded Contract.pdf
+      type: String,
       default: null,
     },
 

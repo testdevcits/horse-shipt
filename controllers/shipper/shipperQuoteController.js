@@ -1,9 +1,10 @@
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
-const { sendQuoteEmail } = require("../../utils/sendQuoteEmail"); // new email utility
-const { sendQuoteSms } = require("../../utils/sendQuoteSms"); // new SMS utility
-const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
+const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
+const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
+const { sendQuoteSms } = require("../../utils/sendQuoteSms");
+const cloudinary = require("../../utils/cloudinary");
 
 // ====================================================
 // SHIPPER SIDE CONTROLLERS
@@ -13,8 +14,10 @@ const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
 exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
+
     const {
       shipment,
+      vehicle, // 🚗 vehicleId
       totalPrice,
       currency,
       paymentMethod,
@@ -30,6 +33,7 @@ exports.addQuote = async (req, res) => {
     // -------- VALIDATION --------
     if (
       !shipment ||
+      !vehicle ||
       !totalPrice ||
       !paymentMethod ||
       !paymentDue ||
@@ -53,11 +57,25 @@ exports.addQuote = async (req, res) => {
       });
     }
 
+    // -------- CHECK VEHICLE --------
+    const vehicleExists = await ShipperVehicle.findOne({
+      _id: vehicle,
+      shipper: shipperId,
+    });
+
+    if (!vehicleExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found or does not belong to you",
+      });
+    }
+
     // -------- PREVENT DUPLICATE QUOTE --------
     const alreadyQuoted = await ShipmentQuote.findOne({
       shipment,
       shipper: shipperId,
     });
+
     if (alreadyQuoted) {
       return res.status(400).json({
         success: false,
@@ -69,6 +87,7 @@ exports.addQuote = async (req, res) => {
     const quote = await ShipmentQuote.create({
       shipment,
       shipper: shipperId,
+      vehicle,
       totalPrice,
       currency,
       paymentMethod,
@@ -127,11 +146,13 @@ exports.addQuote = async (req, res) => {
 exports.getMyQuotes = async (req, res) => {
   try {
     const shipperId = req.user._id;
+
     const quotes = await ShipmentQuote.find({ shipper: shipperId })
       .populate(
         "shipment",
         "pickupLocation dropoffLocation shipmentType status pickupDate"
       )
+      .populate("vehicle")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -157,8 +178,10 @@ exports.getMyQuotes = async (req, res) => {
 exports.getQuotesByShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
+
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
+      .populate("vehicle")
       .sort({ createdAt: -1 });
 
     res.status(200).json({
@@ -180,7 +203,7 @@ exports.getQuotesByShipment = async (req, res) => {
 exports.acceptQuote = async (req, res) => {
   try {
     const { quoteId } = req.params;
-    const contractFile = req.file; // File uploaded using multer
+    const contractFile = req.file;
     const { acceptedTerms } = req.body;
 
     if (!contractFile || !acceptedTerms) {
@@ -199,7 +222,7 @@ exports.acceptQuote = async (req, res) => {
       });
     }
 
-    // ---------------- UPLOAD CONTRACT TO CLOUDINARY ----------------
+    // ---------------- UPLOAD CONTRACT ----------------
     const uploadedFile = await cloudinary.uploader.upload(contractFile.path, {
       resource_type: "raw",
       folder: "contracts",
@@ -223,7 +246,7 @@ exports.acceptQuote = async (req, res) => {
       contractPdf: uploadedFile.secure_url,
     });
 
-    // -------- NOTIFICATIONS BASED ON SETTINGS --------
+    // -------- NOTIFICATIONS --------
     const shipperSettings = await ShipperSettings.findOne({
       shipperId: quote.shipper,
     });

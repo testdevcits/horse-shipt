@@ -17,6 +17,13 @@ const customerQuoteSchema = new mongoose.Schema(
       index: true,
     },
 
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      required: true,
+      index: true,
+    },
+
     // ================= PRICING =================
     price: {
       type: Number,
@@ -49,7 +56,6 @@ const customerQuoteSchema = new mongoose.Schema(
 );
 
 // ================= INDEXES =================
-
 // Prevent same shipper sending multiple quotes for same shipment
 customerQuoteSchema.index({ shipmentId: 1, shipperId: 1 }, { unique: true });
 
