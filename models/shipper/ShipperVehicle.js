@@ -21,7 +21,16 @@ const shipperVehicleSchema = new mongoose.Schema(
       required: true,
     },
 
-    // New field: Trailer Type
+    // NEW FIELD: Vehicle Number
+    vehicleNumber: {
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
+      unique: true, // prevents duplicate vehicle numbers
+    },
+
+    // Trailer Type
     trailerType: {
       type: String,
       enum: ["Stock Trailer", "Slant Load", "Head to Head", "Semi", "Other"],
