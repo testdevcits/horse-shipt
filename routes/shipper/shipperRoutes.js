@@ -266,7 +266,7 @@ router.put(
 );
 
 // Get my active contract
-router.get("/contracts/my", shipperAuth, getMyContract);
+router.get("/contracts", shipperAuth, getMyContract);
 
 // Deactivate contract (Soft delete)
 router.patch("/contracts/deactivate", shipperAuth, deactivateContract);
