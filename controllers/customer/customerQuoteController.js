@@ -131,7 +131,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // 1️⃣ Fetch quote
+    // Fetch quote and populate shipment & shipper
     const quote = await ShipmentQuote.findById(quoteId)
       .populate("shipment")
       .populate("shipper");
@@ -143,8 +143,10 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // 2️⃣ Fetch shipment
-    const shipment = await CustomerShipment.findById(quote.shipment._id);
+    // Fetch shipment and populate customerId
+    const shipment = await CustomerShipment.findById(
+      quote.shipment._id
+    ).populate("customer");
 
     if (!shipment) {
       return res.status(404).json({
@@ -153,11 +155,27 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // 3️⃣ Authorization
-    if (shipment.customerId.toString() !== customerId.toString()) {
+    // Authorization
+    if (
+      !shipment.customerId ||
+      shipment.customerId._id.toString() !== customerId.toString()
+    ) {
       return res.status(403).json({
         success: false,
         message: "Not authorized to accept this quote",
+      });
+    }
+
+    // Validate signature buffer
+    const signatureBuffer = Buffer.from(
+      customerSignature.replace(/^data:image\/\w+;base64,/, ""),
+      "base64"
+    );
+
+    if (!signatureBuffer || signatureBuffer.length < 10) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid signature",
       });
     }
 
@@ -166,7 +184,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     ===================================================== */
     const doc = new PDFDocument({ margin: 50 });
     const buffers = [];
-
     doc.on("data", buffers.push.bind(buffers));
 
     doc.fontSize(16).text("Shipment Contract", { underline: true });
@@ -179,15 +196,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     doc.text(`Payment Method: ${quote.paymentMethod}`);
     doc.moveDown();
 
-    // Customer Signature
-    const signatureBuffer = Buffer.from(
-      customerSignature.replace(/^data:image\/\w+;base64,/, ""),
-      "base64"
-    );
-
     doc.text("Customer Signature:");
     doc.image(signatureBuffer, { width: 150, height: 60 });
-
     doc.end();
 
     const pdfBuffer = await new Promise((resolve, reject) => {
@@ -200,16 +210,22 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     /* =====================================================
        UPLOAD PDF TO CLOUDINARY
     ===================================================== */
-    const uploadResult = await new Promise((resolve, reject) => {
-      const uploadStream = cloudinary.uploader.upload_stream(
-        {
-          resource_type: "raw",
-          folder: "shipment_contracts",
-        },
-        (err, result) => (err ? reject(err) : resolve(result))
-      );
-      streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
-    });
+    let uploadResult;
+    try {
+      uploadResult = await new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { resource_type: "raw", folder: "shipment_contracts" },
+          (err, result) => (err ? reject(err) : resolve(result))
+        );
+        streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
+      });
+    } catch (err) {
+      console.error("Cloudinary upload error:", err);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to upload contract PDF",
+      });
+    }
 
     /* =====================================================
        UPDATE QUOTE
@@ -245,16 +261,16 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       status: "accepted",
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Quote accepted and contract signed successfully",
       quote,
     });
   } catch (error) {
     console.error("acceptQuoteWithSignature error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: "Failed to accept quote",
+      message: error.message || "Failed to accept quote",
     });
   }
 };
