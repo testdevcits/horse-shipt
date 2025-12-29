@@ -13,6 +13,9 @@ exports.getQuotesByShipment = async (req, res) => {
     const { shipmentId } = req.params;
     const customerId = req.user._id;
 
+    console.log("DEBUG: shipmentId:", shipmentId);
+    console.log("DEBUG: customerId:", customerId);
+
     // Validate shipment
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customerId",
@@ -20,25 +23,34 @@ exports.getQuotesByShipment = async (req, res) => {
     );
 
     if (!shipment) {
+      console.log("DEBUG: Shipment not found for ID:", shipmentId);
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
 
-    // 2️⃣ Authorization
+    // Authorization
     if (shipment.customerId._id.toString() !== customerId.toString()) {
+      console.log(
+        "DEBUG: Unauthorized access. Shipment customerId:",
+        shipment.customerId._id.toString(),
+        "Requesting customerId:",
+        customerId.toString()
+      );
       return res.status(403).json({
         success: false,
         message: "Not authorized to view these quotes",
       });
     }
 
-    // 3️⃣ Fetch quotes
+    // Fetch quotes
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
       .populate("vehicle")
       .sort({ createdAt: -1 });
+
+    console.log("DEBUG: Quotes fetched:", quotes.length);
 
     return res.status(200).json({
       success: true,
