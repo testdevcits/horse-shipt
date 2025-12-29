@@ -2,12 +2,25 @@ const mongoose = require("mongoose");
 
 const shipperContractSchema = new mongoose.Schema(
   {
-    // ================= RELATION =================
+    // ================= RELATIONS =================
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shipper",
       required: true,
-      unique: true, // One active contract per shipper
+      index: true,
+    },
+
+    customer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      index: true,
+    },
+
+    shipment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerShipment",
+      required: true,
+      unique: true, // One contract per shipment
       index: true,
     },
 
@@ -23,23 +36,46 @@ const shipperContractSchema = new mongoose.Schema(
       },
     },
 
+    // ================= SIGNATURES =================
+    shipperSignature: {
+      type: String, // base64 or image URL
+    },
+    customerSignature: {
+      type: String,
+    },
+    shipperSignedAt: Date,
+    customerSignedAt: Date,
+
+    // ================= STATUS FLOW =================
+    status: {
+      type: String,
+      enum: ["DRAFT", "SENT", "SIGNED", "ACCEPTED", "CANCELLED"],
+      default: "DRAFT",
+      index: true,
+    },
+
+    // ================= FINAL PDF =================
+    finalPDF: {
+      url: String,
+      public_id: String,
+    },
+
     // ================= VERSIONING =================
     version: {
       type: String,
       default: "v1.0",
     },
 
-    // ================= STATUS =================
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-
     // ================= META =================
     uploadedBy: {
       type: String,
-      enum: ["shipper", "admin"],
+      enum: ["shipper", "admin", "system"],
       default: "shipper",
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
     },
 
     uploadedAt: {
@@ -52,8 +88,9 @@ const shipperContractSchema = new mongoose.Schema(
   }
 );
 
-// ================= INDEX =================
-// Fast lookup
-shipperContractSchema.index({ shipper: 1, isActive: 1 });
+// ================= INDEXES =================
+// Fast lookup by shipper and status
+shipperContractSchema.index({ shipper: 1, status: 1 });
+shipperContractSchema.index({ customer: 1, status: 1 });
 
 module.exports = mongoose.model("ShipperContract", shipperContractSchema);

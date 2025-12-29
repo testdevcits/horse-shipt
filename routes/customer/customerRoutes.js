@@ -50,7 +50,7 @@ const {
 const {
   getQuotesByShipment,
   getQuoteById,
-  acceptQuote,
+  acceptQuoteWithSignature,
 } = require("../../controllers/customer/customerQuoteController");
 
 // ====================================================
@@ -171,7 +171,7 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
-router.put("/quotes/:quoteId/accept", customerAuth, acceptQuote);
+router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
 
 // ====================================================
 // EXPORT ROUTER

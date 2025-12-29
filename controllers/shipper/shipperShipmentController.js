@@ -59,15 +59,23 @@ exports.getShipmentById = async (req, res) => {
 ========================================================= */
 exports.getAvailableShipments = async (req, res) => {
   try {
-    console.log("Fetching all available published shipments for shippers...");
+    console.log("Fetching all available shipments for shippers...");
 
+    // Get all shipment IDs already assigned
+    const assignedShipments = await ShipperShipment.find({}, "shipment");
+    const assignedIds = assignedShipments.map((s) => s.shipment);
+
+    // Fetch shipments not assigned
     const shipments = await CustomerShipment.find({
-      publish: true, // Only published shipments
-      status: "open_for_offers", // Only shipments open for offers
-      shipper: null, // Not yet assigned
+      publish: true,
+      status: { $in: ["pending", "open_for_offers"] },
+      _id: { $nin: assignedIds },
     })
-      .populate("customer", "name email phone") // Include customer info
-      .sort({ pickupDate: 1 }); // Sort by pickup date ascending
+      .populate("customer", "name email phone")
+      .select(
+        "pickupLocation pickupDate deliveryLocation deliveryDate horses numberOfHorses additionalInfo"
+      )
+      .sort({ pickupDate: 1 });
 
     console.log(`Found ${shipments.length} available shipments.`);
 

@@ -21,7 +21,11 @@ const quoteSchema = new mongoose.Schema(
     vehicle: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ShipperVehicle",
-      required: true,
+    },
+
+    vehicleNumber: {
+      type: String, // store vehicle number as string
+      default: null,
     },
 
     // ================= PRICING =================
@@ -40,24 +44,20 @@ const quoteSchema = new mongoose.Schema(
     paymentMethod: {
       type: String,
       enum: ["cash", "card", "bank"],
-      required: true,
     },
 
     paymentDue: {
       type: String,
       enum: ["pickup", "delivery"],
-      required: true,
     },
 
     // ================= TIMING =================
     pickupTime: {
       type: String, // "HH:mm"
-      required: true,
     },
 
     estimatedArrivalTime: {
       type: String, // "HH:mm"
-      required: true,
     },
 
     estimatedDeliveryDays: {
@@ -69,13 +69,13 @@ const quoteSchema = new mongoose.Schema(
     transportType: {
       type: String,
       enum: ["trailer", "truck", "Trucking"],
-      required: true,
+      default: null,
     },
 
     stallsRequired: {
       type: Number,
       min: 1,
-      required: true,
+      default: null,
     },
 
     // ================= MESSAGE =================
@@ -99,16 +99,20 @@ const quoteSchema = new mongoose.Schema(
       default: false,
     },
 
-    // ================= CONTRACT (UPDATED) =================
+    // ================= CONTRACT & SIGNATURES =================
     contract: {
-      url: {
-        type: String,
-        default: null,
-      },
-      public_id: {
-        type: String,
-        default: null,
-      },
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    shipperSignature: {
+      type: String,
+      default: null, // base64 or URL
+    },
+
+    customerSignature: {
+      type: String,
+      default: null, // base64 or URL
     },
 
     contractAccepted: {
@@ -136,7 +140,6 @@ const quoteSchema = new mongoose.Schema(
 );
 
 // ================= INDEXES =================
-
 // Prevent same shipper from sending multiple offers for same shipment
 quoteSchema.index({ shipment: 1, shipper: 1 }, { unique: true });
 

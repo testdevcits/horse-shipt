@@ -24,11 +24,42 @@ const customerQuoteSchema = new mongoose.Schema(
       index: true,
     },
 
+    vehicleId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ShipperVehicle",
+    },
+
+    // ================= SNAPSHOT DATA =================
+    shipperInfo: {
+      name: { type: String },
+      email: { type: String },
+      phone: { type: String },
+      companyName: { type: String },
+    },
+
+    vehicleInfo: {
+      vehicleNumber: { type: String },
+      type: { type: String },
+      capacity: { type: Number },
+    },
+
     // ================= PRICING =================
     price: {
       type: Number,
       required: true,
       min: 0,
+    },
+    currency: {
+      type: String,
+      default: "USD",
+    },
+    paymentMethod: {
+      type: String,
+      enum: ["cash", "card", "bank"],
+    },
+    paymentDue: {
+      type: String,
+      enum: ["pickup", "delivery"],
     },
 
     // ================= MESSAGE =================
@@ -51,6 +82,25 @@ const customerQuoteSchema = new mongoose.Schema(
       default: "pending",
       index: true,
     },
+
+    // ================= CONTRACT PDF =================
+    contract: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    // ================= SIGNED CONTRACT =================
+    signedContract: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    // ================= DIGITAL SIGNATURES =================
+    shipperSignature: { type: String, default: null }, // Cloudinary URL or base64
+    customerSignature: { type: String, default: null }, // Cloudinary URL
+
+    contractAccepted: { type: Boolean, default: false },
+    contractAcceptedAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -58,5 +108,16 @@ const customerQuoteSchema = new mongoose.Schema(
 // ================= INDEXES =================
 // Prevent same shipper sending multiple quotes for same shipment
 customerQuoteSchema.index({ shipmentId: 1, shipperId: 1 }, { unique: true });
+
+// ================= VALIDATION =================
+// Prevent acceptance without customer signature
+customerQuoteSchema.pre("save", function (next) {
+  if (this.contractAccepted && !this.customerSignature) {
+    return next(
+      new Error("Customer signature is required to accept the contract")
+    );
+  }
+  next();
+});
 
 module.exports = mongoose.model("CustomerQuote", customerQuoteSchema);

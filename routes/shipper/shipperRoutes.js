@@ -151,13 +151,6 @@ router.post("/quotes/add", shipperAuth, addQuote);
 router.get("/quotes/my", shipperAuth, getMyQuotes);
 router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
 
-router.post(
-  "/quotes/accept/:quoteId",
-  shipperAuth,
-  upload.single("contractFile"),
-  acceptQuote
-);
-
 // ====================================================
 // MESSAGE ROUTES
 // ====================================================
