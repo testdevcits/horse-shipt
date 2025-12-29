@@ -1,52 +1,67 @@
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
-const Customer = require("../../models/customer/customerModel");
 const PDFDocument = require("pdfkit");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 
-// ---------------- GET ALL QUOTES FOR A SHIPMENT ----------------
+/* =========================================================
+   GET ALL QUOTES BY SHIPMENT ID (CUSTOMER)
+========================================================= */
 exports.getQuotesByShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
+    const customerId = req.user._id;
 
+    // Validate shipment
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customerId",
       "name email"
     );
-    if (!shipment)
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
 
-    if (shipment.customerId._id.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({ success: false, message: "Not authorized" });
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
 
+    // 2️⃣ Authorization
+    if (shipment.customerId._id.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to view these quotes",
+      });
+    }
+
+    // 3️⃣ Fetch quotes
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
       .populate("vehicle")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, quotes });
-  } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to fetch quotes",
-        error: err.message,
-      });
+    return res.status(200).json({
+      success: true,
+      shipmentId,
+      totalQuotes: quotes.length,
+      quotes,
+    });
+  } catch (error) {
+    console.error("getQuotesByShipment error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch quotes",
+    });
   }
 };
 
-// ---------------- GET SINGLE QUOTE BY ID ----------------
+/* =========================================================
+   GET SINGLE QUOTE DETAIL (CUSTOMER)
+========================================================= */
 exports.getQuoteById = async (req, res) => {
   try {
     const { quoteId } = req.params;
+    const customerId = req.user._id;
 
     const quote = await ShipmentQuote.findById(quoteId)
       .populate("shipper", "name email phone companyName")
@@ -54,84 +69,113 @@ exports.getQuoteById = async (req, res) => {
       .populate({
         path: "shipment",
         select: "customerId",
-        populate: { path: "customerId", select: "name email" },
+        populate: {
+          path: "customerId",
+          select: "name email",
+        },
       });
 
-    if (!quote)
-      return res
-        .status(404)
-        .json({ success: false, message: "Quote not found" });
-
-    if (quote.shipment.customerId._id.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({ success: false, message: "Not authorized" });
-
-    res.status(200).json({ success: true, quote });
-  } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({
+    if (!quote) {
+      return res.status(404).json({
         success: false,
-        message: "Failed to fetch the quote",
-        error: err.message,
+        message: "Quote not found",
       });
+    }
+
+    // Authorization
+    if (quote.shipment.customerId._id.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to view this quote",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      quote,
+    });
+  } catch (error) {
+    console.error("getQuoteById error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch quote details",
+    });
   }
 };
 
-// ---------------- CUSTOMER ACCEPT & SIGN QUOTE ----------------
+/* =========================================================
+   CUSTOMER ACCEPT QUOTE WITH SIGNATURE
+========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
   try {
     const { quoteId } = req.params;
     const { customerSignature } = req.body;
+    const customerId = req.user._id;
 
-    if (!customerSignature)
-      return res
-        .status(400)
-        .json({ success: false, message: "Customer signature is required" });
+    if (!customerSignature) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer signature is required",
+      });
+    }
 
-    const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
-    if (!quote)
-      return res
-        .status(404)
-        .json({ success: false, message: "Quote not found" });
+    // 1️⃣ Fetch quote
+    const quote = await ShipmentQuote.findById(quoteId)
+      .populate("shipment")
+      .populate("shipper");
 
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found",
+      });
+    }
+
+    // 2️⃣ Fetch shipment
     const shipment = await CustomerShipment.findById(quote.shipment._id);
-    if (!shipment)
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
 
-    if (shipment.customerId.toString() !== req.user._id.toString())
-      return res
-        .status(403)
-        .json({
-          success: false,
-          message: "Not authorized to accept this quote",
-        });
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
 
-    // ---------------- UPDATE PDF WITH CUSTOMER SIGNATURE ----------------
+    // 3️⃣ Authorization
+    if (shipment.customerId.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to accept this quote",
+      });
+    }
+
+    /* =====================================================
+       GENERATE CONTRACT PDF
+    ===================================================== */
     const doc = new PDFDocument({ margin: 50 });
     const buffers = [];
 
     doc.on("data", buffers.push.bind(buffers));
 
-    // Add previous contract details (could be improved by storing fields separately)
-    doc.fontSize(12).text(`Shipment Contract for Quote: ${quote._id}`);
-    doc.moveDown();
-    doc.text(`Shipper: ${quote.shipper}`);
-    doc.text(`Customer: ${req.user.name}`);
-    doc.text(`Total Price: ${quote.totalPrice}`);
+    doc.fontSize(16).text("Shipment Contract", { underline: true });
     doc.moveDown();
 
-    // Add customer signature
-    const img = Buffer.from(
+    doc.fontSize(12).text(`Quote ID: ${quote._id}`);
+    doc.text(`Customer: ${req.user.name}`);
+    doc.text(`Shipper: ${quote.shipper?.companyName || quote.shipper?.name}`);
+    doc.text(`Total Price: ${quote.totalPrice}`);
+    doc.text(`Payment Method: ${quote.paymentMethod}`);
+    doc.moveDown();
+
+    // Customer Signature
+    const signatureBuffer = Buffer.from(
       customerSignature.replace(/^data:image\/\w+;base64,/, ""),
       "base64"
     );
+
     doc.text("Customer Signature:");
-    doc.image(img, { width: 150, height: 50 });
+    doc.image(signatureBuffer, { width: 150, height: 60 });
+
     doc.end();
 
     const pdfBuffer = await new Promise((resolve, reject) => {
@@ -141,25 +185,34 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       doc.on("error", reject);
     });
 
-    // Upload signed PDF
+    /* =====================================================
+       UPLOAD PDF TO CLOUDINARY
+    ===================================================== */
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: "raw", folder: "shipment_contracts" },
+        {
+          resource_type: "raw",
+          folder: "shipment_contracts",
+        },
         (err, result) => (err ? reject(err) : resolve(result))
       );
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
-    // ---------------- UPDATE QUOTE ----------------
-    quote.contract.url = uploadResult.secure_url;
-    quote.contract.public_id = uploadResult.public_id;
+    /* =====================================================
+       UPDATE QUOTE
+    ===================================================== */
     quote.customerSignature = customerSignature;
+    quote.contract = {
+      url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+    };
     quote.contractAccepted = true;
     quote.contractAcceptedAt = new Date();
     quote.status = "accepted";
     await quote.save();
 
-    // Reject all other quotes
+    // Reject other quotes
     await ShipmentQuote.updateMany(
       { shipment: shipment._id, _id: { $ne: quote._id } },
       { status: "rejected" }
@@ -167,34 +220,29 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     // Update shipment
     shipment.status = "assigned";
-    shipment.assignedShipper = quote.shipper;
+    shipment.assignedShipper = quote.shipper._id;
     await shipment.save();
 
-    // Record in CustomerQuote
+    // Save customer quote history
     await CustomerQuote.create({
       shipmentId: shipment._id,
-      customerId: req.user._id,
-      shipperId: quote.shipper,
+      customerId,
+      shipperId: quote.shipper._id,
       price: quote.totalPrice,
-      message: `Customer ${req.user.name} accepted quote`,
-      estimatedDeliveryDays: quote.estimatedDeliveryDays,
+      message: "Customer accepted quote",
       status: "accepted",
     });
 
     res.status(200).json({
       success: true,
-      message: "Quote accepted and signed successfully",
+      message: "Quote accepted and contract signed successfully",
       quote,
-      shipment,
     });
-  } catch (err) {
-    console.error(err);
-    res
-      .status(500)
-      .json({
-        success: false,
-        message: "Failed to accept quote",
-        error: err.message,
-      });
+  } catch (error) {
+    console.error("acceptQuoteWithSignature error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to accept quote",
+    });
   }
 };
