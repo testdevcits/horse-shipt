@@ -2,9 +2,9 @@ const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
+const ShipperContract = require("../../models/shipper/shipperContractModel");
 const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
-const cloudinary = require("../../utils/cloudinary");
 
 // ====================================================
 // SHIPPER SIDE CONTROLLERS
@@ -17,7 +17,7 @@ exports.addQuote = async (req, res) => {
 
     const {
       shipment,
-      vehicle, // 🚗 vehicleId
+      vehicle,
       totalPrice,
       currency,
       paymentMethod,
@@ -83,7 +83,20 @@ exports.addQuote = async (req, res) => {
       });
     }
 
-    // -------- CREATE QUOTE --------
+    // -------- GET SHIPPER CONTRACT --------
+    const shipperContract = await ShipperContract.findOne({
+      shipper: shipperId,
+      isActive: true,
+    });
+
+    if (!shipperContract) {
+      return res.status(400).json({
+        success: false,
+        message: "Please upload your contract first before sending a quote",
+      });
+    }
+
+    // -------- CREATE QUOTE WITH CONTRACT --------
     const quote = await ShipmentQuote.create({
       shipment,
       shipper: shipperId,
@@ -100,7 +113,9 @@ exports.addQuote = async (req, res) => {
       notes,
       status: "pending",
       termsAccepted: false,
-      contractFile: null,
+      contract: shipperContract.contractFile, // attach contract snapshot
+      contractAccepted: false,
+      contractAcceptedAt: null,
     });
 
     // -------- NOTIFICATIONS --------
@@ -203,14 +218,12 @@ exports.getQuotesByShipment = async (req, res) => {
 exports.acceptQuote = async (req, res) => {
   try {
     const { quoteId } = req.params;
-    const contractFile = req.file;
     const { acceptedTerms } = req.body;
 
-    if (!contractFile || !acceptedTerms) {
+    if (!acceptedTerms) {
       return res.status(400).json({
         success: false,
-        message:
-          "You must accept terms and upload Contract.pdf before accepting quote",
+        message: "You must accept terms to accept the quote",
       });
     }
 
@@ -222,28 +235,24 @@ exports.acceptQuote = async (req, res) => {
       });
     }
 
-    // ---------------- UPLOAD CONTRACT ----------------
-    const uploadedFile = await cloudinary.uploader.upload(contractFile.path, {
-      resource_type: "raw",
-      folder: "contracts",
-    });
-
-    quote.contractFile = uploadedFile.secure_url;
+    // ---------------- ACCEPT CONTRACT ----------------
     quote.termsAccepted = true;
+    quote.contractAccepted = true;
+    quote.contractAcceptedAt = new Date();
     quote.status = "accepted";
     await quote.save();
 
-    // Reject other quotes
+    // ---------------- REJECT OTHER QUOTES ----------------
     await ShipmentQuote.updateMany(
       { shipment: quote.shipment, _id: { $ne: quote._id } },
       { status: "rejected" }
     );
 
-    // Update shipment
+    // ---------------- UPDATE SHIPMENT ----------------
     await CustomerShipment.findByIdAndUpdate(quote.shipment, {
       status: "assigned",
       assignedShipper: quote.shipper,
-      contractPdf: uploadedFile.secure_url,
+      contractPdf: quote.contract?.url || null,
     });
 
     // -------- NOTIFICATIONS --------

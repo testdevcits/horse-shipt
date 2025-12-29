@@ -92,6 +92,14 @@ const {
   deleteDriverProfileImage,
 } = require("../../controllers/shipper/driver/driverController");
 
+// -------- Contracts --------
+const {
+  uploadContract,
+  updateContract,
+  getMyContract,
+  deactivateContract,
+} = require("../../controllers/shipper/shipperContractController");
+
 // ====================================================
 // SHIPPER PROFILE ROUTES
 // ====================================================
@@ -236,6 +244,32 @@ router.put(
 );
 
 router.delete("/driver/profile-image", driverAuth, deleteDriverProfileImage);
+
+// ====================================================
+// SHIPPER CONTRACT ROUTES
+// ====================================================
+
+// Upload contract (First time)
+router.post(
+  "/contracts/upload",
+  shipperAuth,
+  upload.single("contractFile"),
+  uploadContract
+);
+
+// Update contract (Replace existing)
+router.put(
+  "/contracts/update",
+  shipperAuth,
+  upload.single("contractFile"),
+  updateContract
+);
+
+// Get my active contract
+router.get("/contracts/my", shipperAuth, getMyContract);
+
+// Deactivate contract (Soft delete)
+router.patch("/contracts/deactivate", shipperAuth, deactivateContract);
 
 // ====================================================
 // EXPORT

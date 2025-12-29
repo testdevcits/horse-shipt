@@ -99,8 +99,25 @@ const quoteSchema = new mongoose.Schema(
       default: false,
     },
 
-    contractFile: {
-      type: String,
+    // ================= CONTRACT (UPDATED) =================
+    contract: {
+      url: {
+        type: String,
+        default: null,
+      },
+      public_id: {
+        type: String,
+        default: null,
+      },
+    },
+
+    contractAccepted: {
+      type: Boolean,
+      default: false,
+    },
+
+    contractAcceptedAt: {
+      type: Date,
       default: null,
     },
 
