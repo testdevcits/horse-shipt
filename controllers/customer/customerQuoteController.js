@@ -13,17 +13,13 @@ exports.getQuotesByShipment = async (req, res) => {
     const { shipmentId } = req.params;
     const customerId = req.user._id;
 
-    console.log("DEBUG: shipmentId:", shipmentId);
-    console.log("DEBUG: customerId:", customerId);
-
     // Validate shipment
     const shipment = await CustomerShipment.findById(shipmentId).populate(
-      "customer", // <-- fixed field name
+      "customer",
       "name email"
     );
 
     if (!shipment) {
-      console.log("DEBUG: Shipment not found for ID:", shipmentId);
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
@@ -31,13 +27,10 @@ exports.getQuotesByShipment = async (req, res) => {
     }
 
     // Authorization
-    if (shipment.customer._id.toString() !== customerId.toString()) {
-      console.log(
-        "DEBUG: Unauthorized access. Shipment customer:",
-        shipment.customer._id.toString(),
-        "Requesting customerId:",
-        customerId.toString()
-      );
+    if (
+      !shipment.customer ||
+      shipment.customer._id.toString() !== customerId.toString()
+    ) {
       return res.status(403).json({
         success: false,
         message: "Not authorized to view these quotes",
@@ -49,8 +42,6 @@ exports.getQuotesByShipment = async (req, res) => {
       .populate("shipper", "name email phone companyName")
       .populate("vehicle")
       .sort({ createdAt: -1 });
-
-    console.log("DEBUG: Quotes fetched:", quotes.length);
 
     return res.status(200).json({
       success: true,
@@ -95,7 +86,10 @@ exports.getQuoteById = async (req, res) => {
     }
 
     // Authorization
-    if (quote.shipment.customerId._id.toString() !== customerId.toString()) {
+    if (
+      !quote.shipment.customer ||
+      quote.shipment.customer._id.toString() !== customerId.toString()
+    ) {
       return res.status(403).json({
         success: false,
         message: "Not authorized to view this quote",
@@ -143,7 +137,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // Fetch shipment and populate customerId
+    // Fetch shipment and populate customer
     const shipment = await CustomerShipment.findById(
       quote.shipment._id
     ).populate("customer");
@@ -157,8 +151,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     // Authorization
     if (
-      !shipment.customerId ||
-      shipment.customerId._id.toString() !== customerId.toString()
+      !shipment.customer ||
+      shipment.customer._id.toString() !== customerId.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -190,7 +184,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     doc.moveDown();
 
     doc.fontSize(12).text(`Quote ID: ${quote._id}`);
-    doc.text(`Customer: ${req.user.name}`);
+    doc.text(`Customer: ${shipment.customer.name}`);
     doc.text(`Shipper: ${quote.shipper?.companyName || quote.shipper?.name}`);
     doc.text(`Total Price: ${quote.totalPrice}`);
     doc.text(`Payment Method: ${quote.paymentMethod}`);
@@ -210,22 +204,13 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     /* =====================================================
        UPLOAD PDF TO CLOUDINARY
     ===================================================== */
-    let uploadResult;
-    try {
-      uploadResult = await new Promise((resolve, reject) => {
-        const uploadStream = cloudinary.uploader.upload_stream(
-          { resource_type: "raw", folder: "shipment_contracts" },
-          (err, result) => (err ? reject(err) : resolve(result))
-        );
-        streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
-      });
-    } catch (err) {
-      console.error("Cloudinary upload error:", err);
-      return res.status(500).json({
-        success: false,
-        message: "Failed to upload contract PDF",
-      });
-    }
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        { resource_type: "raw", folder: "shipment_contracts" },
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+      streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
+    });
 
     /* =====================================================
        UPDATE QUOTE
