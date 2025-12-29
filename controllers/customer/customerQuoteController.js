@@ -18,7 +18,7 @@ exports.getQuotesByShipment = async (req, res) => {
 
     // Validate shipment
     const shipment = await CustomerShipment.findById(shipmentId).populate(
-      "customerId",
+      "customer", // <-- fixed field name
       "name email"
     );
 
@@ -31,10 +31,10 @@ exports.getQuotesByShipment = async (req, res) => {
     }
 
     // Authorization
-    if (shipment.customerId._id.toString() !== customerId.toString()) {
+    if (shipment.customer._id.toString() !== customerId.toString()) {
       console.log(
-        "DEBUG: Unauthorized access. Shipment customerId:",
-        shipment.customerId._id.toString(),
+        "DEBUG: Unauthorized access. Shipment customer:",
+        shipment.customer._id.toString(),
         "Requesting customerId:",
         customerId.toString()
       );
@@ -80,9 +80,9 @@ exports.getQuoteById = async (req, res) => {
       .populate("vehicle")
       .populate({
         path: "shipment",
-        select: "customerId",
+        select: "customer",
         populate: {
-          path: "customerId",
+          path: "customer",
           select: "name email",
         },
       });
