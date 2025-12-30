@@ -58,7 +58,7 @@ exports.driverLogin = async (req, res) => {
 };
 
 // ====================================================
-// DRIVER DASHBOARD (ME) WITH ASSIGNED SHIPMENTS + QUOTES
+// DRIVER DASHBOARD (ME) WITH ASSIGNED SHIPMENTS
 // ====================================================
 exports.getDriverDashboard = async (req, res) => {
   try {
@@ -70,14 +70,15 @@ exports.getDriverDashboard = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Driver not found" });
 
-    // Get all shipments assigned to this driver
+    // Fetch assigned shipments
     const assignedShipments = await Shipment.find({
       assignedDriver: driver._id,
     })
-      .populate("pickupLocation dropLocation")
+      .populate("pickupLocation", "address city state postalCode")
+      .populate("dropLocation", "address city state postalCode")
       .lean();
 
-    // Fetch ShipmentQuotes for assigned shipments
+    // Fetch ShipmentQuotes
     const shipmentIds = assignedShipments.map((s) => s._id);
     const shipmentQuotes = await ShipmentQuote.find({
       shipment: { $in: shipmentIds },
@@ -86,10 +87,12 @@ exports.getDriverDashboard = async (req, res) => {
       .populate("vehicle", "vehicleNumber type capacity")
       .lean();
 
-    // Attach quotes to corresponding shipments
+    // Attach quotes to shipments
     const shipmentsWithQuotes = assignedShipments.map((shipment) => {
       return {
         ...shipment,
+        pickupDate: shipment.pickupDate,
+        deliveryDate: shipment.deliveryDate,
         quotes: shipmentQuotes.filter(
           (quote) => quote.shipment.toString() === shipment._id.toString()
         ),
@@ -111,7 +114,7 @@ exports.getDriverDashboard = async (req, res) => {
       shipments: shipmentsWithQuotes,
     });
   } catch (error) {
-    console.error("[DRIVER DASHBOARD]", error);
+    console.error("[DRIVER ME]", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -124,17 +127,31 @@ exports.acceptShipment = async (req, res) => {
     const driverId = req.driver._id;
     const { shipmentId } = req.body;
 
-    const shipment = await Shipment.findById(shipmentId);
+    const shipment = await Shipment.findById(shipmentId)
+      .populate("pickupLocation", "address city state postalCode")
+      .populate("dropLocation", "address city state postalCode")
+      .lean();
     if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
 
-    shipment.assignedDriver = driverId;
-    shipment.status = "Accepted";
-    await shipment.save();
+    // Assign driver and update status
+    await Shipment.findByIdAndUpdate(shipmentId, {
+      assignedDriver: driverId,
+      status: "Accepted",
+    });
 
+    // Fetch driver info
     const driver = await Driver.findById(driverId).populate("assignedVehicles");
+
+    // Fetch ShipmentQuotes for this shipment
+    const shipmentQuotes = await ShipmentQuote.find({ shipment: shipment._id })
+      .populate("shipper", "name email phone")
+      .populate("vehicle", "vehicleNumber type capacity")
+      .lean();
+
+    shipment.quotes = shipmentQuotes;
 
     res.json({
       success: true,
