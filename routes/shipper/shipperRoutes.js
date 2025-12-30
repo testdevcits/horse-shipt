@@ -37,6 +37,7 @@ const {
   getMyQuotes,
   getQuotesByShipment,
   acceptQuote,
+  getAcceptedQuoteByShipment,
 } = require("../../controllers/shipper/shipperQuoteController");
 
 // -------- Messages --------
@@ -150,6 +151,11 @@ router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 router.post("/quotes/add", shipperAuth, addQuote);
 router.get("/quotes/my", shipperAuth, getMyQuotes);
 router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
+router.get(
+  "/quotes/accepted/:shipmentId",
+  shipperAuth,
+  getAcceptedQuoteByShipment
+);
 
 // ====================================================
 // MESSAGE ROUTES

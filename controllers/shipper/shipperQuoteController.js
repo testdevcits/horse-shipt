@@ -4,7 +4,6 @@ const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
-
 const PDFDocument = require("pdfkit");
 const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
 const streamifier = require("streamifier");
@@ -276,6 +275,40 @@ exports.getQuotesByShipment = async (req, res) => {
       success: false,
       message: "Failed to fetch quotes",
       error: err.message,
+    });
+  }
+};
+
+/* ====================================================
+   GET ACCEPTED QUOTE BY SHIPMENT
+==================================================== */
+exports.getAcceptedQuoteByShipment = async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+
+    const acceptedQuote = await ShipmentQuote.findOne({
+      shipment: shipmentId,
+      status: "accepted",
+    })
+      .populate("shipper", "name email phone")
+      .populate("vehicle");
+
+    if (!acceptedQuote) {
+      return res.status(404).json({
+        success: false,
+        message: "No accepted quote found for this shipment",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      quote: acceptedQuote,
+    });
+  } catch (error) {
+    console.error("Get Accepted Quote Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
     });
   }
 };
