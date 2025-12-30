@@ -20,6 +20,9 @@ const driverSchema = new mongoose.Schema(
     licenseNumber: { type: String, required: true },
     notes: { type: String, default: "" },
 
+    // ================= ROLE =================
+    role: { type: String, enum: ["driver", "admin"], default: "driver" },
+
     // ================= PROFILE IMAGE =================
     profileImage: {
       type: imageSchema,
