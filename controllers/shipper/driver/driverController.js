@@ -1,5 +1,6 @@
 const Driver = require("../../../models/shipper/Driver");
-const Shipment = require("../../../models/shipper/ShipperShipment"); // make sure this path is correct
+const Shipment = require("../../../models/shipper/ShipperShipment");
+const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
 
@@ -57,7 +58,7 @@ exports.driverLogin = async (req, res) => {
 };
 
 // ====================================================
-// DRIVER DASHBOARD (ME) WITH ASSIGNED SHIPMENTS
+// DRIVER DASHBOARD (ME) WITH ASSIGNED SHIPMENTS + QUOTES
 // ====================================================
 exports.getDriverDashboard = async (req, res) => {
   try {
@@ -69,9 +70,31 @@ exports.getDriverDashboard = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Driver not found" });
 
+    // Get all shipments assigned to this driver
     const assignedShipments = await Shipment.find({
       assignedDriver: driver._id,
-    }).populate("pickupLocation dropLocation");
+    })
+      .populate("pickupLocation dropLocation")
+      .lean();
+
+    // Fetch ShipmentQuotes for assigned shipments
+    const shipmentIds = assignedShipments.map((s) => s._id);
+    const shipmentQuotes = await ShipmentQuote.find({
+      shipment: { $in: shipmentIds },
+    })
+      .populate("shipper", "name email phone")
+      .populate("vehicle", "vehicleNumber type capacity")
+      .lean();
+
+    // Attach quotes to corresponding shipments
+    const shipmentsWithQuotes = assignedShipments.map((shipment) => {
+      return {
+        ...shipment,
+        quotes: shipmentQuotes.filter(
+          (quote) => quote.shipment.toString() === shipment._id.toString()
+        ),
+      };
+    });
 
     res.json({
       success: true,
@@ -85,10 +108,10 @@ exports.getDriverDashboard = async (req, res) => {
         profileImage: driver.profileImage,
         assignedVehicles: driver.assignedVehicles,
       },
-      shipments: assignedShipments,
+      shipments: shipmentsWithQuotes,
     });
   } catch (error) {
-    console.error("[DRIVER ME]", error);
+    console.error("[DRIVER DASHBOARD]", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
