@@ -1,5 +1,4 @@
 const Driver = require("../../../models/shipper/Driver");
-const Shipment = require("../../../models/shipper/ShipperShipment");
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
@@ -70,34 +69,24 @@ exports.getDriverDashboard = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Driver not found" });
 
-    // Fetch assigned shipments
-    const assignedShipments = await Shipment.find({
-      assignedDriver: driver._id,
-    })
-      .populate("pickupLocation", "address city state postalCode")
-      .populate("dropLocation", "address city state postalCode")
-      .lean();
-
-    // Fetch ShipmentQuotes
-    const shipmentIds = assignedShipments.map((s) => s._id);
-    const shipmentQuotes = await ShipmentQuote.find({
-      shipment: { $in: shipmentIds },
-    })
-      .populate("shipper", "name email phone")
+    // Fetch accepted shipment quotes (assigned shipments)
+    const acceptedQuotes = await ShipmentQuote.find({ status: "accepted" })
+      .populate("shipment")
+      .populate("shipper", "name email phone companyName")
       .populate("vehicle", "vehicleNumber type capacity")
       .lean();
 
-    // Attach quotes to shipments
-    const shipmentsWithQuotes = assignedShipments.map((shipment) => {
-      return {
-        ...shipment,
-        pickupDate: shipment.pickupDate,
-        deliveryDate: shipment.deliveryDate,
-        quotes: shipmentQuotes.filter(
-          (quote) => quote.shipment.toString() === shipment._id.toString()
-        ),
-      };
-    });
+    // Map shipments from accepted quotes
+    const shipments = acceptedQuotes.map((quote) => ({
+      ...quote.shipment,
+      quoteId: quote._id,
+      shipper: quote.shipper,
+      vehicle: quote.vehicle,
+      totalPrice: quote.totalPrice,
+      paymentMethod: quote.paymentMethod,
+      pickupTime: quote.pickupTime,
+      estimatedArrivalTime: quote.estimatedArrivalTime,
+    }));
 
     res.json({
       success: true,
@@ -111,10 +100,10 @@ exports.getDriverDashboard = async (req, res) => {
         profileImage: driver.profileImage,
         assignedVehicles: driver.assignedVehicles,
       },
-      shipments: shipmentsWithQuotes,
+      shipments,
     });
   } catch (error) {
-    console.error("[DRIVER ME]", error);
+    console.error("[DRIVER DASHBOARD]", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -125,48 +114,39 @@ exports.getDriverDashboard = async (req, res) => {
 exports.acceptShipment = async (req, res) => {
   try {
     const driverId = req.driver._id;
-    const { shipmentId } = req.body;
+    const { quoteId } = req.body;
 
-    const shipment = await Shipment.findById(shipmentId)
-      .populate("pickupLocation", "address city state postalCode")
-      .populate("dropLocation", "address city state postalCode")
+    const quote = await ShipmentQuote.findById(quoteId)
+      .populate("shipment")
+      .populate("shipper")
+      .populate("vehicle")
       .lean();
-    if (!shipment)
+
+    if (!quote)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: "Quote not found" });
 
-    // Assign driver and update status
-    await Shipment.findByIdAndUpdate(shipmentId, {
+    // Update shipment quote status
+    await ShipmentQuote.findByIdAndUpdate(quoteId, {
       assignedDriver: driverId,
-      status: "Accepted",
+      status: "driverAccepted",
     });
-
-    // Fetch driver info
-    const driver = await Driver.findById(driverId).populate("assignedVehicles");
-
-    // Fetch ShipmentQuotes for this shipment
-    const shipmentQuotes = await ShipmentQuote.find({ shipment: shipment._id })
-      .populate("shipper", "name email phone")
-      .populate("vehicle", "vehicleNumber type capacity")
-      .lean();
-
-    shipment.quotes = shipmentQuotes;
 
     res.json({
       success: true,
       message: "Shipment accepted successfully",
-      driver: {
-        id: driver._id,
-        name: driver.name,
-        email: driver.email,
-        phone: driver.phone,
-        licenseNumber: driver.licenseNumber,
-        notes: driver.notes,
-        profileImage: driver.profileImage,
-        assignedVehicles: driver.assignedVehicles,
+      driverId,
+      shipment: {
+        ...quote.shipment,
+        quoteId: quote._id,
+        shipper: quote.shipper,
+        vehicle: quote.vehicle,
+        totalPrice: quote.totalPrice,
+        paymentMethod: quote.paymentMethod,
+        pickupTime: quote.pickupTime,
+        estimatedArrivalTime: quote.estimatedArrivalTime,
       },
-      shipment,
     });
   } catch (error) {
     console.error("[ACCEPT SHIPMENT]", error);
