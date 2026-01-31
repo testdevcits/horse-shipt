@@ -21,7 +21,6 @@ const shipperVehicleSchema = new mongoose.Schema(
       required: true,
     },
 
-    // NEW FIELD: Vehicle Number
     vehicleNumber: {
       type: String,
       required: true,
