@@ -6,8 +6,9 @@ const MongoStore = require("connect-mongo");
 const passport = require("passport");
 const path = require("path");
 const fs = require("fs");
-const http = require("http"); // 🔹 Added for HTTP server
-const { Server } = require("socket.io"); // 🔹 Added Socket.IO
+const http = require("http");
+const { Server } = require("socket.io");
+
 const connectDB = require("./config/db");
 
 // -------------------------
@@ -26,19 +27,22 @@ connectDB();
 const app = express();
 
 // -------------------------
-// CORS Configuration
+// Allowed Origins
 // -------------------------
 const allowedOrigins = [
   "http://localhost:3000",
   "https://horse-shipt-frontend.vercel.app",
 ];
 
+// -------------------------
+// CORS Configuration
+// -------------------------
 app.use(
   cors({
     origin: function (origin, callback) {
       if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) callback(null, true);
-      else callback(new Error("CORS policy: Origin not allowed"));
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS policy: Origin not allowed"));
     },
     credentials: true,
   })
@@ -51,7 +55,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // -------------------------
-// Session Middleware (Mongo Store)
+// Session Middleware
 // -------------------------
 app.use(
   session({
@@ -71,7 +75,7 @@ app.use(
 );
 
 // -------------------------
-// Initialize Passport
+// Passport Initialization
 // -------------------------
 app.use(passport.initialize());
 app.use(passport.session());
@@ -81,6 +85,7 @@ require("./config/passport");
 // Upload Directory Setup
 // -------------------------
 let uploadPath;
+
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
   uploadPath = path.join("/tmp", "uploads/profilePictures");
 } else {
@@ -114,7 +119,7 @@ app.get("/", (req, res) => {
 });
 
 // -------------------------
-// 404 - Not Found
+// 404 Handler
 // -------------------------
 app.use((req, res) => {
   res.status(404).json({ message: "Route not found" });
@@ -124,41 +129,37 @@ app.use((req, res) => {
 // Global Error Handler
 // -------------------------
 app.use((err, req, res, next) => {
-  console.error("Global Error Handler:", err.stack);
+  console.error("Global Error:", err.stack);
   res.status(err.statusCode || 500).json({
     success: false,
     message: err.message || "Internal Server Error",
   });
 });
 
-// -------------------------
-// 🔹 Setup HTTP server + Socket.IO
-// -------------------------
+// =================================================
+// HTTP SERVER + SOCKET.IO SETUP
+// =================================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST", "PUT"],
+    credentials: true,
   },
 });
 
-// 🔹 Make io accessible in controllers
+// 🔹 Make io accessible in controllers (future use)
 app.set("io", io);
 
-// 🔹 Socket.IO connection handler
-io.on("connection", (socket) => {
-  console.log("⚡ Socket connected:", socket.id);
-
-  socket.on("disconnect", () => {
-    console.log("⚡ Socket disconnected:", socket.id);
-  });
-});
+// 🔹 Attach chat socket logic
+require("./sockets/chatSocket")(io);
 
 // -------------------------
-// Start server
+// Start Server
 // -------------------------
 const PORT = process.env.PORT || 5000;
+
 server.listen(PORT, () => {
   console.log(
     `🐎 Server running in ${

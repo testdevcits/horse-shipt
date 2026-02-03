@@ -53,6 +53,10 @@ const {
   acceptQuoteWithSignature,
 } = require("../../controllers/customer/customerQuoteController");
 
+const {
+  getShippersForChat,
+} = require("../../controllers/customer/customerChatListController");
+
 // ====================================================
 // CUSTOMER PROFILE
 // ====================================================
@@ -172,6 +176,11 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
+
+// ====================================================
+// CHAT LIST (Customer Dashboard)
+// ====================================================
+router.get("/chat/shippers", customerAuth, getShippersForChat);
 
 // ====================================================
 // EXPORT ROUTER

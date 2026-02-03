@@ -53,12 +53,10 @@ exports.signup = async (req, res) => {
     const existingShipper = await Shipper.findOne({ email });
     const existingCustomer = await Customer.findOne({ email });
     if (existingShipper || existingCustomer)
-      return res
-        .status(409)
-        .json({
-          success: false,
-          errors: ["Email already registered with another account/role"],
-        });
+      return res.status(409).json({
+        success: false,
+        errors: ["Email already registered with another account/role"],
+      });
 
     const uniqueId = await generateUniqueId(role);
 
@@ -79,7 +77,7 @@ exports.signup = async (req, res) => {
           : [],
     };
 
-    // ✅ For local accounts, just assign plain password. Schema pre-save will hash it
+    // For local accounts, just assign plain password. Schema pre-save will hash it
     if (provider === "local") {
       if (!password)
         return res

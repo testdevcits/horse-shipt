@@ -101,6 +101,10 @@ const {
   deactivateContract,
 } = require("../../controllers/shipper/shipperContractController");
 
+const {
+  getCustomersForChat,
+} = require("../../controllers/shipper/shipperChatListController");
+
 // ====================================================
 // SHIPPER PROFILE ROUTES
 // ====================================================
@@ -269,6 +273,11 @@ router.get("/contracts", shipperAuth, getMyContract);
 
 // Deactivate contract (Soft delete)
 router.patch("/contracts/deactivate", shipperAuth, deactivateContract);
+
+// ====================================================
+// CHAT LIST (Shipper Dashboard)
+// ====================================================
+router.get("/chat/customers", shipperAuth, getCustomersForChat);
 
 // ====================================================
 // EXPORT
