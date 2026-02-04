@@ -104,7 +104,7 @@ exports.addQuote = async (req, res) => {
     const buffers = [];
     doc.on("data", buffers.push.bind(buffers));
 
-    // -------- CUSTOM FONTS --------
+    // -------- FONTS --------
     const robotoRegular = path.join(
       __dirname,
       "../../assets/fonts/RobotoSlab-Regular.ttf"
@@ -125,7 +125,7 @@ exports.addQuote = async (req, res) => {
     }
 
     doc
-      .font(robotoBold)
+      .font(oswaldBold)
       .fontSize(20)
       .text("HorseShipt", 110, 25, { align: "left" });
     doc.moveDown(2);
@@ -139,118 +139,118 @@ exports.addQuote = async (req, res) => {
 
     // -------- CUSTOMER INFO --------
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .fontSize(12)
       .text("Customer Information", { underline: true });
     doc.moveDown(0.5);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Name:", { continued: true })
       .font(robotoRegular)
       .text(` ${shipmentExists.customer.name}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Email:", { continued: true })
       .font(robotoRegular)
       .text(` ${shipmentExists.customer.email}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Shipment ID:", { continued: true })
       .font(robotoRegular)
       .text(` ${shipmentExists._id}`);
     doc.moveDown(1);
 
     // -------- SHIPMENT DETAILS --------
-    doc.font(robotoBold).text("Shipment Details", { underline: true });
+    doc.font(openSansBold).text("Shipment Details", { underline: true });
     doc.moveDown(0.5);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Pickup Location:", { continued: true })
       .font(robotoRegular)
       .text(` ${shipmentExists.pickupLocation}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Pickup Date:", { continued: true })
       .font(robotoRegular)
       .text(` ${formatDate(shipmentExists.pickupDate)}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Delivery Location:", { continued: true })
       .font(robotoRegular)
       .text(` ${shipmentExists.deliveryLocation}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Delivery Date:", { continued: true })
       .font(robotoRegular)
       .text(` ${formatDate(shipmentExists.deliveryDate)}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Number of Horses:", { continued: true })
       .font(robotoRegular)
       .text(` ${shipmentExists.numberOfHorses}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Estimated Delivery Days:", { continued: true })
       .font(robotoRegular)
       .text(` ${estimatedDeliveryDays || "N/A"}`);
     doc.moveDown(1);
 
     // -------- SHIPPER DETAILS --------
-    doc.font(robotoBold).text("Shipper Details", { underline: true });
+    doc.font(openSansBold).text("Shipper Details", { underline: true });
     doc.moveDown(0.5);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Name:", { continued: true })
       .font(robotoRegular)
       .text(` ${req.user.name}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Email:", { continued: true })
       .font(robotoRegular)
       .text(` ${req.user.email}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Vehicle:", { continued: true })
       .font(robotoRegular)
       .text(` ${vehicleExists.name}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Transport Type:", { continued: true })
       .font(robotoRegular)
       .text(` ${transportType}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Total Price:", { continued: true })
       .font(robotoRegular)
       .text(` ${totalPrice} ${currency}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Payment Method:", { continued: true })
       .font(robotoRegular)
       .text(` ${paymentMethod}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Payment Due:", { continued: true })
       .font(robotoRegular)
       .text(` ${paymentDue}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Pickup Time:", { continued: true })
       .font(robotoRegular)
       .text(` ${pickupTime}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Estimated Arrival Time:", { continued: true })
       .font(robotoRegular)
       .text(` ${estimatedArrivalTime}`);
     doc
-      .font(robotoBold)
+      .font(openSansBold)
       .text("Stalls Required:", { continued: true })
       .font(robotoRegular)
       .text(` ${stallsRequired}`);
     if (notes)
       doc
-        .font(robotoBold)
+        .font(openSansBold)
         .text("Notes:", { continued: true })
         .font(robotoRegular)
         .text(` ${notes}`);
@@ -265,11 +265,13 @@ exports.addQuote = async (req, res) => {
     const bottomY = doc.page.height - 150;
 
     // Shipper signature left
-    doc.font(robotoBold).text("Shipper Signature:", 50, bottomY);
+    doc.font(openSansBold).text("Shipper Signature:", 50, bottomY);
     doc.image(imgBuffer, 50, bottomY + 20, { width: 150, height: 50 });
 
     // Customer signature placeholder right
-    doc.font(robotoBold).text("Customer Signature:", pageWidth - 250, bottomY);
+    doc
+      .font(openSansBold)
+      .text("Customer Signature:", pageWidth - 250, bottomY);
     doc.rect(pageWidth - 250, bottomY + 20, 150, 50).stroke();
 
     doc.end();
@@ -350,11 +352,13 @@ exports.addQuote = async (req, res) => {
       .json({ success: true, message: "Quote sent successfully", quote });
   } catch (err) {
     console.error("[ADD QUOTE ERROR]:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to send quote",
-      error: err.message,
-    });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to send quote",
+        error: err.message,
+      });
   }
 };
 
@@ -375,11 +379,13 @@ exports.getMyQuotes = async (req, res) => {
       .json({ success: true, message: "Quotes fetched successfully", quotes });
   } catch (err) {
     console.error("[GET MY QUOTES ERROR]:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch quotes",
-      error: err.message,
-    });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch quotes",
+        error: err.message,
+      });
   }
 };
 
@@ -397,11 +403,13 @@ exports.getQuotesByShipment = async (req, res) => {
       .json({ success: true, message: "Quotes fetched successfully", quotes });
   } catch (err) {
     console.error("[GET QUOTES ERROR]:", err);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch quotes",
-      error: err.message,
-    });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: "Failed to fetch quotes",
+        error: err.message,
+      });
   }
 };
 
@@ -417,10 +425,12 @@ exports.getAcceptedQuoteByShipment = async (req, res) => {
       .populate("vehicle");
 
     if (!acceptedQuote)
-      return res.status(404).json({
-        success: false,
-        message: "No accepted quote found for this shipment",
-      });
+      return res
+        .status(404)
+        .json({
+          success: false,
+          message: "No accepted quote found for this shipment",
+        });
 
     return res.status(200).json({ success: true, quote: acceptedQuote });
   } catch (error) {
