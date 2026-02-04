@@ -5,6 +5,17 @@ const path = require("path");
 const sendCustomerPaymentEmail = require("../../utils/customerPaymentEmail");
 const crypto = require("crypto");
 
+const cloudinary = require("cloudinary").v2;
+
+// -----------------------------
+// Cloudinary Configuration
+// -----------------------------
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
 // ------------------ Profile Update ------------------
 exports.updateProfile = async (req, res) => {
   try {
