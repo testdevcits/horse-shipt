@@ -301,3 +301,48 @@ exports.verifyOtp = async (req, res) => {
     res.status(500).json({ success: false, message: "Failed to verify OTP" });
   }
 };
+
+// -------------------------
+// Update Customer Profile Image
+// -------------------------
+exports.updateCustomerProfileImage = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
+    }
+
+    const customer = req.user; // already authenticated
+
+    // Delete old image from Cloudinary if exists
+    if (customer.profileImage?.public_id) {
+      await cloudinary.uploader.destroy(customer.profileImage.public_id);
+    }
+
+    // Upload new image
+    const result = await cloudinary.uploader.upload(req.file.path, {
+      folder: "customerProfileImages",
+      overwrite: true,
+    });
+
+    customer.profileImage = {
+      url: result.secure_url,
+      public_id: result.public_id,
+    };
+
+    await customer.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Profile image updated successfully",
+      profileImage: customer.profileImage,
+    });
+  } catch (error) {
+    console.error("Update Customer Profile Image error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to upload profile image",
+    });
+  }
+};
