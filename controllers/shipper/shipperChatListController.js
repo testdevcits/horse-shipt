@@ -1,4 +1,5 @@
 const Customer = require("../../models/customer/customerModel");
+const formatChatUser = require("../../utils/formatChatUser");
 
 /**
  * Shipper → Customer list (for chat)
@@ -12,13 +13,17 @@ exports.getCustomersForChat = async (req, res) => {
         email: 1,
         profilePicture: 1,
         isLogin: 1,
-        currentLocation: 1,
       }
     ).sort({ updatedAt: -1 });
 
+    // 🔹 Normalize data for chat list
+    const formattedCustomers = customers.map((customer) =>
+      formatChatUser(customer, "customer")
+    );
+
     res.status(200).json({
       success: true,
-      data: customers,
+      data: formattedCustomers,
     });
   } catch (error) {
     console.error("Get customers for chat error:", error);
