@@ -1,21 +1,27 @@
+const Message = require("../models/chat/messageModel");
+const { getOrCreateChatRoom } = require("../controllers/chat/chatController");
+
 module.exports = (io) => {
   io.on("connection", (socket) => {
-    console.log("⚡ Socket connected:", socket.id);
+    console.log("Socket connected:", socket.id);
 
-    //  Room join
-    socket.on("joinRoom", ({ roomId }) => {
-      socket.join(roomId);
-      console.log("Joined room:", roomId);
+    socket.on("joinRoom", async ({ customerId, shipperId }) => {
+      const room = await getOrCreateChatRoom({ customerId, shipperId });
+      socket.join(room._id.toString());
+      socket.emit("roomJoined", room._id);
     });
 
-    //  Message receive + broadcast
-    socket.on("sendMessage", (data) => {
-      console.log("Message received:", data);
+    socket.on("sendMessage", async (data) => {
+      const { roomId, senderId, senderRole, message } = data;
 
-      const { roomId } = data;
+      const msg = await Message.create({
+        chatRoom: roomId,
+        senderId,
+        senderRole,
+        message,
+      });
 
-      // Room ke sab logon ko message bhejo
-      io.to(roomId).emit("receiveMessage", data);
+      io.to(roomId).emit("receiveMessage", msg);
     });
 
     socket.on("disconnect", () => {
