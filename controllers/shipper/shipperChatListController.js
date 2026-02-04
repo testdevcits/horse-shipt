@@ -12,11 +12,11 @@ exports.getCustomersForChat = async (req, res) => {
         name: 1,
         email: 1,
         profilePicture: 1,
+        profileImage: 1, // include cloudinary image
         isLogin: 1,
       }
     ).sort({ updatedAt: -1 });
 
-    // 🔹 Normalize data for chat list
     const formattedCustomers = customers.map((customer) =>
       formatChatUser(customer, "customer")
     );
