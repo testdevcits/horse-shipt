@@ -5,10 +5,26 @@ const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const PDFDocument = require("pdfkit");
-const cloudinary = require("../../utils/cloudinary"); // Cloudinary config
+const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
+
+// ====================================================
+// UTILITY: Format Date
+// ====================================================
+function formatDate(date) {
+  if (!date) return "N/A";
+  const d = new Date(date);
+  const options = {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  };
+  return d.toLocaleDateString("en-US", options); // e.g., "Tuesday, February 10, 2026"
+}
 
 // ====================================================
 // SHIPPER SIDE CONTROLLERS
@@ -31,7 +47,7 @@ exports.addQuote = async (req, res) => {
       transportType,
       stallsRequired,
       notes,
-      shipperSignature, // base64 string (required)
+      shipperSignature,
     } = req.body;
 
     // -------- VALIDATION --------
@@ -84,64 +100,178 @@ exports.addQuote = async (req, res) => {
       });
 
     // -------- GENERATE PDF --------
-    const doc = new PDFDocument({ margin: 50 });
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
     const buffers = [];
-
-    // Listen to PDF stream
     doc.on("data", buffers.push.bind(buffers));
 
-    // -------- HEADER WITH LOGO --------
+    // -------- CUSTOM FONTS --------
+    const robotoRegular = path.join(
+      __dirname,
+      "../../assets/fonts/RobotoSlab-Regular.ttf"
+    );
+    const openSansBold = path.join(
+      __dirname,
+      "../../assets/fonts/OpenSans-Bold.ttf"
+    );
+    const oswaldBold = path.join(
+      __dirname,
+      "../../assets/fonts/Oswald-Bold.ttf"
+    );
+
+    // -------- HEADER LOGO --------
     const logoPath = path.join(__dirname, "../../assets/logo.png");
     if (fs.existsSync(logoPath)) {
       doc.image(logoPath, 50, 15, { width: 50 });
     }
-    doc.fontSize(20).text("HorseShipt", 110, 25, { align: "left" });
+
+    doc
+      .font(robotoBold)
+      .fontSize(20)
+      .text("HorseShipt", 110, 25, { align: "left" });
     doc.moveDown(2);
 
     // -------- CONTRACT TITLE --------
-    doc.fontSize(18).text("Shipment Contract", { align: "center" });
-    doc.moveDown();
+    doc
+      .font(openSansBold)
+      .fontSize(18)
+      .text("Shipment Contract", { align: "center" });
+    doc.moveDown(1);
 
     // -------- CUSTOMER INFO --------
-    doc.fontSize(12).text(`Customer Name: ${shipmentExists.customer.name}`);
-    doc.text(`Customer Email: ${shipmentExists.customer.email}`);
-    doc.text(`Shipment ID: ${shipmentExists._id}`);
-    doc.moveDown();
+    doc
+      .font(robotoBold)
+      .fontSize(12)
+      .text("Customer Information", { underline: true });
+    doc.moveDown(0.5);
+    doc
+      .font(robotoBold)
+      .text("Name:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${shipmentExists.customer.name}`);
+    doc
+      .font(robotoBold)
+      .text("Email:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${shipmentExists.customer.email}`);
+    doc
+      .font(robotoBold)
+      .text("Shipment ID:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${shipmentExists._id}`);
+    doc.moveDown(1);
 
     // -------- SHIPMENT DETAILS --------
-    doc.text(`Pickup Location: ${shipmentExists.pickupLocation}`);
-    doc.text(`Pickup Date: ${shipmentExists.pickupDate}`);
-    doc.text(`Delivery Location: ${shipmentExists.deliveryLocation}`);
-    doc.text(`Delivery Date: ${shipmentExists.deliveryDate}`);
-    doc.text(`Number of Horses: ${shipmentExists.numberOfHorses}`);
-    doc.text(`Estimated Delivery Days: ${estimatedDeliveryDays || "N/A"}`);
-    doc.moveDown();
+    doc.font(robotoBold).text("Shipment Details", { underline: true });
+    doc.moveDown(0.5);
+    doc
+      .font(robotoBold)
+      .text("Pickup Location:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${shipmentExists.pickupLocation}`);
+    doc
+      .font(robotoBold)
+      .text("Pickup Date:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${formatDate(shipmentExists.pickupDate)}`);
+    doc
+      .font(robotoBold)
+      .text("Delivery Location:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${shipmentExists.deliveryLocation}`);
+    doc
+      .font(robotoBold)
+      .text("Delivery Date:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${formatDate(shipmentExists.deliveryDate)}`);
+    doc
+      .font(robotoBold)
+      .text("Number of Horses:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${shipmentExists.numberOfHorses}`);
+    doc
+      .font(robotoBold)
+      .text("Estimated Delivery Days:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${estimatedDeliveryDays || "N/A"}`);
+    doc.moveDown(1);
 
     // -------- SHIPPER DETAILS --------
-    doc.text(`Shipper Name: ${req.user.name}`);
-    doc.text(`Shipper Email: ${req.user.email}`);
-    doc.text(`Vehicle: ${vehicleExists.name}`);
-    doc.text(`Transport Type: ${transportType}`);
-    doc.text(`Total Price: ${totalPrice} ${currency}`);
-    doc.text(`Payment Method: ${paymentMethod}`);
-    doc.text(`Payment Due: ${paymentDue}`);
-    doc.text(`Pickup Time: ${pickupTime}`);
-    doc.text(`Estimated Arrival Time: ${estimatedArrivalTime}`);
-    doc.text(`Stalls Required: ${stallsRequired}`);
-    if (notes) doc.text(`Notes: ${notes}`);
+    doc.font(robotoBold).text("Shipper Details", { underline: true });
+    doc.moveDown(0.5);
+    doc
+      .font(robotoBold)
+      .text("Name:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${req.user.name}`);
+    doc
+      .font(robotoBold)
+      .text("Email:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${req.user.email}`);
+    doc
+      .font(robotoBold)
+      .text("Vehicle:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${vehicleExists.name}`);
+    doc
+      .font(robotoBold)
+      .text("Transport Type:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${transportType}`);
+    doc
+      .font(robotoBold)
+      .text("Total Price:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${totalPrice} ${currency}`);
+    doc
+      .font(robotoBold)
+      .text("Payment Method:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${paymentMethod}`);
+    doc
+      .font(robotoBold)
+      .text("Payment Due:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${paymentDue}`);
+    doc
+      .font(robotoBold)
+      .text("Pickup Time:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${pickupTime}`);
+    doc
+      .font(robotoBold)
+      .text("Estimated Arrival Time:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${estimatedArrivalTime}`);
+    doc
+      .font(robotoBold)
+      .text("Stalls Required:", { continued: true })
+      .font(robotoRegular)
+      .text(` ${stallsRequired}`);
+    if (notes)
+      doc
+        .font(robotoBold)
+        .text("Notes:", { continued: true })
+        .font(robotoRegular)
+        .text(` ${notes}`);
     doc.moveDown(2);
 
-    // -------- SHIPPER SIGNATURE --------
+    // -------- SIGNATURES --------
     const imgBuffer = Buffer.from(
       shipperSignature.replace(/^data:image\/\w+;base64,/, ""),
       "base64"
     );
-    doc.text("Shipper Signature:");
-    doc.image(imgBuffer, { width: 150, height: 50 });
-    doc.moveDown();
+    const pageWidth = doc.page.width;
+    const bottomY = doc.page.height - 150;
 
-    // -------- CUSTOMER SIGNATURE PLACEHOLDER --------
-    doc.text("Customer Signature: ____________________");
+    // Shipper signature left
+    doc.font(robotoBold).text("Shipper Signature:", 50, bottomY);
+    doc.image(imgBuffer, 50, bottomY + 20, { width: 150, height: 50 });
+
+    // Customer signature placeholder right
+    doc.font(robotoBold).text("Customer Signature:", pageWidth - 250, bottomY);
+    doc.rect(pageWidth - 250, bottomY + 20, 150, 50).stroke();
+
     doc.end();
 
     // -------- CONVERT PDF TO BUFFER --------
@@ -153,13 +283,17 @@ exports.addQuote = async (req, res) => {
     });
 
     // -------- UPLOAD TO CLOUDINARY --------
+    const uniqueName = `shipment_contract_${crypto
+      .randomBytes(8)
+      .toString("hex")}.pdf`;
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: "raw", folder: "shipment_contracts" },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
+        {
+          resource_type: "raw",
+          folder: "shipment_contracts",
+          public_id: uniqueName,
+        },
+        (error, result) => (error ? reject(error) : resolve(result))
       );
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
@@ -211,11 +345,9 @@ exports.addQuote = async (req, res) => {
         `Quote sent successfully for shipment ${shipment}.`
       );
 
-    return res.status(201).json({
-      success: true,
-      message: "Quote sent successfully",
-      quote,
-    });
+    return res
+      .status(201)
+      .json({ success: true, message: "Quote sent successfully", quote });
   } catch (err) {
     console.error("[ADD QUOTE ERROR]:", err);
     return res.status(500).json({
@@ -226,11 +358,10 @@ exports.addQuote = async (req, res) => {
   }
 };
 
-// ---------------- GET MY QUOTES (SHIPPER) ----------------
+// ---------------- GET MY QUOTES ----------------
 exports.getMyQuotes = async (req, res) => {
   try {
     const shipperId = req.user._id;
-
     const quotes = await ShipmentQuote.find({ shipper: shipperId })
       .populate(
         "shipment",
@@ -239,11 +370,9 @@ exports.getMyQuotes = async (req, res) => {
       .populate("vehicle")
       .sort({ createdAt: -1 });
 
-    return res.status(200).json({
-      success: true,
-      message: "Quotes fetched successfully",
-      quotes,
-    });
+    return res
+      .status(200)
+      .json({ success: true, message: "Quotes fetched successfully", quotes });
   } catch (err) {
     console.error("[GET MY QUOTES ERROR]:", err);
     return res.status(500).json({
@@ -254,21 +383,18 @@ exports.getMyQuotes = async (req, res) => {
   }
 };
 
-// ---------------- GET QUOTES BY SHIPMENT (CUSTOMER SIDE) ----------------
+// ---------------- GET QUOTES BY SHIPMENT (CUSTOMER) ----------------
 exports.getQuotesByShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
       .populate("vehicle")
       .sort({ createdAt: -1 });
 
-    return res.status(200).json({
-      success: true,
-      message: "Quotes fetched successfully",
-      quotes,
-    });
+    return res
+      .status(200)
+      .json({ success: true, message: "Quotes fetched successfully", quotes });
   } catch (err) {
     console.error("[GET QUOTES ERROR]:", err);
     return res.status(500).json({
@@ -279,13 +405,10 @@ exports.getQuotesByShipment = async (req, res) => {
   }
 };
 
-/* ====================================================
-   GET ACCEPTED QUOTE BY SHIPMENT
-==================================================== */
+// ---------------- GET ACCEPTED QUOTE BY SHIPMENT ----------------
 exports.getAcceptedQuoteByShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-
     const acceptedQuote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
@@ -293,22 +416,15 @@ exports.getAcceptedQuoteByShipment = async (req, res) => {
       .populate("shipper", "name email phone")
       .populate("vehicle");
 
-    if (!acceptedQuote) {
+    if (!acceptedQuote)
       return res.status(404).json({
         success: false,
         message: "No accepted quote found for this shipment",
       });
-    }
 
-    return res.status(200).json({
-      success: true,
-      quote: acceptedQuote,
-    });
+    return res.status(200).json({ success: true, quote: acceptedQuote });
   } catch (error) {
     console.error("Get Accepted Quote Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Server error",
-    });
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
