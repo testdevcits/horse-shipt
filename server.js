@@ -1,3 +1,4 @@
+// server.js
 const express = require("express");
 const dotenv = require("dotenv");
 const cors = require("cors");
@@ -40,7 +41,7 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
+      if (!origin) return callback(null, true); // allow tools like Postman
       if (allowedOrigins.includes(origin)) return callback(null, true);
       return callback(new Error("CORS policy: Origin not allowed"));
     },
@@ -85,18 +86,13 @@ require("./config/passport");
 // Upload Directory Setup
 // -------------------------
 let uploadPath;
-
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
   uploadPath = path.join("/tmp", "uploads/profilePictures");
 } else {
   uploadPath = path.join(__dirname, "uploads/profilePictures");
 }
-
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-  console.log("Upload directory ready:", uploadPath);
-}
-
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
+console.log("Upload directory ready:", uploadPath);
 app.use("/uploads/profilePictures", express.static(uploadPath));
 
 // -------------------------
@@ -147,13 +143,24 @@ const io = new Server(server, {
     methods: ["GET", "POST", "PUT"],
     credentials: true,
   },
+  transports: ["websocket", "polling"], // fallback for clients that block websockets
+  path: "/socket.io", // explicit path
 });
 
-// 🔹 Make io accessible in controllers (future use)
+// 🔹 Make io accessible in controllers
 app.set("io", io);
 
 // 🔹 Attach chat socket logic
 require("./sockets/chatSocket")(io);
+
+// Optional: log all connections for debugging
+io.on("connection", (socket) => {
+  console.log("🔹 New Socket Connected:", socket.id, socket.handshake.auth);
+
+  socket.on("disconnect", () => {
+    console.log("🔹 Socket Disconnected:", socket.id);
+  });
+});
 
 // -------------------------
 // Start Server
