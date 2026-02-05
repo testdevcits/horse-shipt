@@ -18,7 +18,7 @@ exports.getShipperProfile = async (req, res) => {
     const shipper = await Shipper.findById(req.user.id)
       .select(
         "uniqueId name email role firstName lastName locale emailVerified " +
-          "profileImage bannerImage currentLocation isLogin"
+          "profileImage profilePicture bannerImage currentLocation isLogin"
       )
       .lean();
 
@@ -29,16 +29,22 @@ exports.getShipperProfile = async (req, res) => {
       });
     }
 
-    // --- Safe Image Handling ---
-    const defaultProfile =
-      shipper.profileImage?.url && typeof shipper.profileImage.url === "string"
-        ? shipper.profileImage.url
-        : "/images/default_profile.png";
+    // ================================
+    // Profile Image Resolution Priority
+    // 1. Uploaded profileImage (Cloudinary)
+    // 2. Google OAuth profilePicture
+    // 3. Default local image
+    // ================================
+    const resolvedProfileImage =
+      shipper.profileImage?.url ||
+      shipper.profilePicture ||
+      "/images/default_profile.png";
 
-    const defaultBanner =
-      shipper.bannerImage?.url && typeof shipper.bannerImage.url === "string"
-        ? shipper.bannerImage.url
-        : "/images/default_banner.png";
+    // ================================
+    // Banner Image Resolution
+    // ================================
+    const resolvedBannerImage =
+      shipper.bannerImage?.url || "/images/default_banner.png";
 
     res.status(200).json({
       success: true,
@@ -52,10 +58,10 @@ exports.getShipperProfile = async (req, res) => {
         lastName: shipper.lastName,
         locale: shipper.locale || "",
         emailVerified: shipper.emailVerified,
-        currentLocation: shipper.currentLocation,
+        currentLocation: shipper.currentLocation || null,
         isLogin: shipper.isLogin,
-        profileImage: defaultProfile,
-        bannerImage: defaultBanner,
+        profileImage: resolvedProfileImage,
+        bannerImage: resolvedBannerImage,
       },
     });
   } catch (error) {
