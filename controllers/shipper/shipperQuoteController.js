@@ -7,11 +7,8 @@ const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
-const generateContractPDF = require("../../utils/pdf/generateContractPDF"); // PDF utility
+const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 
-// ==============================
-// ADD QUOTE (SHIPPER)
-// ===============================
 exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
@@ -104,11 +101,15 @@ exports.addQuote = async (req, res) => {
     // ----------------- GENERATE CONTRACT ID -----------------
     const contractId = new mongoose.Types.ObjectId();
 
-    // ----------------- UPLOAD TO CLOUDINARY -----------------
+    // ----------------- UPLOAD PDF TO CLOUDINARY (separate folder) -----------------
     const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: "raw", public_id: publicId },
+        {
+          resource_type: "raw",
+          folder: "shipment_contracts",
+          public_id: publicId,
+        },
         (err, result) => (err ? reject(err) : resolve(result))
       );
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
@@ -131,7 +132,7 @@ exports.addQuote = async (req, res) => {
       notes,
       status: "pending",
       termsAccepted: false,
-      contractId, // ✅ required field fixed
+      contractId,
       contract: {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
