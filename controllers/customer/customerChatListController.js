@@ -12,11 +12,11 @@ exports.getShippersForChat = async (req, res) => {
         name: 1,
         email: 1,
         profileImage: 1,
+        profilePicture: 1,
         isLogin: 1,
       }
     ).sort({ updatedAt: -1 });
 
-    // 🔹 Normalize data for chat list
     const formattedShippers = shippers.map((shipper) =>
       formatChatUser(shipper, "shipper")
     );

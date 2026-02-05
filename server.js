@@ -95,6 +95,8 @@ if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
 console.log("Upload directory ready:", uploadPath);
 app.use("/uploads/profilePictures", express.static(uploadPath));
 
+app.use("/assets", express.static(path.join(__dirname, "assets")));
+
 // -------------------------
 // API Routes
 // -------------------------

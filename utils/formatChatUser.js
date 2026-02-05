@@ -1,13 +1,19 @@
 module.exports = (user, role) => {
+  // Avatar priority:
+  // 1. Uploaded profile image (Cloudinary)
+  // 2. Google OAuth profile picture
+  // 3. Backend default image
+  const resolvedAvatar =
+    user.profileImage?.url ||
+    user.profilePicture ||
+    "/assets/images/default_profile.png";
+
   return {
     _id: user._id,
     name: user.name,
     email: user.email,
-    avatar:
-      user.profilePicture ||
-      user.profileImage?.url ||
-      `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}`,
-    isOnline: user.isLogin || false,
+    avatar: resolvedAvatar,
+    isOnline: Boolean(user.isLogin),
     role, // "customer" | "shipper"
   };
 };
