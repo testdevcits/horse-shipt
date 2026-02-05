@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
@@ -6,7 +7,7 @@ const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
-const generateContractPDF = require("../../utils/pdf/generateContractPDF"); // tumhara PDF utility
+const generateContractPDF = require("../../utils/pdf/generateContractPDF"); // PDF utility
 
 // ==============================
 // ADD QUOTE (SHIPPER)
@@ -100,6 +101,9 @@ exports.addQuote = async (req, res) => {
       shipperSignature,
     });
 
+    // ----------------- GENERATE CONTRACT ID -----------------
+    const contractId = new mongoose.Types.ObjectId();
+
     // ----------------- UPLOAD TO CLOUDINARY -----------------
     const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
     const uploadResult = await new Promise((resolve, reject) => {
@@ -127,6 +131,7 @@ exports.addQuote = async (req, res) => {
       notes,
       status: "pending",
       termsAccepted: false,
+      contractId, // ✅ required field fixed
       contract: {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
