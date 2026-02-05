@@ -153,7 +153,7 @@ router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 // ====================================================
 
 router.post("/quotes/add", shipperAuth, addQuote);
-router.get("/quotes/my", shipperAuth, getMyQuotes);
+router.get("/quotes/mq", shipperAuth, getMyQuotes);
 router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
 router.get(
   "/quotes/accepted/:shipmentId",
