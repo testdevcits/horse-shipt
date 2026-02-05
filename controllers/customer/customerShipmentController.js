@@ -9,6 +9,7 @@ const uploadToCloudinary = async (file, folder = "shipments") => {
   if (!file) return null;
   try {
     let uploadResult;
+
     if (file.buffer) {
       const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
         "base64"
@@ -23,12 +24,15 @@ const uploadToCloudinary = async (file, folder = "shipments") => {
         resource_type: "auto",
       });
     } else {
-      console.log("No valid buffer or path for file:", file);
       return null;
     }
-    return { url: uploadResult.secure_url, public_id: uploadResult.public_id };
+
+    return {
+      url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+    };
   } catch (err) {
-    console.error("Cloudinary upload error for file:", file.originalname, err);
+    console.error("Cloudinary upload error:", err);
     return { url: null, public_id: null };
   }
 };
@@ -39,23 +43,27 @@ const deleteFromCloudinary = async (public_id) => {
   try {
     await cloudinary.uploader.destroy(public_id);
   } catch (err) {
-    console.error("Error deleting from Cloudinary:", err);
+    console.error("Cloudinary delete error:", err);
   }
 };
 
 // ---------------- Helper: Fetch Shipment By ID ----------------
 exports.fetchShipmentById = async (shipmentId, userId) => {
   if (!mongoose.Types.ObjectId.isValid(shipmentId)) return null;
+
   const shipment = await CustomerShipment.findById(shipmentId);
   if (!shipment) return null;
+
   if (shipment.customer.toString() !== userId.toString()) return null;
   return shipment;
 };
 
-// ---------------- Create Shipment ----------------
+// ============================================================
+// ===================== CREATE SHIPMENT ======================
+// ============================================================
 exports.createShipment = async (req, res) => {
   try {
-    const customerId = req.user?._id;
+    const customerId = req.user._id;
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
 
     if (isNaN(numberOfHorses) || numberOfHorses < 1) {
@@ -75,16 +83,19 @@ exports.createShipment = async (req, res) => {
       publish,
     } = req.body;
 
-    // Map uploaded files
+    // ---------- File Map ----------
     const fileMap = {};
-    (req.files || []).forEach((file) => (fileMap[file.fieldname] = file));
+    (req.files || []).forEach((file) => {
+      fileMap[file.fieldname] = file;
+    });
 
-    // Process horse data
+    // ---------- Horses ----------
     let horseData = req.body.horses
       ? Array.isArray(req.body.horses)
         ? req.body.horses
         : JSON.parse(req.body.horses)
       : [];
+
     const horses = [];
 
     for (let i = 0; i < horseData.length; i++) {
@@ -99,18 +110,25 @@ exports.createShipment = async (req, res) => {
         generalInfo: h.generalInfo || "",
       };
 
-      const photoFile = fileMap[`horses[${i}][photo]`];
-      const coginsFile = fileMap[`horses[${i}][cogins]`];
-      const healthFile = fileMap[`horses[${i}][healthCertificate]`];
+      if (fileMap[`horses[${i}][photo]`])
+        horseObj.photo = await uploadToCloudinary(
+          fileMap[`horses[${i}][photo]`]
+        );
 
-      if (photoFile) horseObj.photo = await uploadToCloudinary(photoFile);
-      if (coginsFile) horseObj.cogins = await uploadToCloudinary(coginsFile);
-      if (healthFile)
-        horseObj.healthCertificate = await uploadToCloudinary(healthFile);
+      if (fileMap[`horses[${i}][cogins]`])
+        horseObj.cogins = await uploadToCloudinary(
+          fileMap[`horses[${i}][cogins]`]
+        );
+
+      if (fileMap[`horses[${i}][healthCertificate]`])
+        horseObj.healthCertificate = await uploadToCloudinary(
+          fileMap[`horses[${i}][healthCertificate]`]
+        );
 
       horses.push(horseObj);
     }
 
+    // ---------- Create Shipment ----------
     const shipment = new CustomerShipment({
       customer: customerId,
       pickupLocation,
@@ -128,12 +146,20 @@ exports.createShipment = async (req, res) => {
 
     await shipment.save();
 
-    // Send push notification if configured
+    // ---------- ADD SHIPMENT CODE (NEW) ----------
+    if (!shipment.shipmentCode) {
+      const year = new Date().getFullYear();
+      const shortId = shipment._id.toString().slice(-6).toUpperCase();
+      shipment.shipmentCode = `HS-SHIP-${year}-${shortId}`;
+      await shipment.save();
+    }
+
+    // ---------- Notification ----------
     const notif = await CustomerNotification.findOne({ user: customerId });
     if (notif?.subscription && notif?.settings?.shipmentUpdates) {
       const payload = JSON.stringify({
         title: "Shipment Created",
-        body: `Your shipment for ${pickupDate} has been created successfully.`,
+        body: `Shipment (${shipment.shipmentCode}) successfully created`,
         type: "shipment_update",
       });
 
@@ -154,12 +180,15 @@ exports.createShipment = async (req, res) => {
   }
 };
 
-// ---------------- Get Shipments By Customer ----------------
+// ============================================================
+// ================= GET SHIPMENTS BY CUSTOMER =================
+// ============================================================
 exports.getShipmentsByCustomer = async (req, res) => {
   try {
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
     }).sort({ createdAt: -1 });
+
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error(err);
@@ -167,17 +196,21 @@ exports.getShipmentsByCustomer = async (req, res) => {
   }
 };
 
-// ---------------- Get Shipment By ID ----------------
+// ============================================================
+// ==================== GET SHIPMENT BY ID =====================
+// ============================================================
 exports.getShipmentById = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
     );
+
     if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
+
     res.status(200).json({ success: true, shipment });
   } catch (err) {
     console.error(err);
@@ -185,10 +218,13 @@ exports.getShipmentById = async (req, res) => {
   }
 };
 
-// ---------------- Publish Shipment ----------------
+// ============================================================
+// ===================== PUBLISH SHIPMENT =====================
+// ============================================================
 exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
+
     if (!mongoose.Types.ObjectId.isValid(shipmentId))
       return res.status(400).json({ message: "Invalid shipment ID" });
 
@@ -196,6 +232,7 @@ exports.publishShipment = async (req, res) => {
       _id: shipmentId,
       customer: req.user._id,
     });
+
     if (!shipment)
       return res.status(404).json({ message: "Shipment not found" });
 
@@ -211,7 +248,9 @@ exports.publishShipment = async (req, res) => {
   }
 };
 
-// ---------------- Get Available Shipments (Shipper) ----------------
+// ============================================================
+// ================= AVAILABLE SHIPMENTS ======================
+// ============================================================
 exports.getAvailableShipments = async (req, res) => {
   try {
     const shipments = await CustomerShipment.find({
@@ -229,117 +268,16 @@ exports.getAvailableShipments = async (req, res) => {
   }
 };
 
-// ---------------- Update Shipment ----------------
-exports.updateShipment = async (req, res) => {
-  try {
-    const shipment = await exports.fetchShipmentById(
-      req.params.shipmentId,
-      req.user._id
-    );
-    if (!shipment)
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
-
-    const updateData = req.body;
-    const fileMap = {};
-    (req.files || []).forEach((f) => (fileMap[f.fieldname] = f));
-
-    if (updateData.horses) {
-      const horseData = Array.isArray(updateData.horses)
-        ? updateData.horses
-        : JSON.parse(updateData.horses);
-      for (let i = 0; i < horseData.length; i++) {
-        const h = horseData[i];
-        const existingHorse = shipment.horses[i] || {};
-
-        if (fileMap[`horses[${i}][photo]`]) {
-          if (existingHorse.photo?.public_id)
-            await deleteFromCloudinary(existingHorse.photo.public_id);
-          h.photo = await uploadToCloudinary(fileMap[`horses[${i}][photo]`]);
-        } else if (existingHorse.photo) h.photo = existingHorse.photo;
-
-        if (fileMap[`horses[${i}][cogins]`]) {
-          if (existingHorse.cogins?.public_id)
-            await deleteFromCloudinary(existingHorse.cogins.public_id);
-          h.cogins = await uploadToCloudinary(fileMap[`horses[${i}][cogins]`]);
-        } else if (existingHorse.cogins) h.cogins = existingHorse.cogins;
-
-        if (fileMap[`horses[${i}][healthCertificate]`]) {
-          if (existingHorse.healthCertificate?.public_id)
-            await deleteFromCloudinary(
-              existingHorse.healthCertificate.public_id
-            );
-          h.healthCertificate = await uploadToCloudinary(
-            fileMap[`horses[${i}][healthCertificate]`]
-          );
-        } else if (existingHorse.healthCertificate)
-          h.healthCertificate = existingHorse.healthCertificate;
-
-        shipment.horses[i] = h;
-      }
-    }
-
-    Object.assign(shipment, updateData);
-    await shipment.save();
-    res.status(200).json({ success: true, shipment });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-};
-
-// ---------------- Delete Shipment ----------------
-exports.deleteShipment = async (req, res) => {
-  try {
-    const shipment = await exports.fetchShipmentById(
-      req.params.shipmentId,
-      req.user._id
-    );
-    if (!shipment)
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
-
-    if (shipment.publish)
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Published shipment cannot be deleted",
-        });
-    if (shipment.status !== "draft")
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Shipment cannot be deleted at this stage",
-        });
-
-    for (const h of shipment.horses) {
-      if (h.photo?.public_id) await deleteFromCloudinary(h.photo.public_id);
-      if (h.cogins?.public_id) await deleteFromCloudinary(h.cogins.public_id);
-      if (h.healthCertificate?.public_id)
-        await deleteFromCloudinary(h.healthCertificate.public_id);
-    }
-
-    await shipment.deleteOne();
-    res
-      .status(200)
-      .json({ success: true, message: "Shipment deleted successfully" });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-};
-
-// ---------------- Update Shipment Location ----------------
+// ============================================================
+// ===================== UPDATE LOCATION ======================
+// ============================================================
 exports.updateShipmentLocation = async (req, res) => {
   try {
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
     );
+
     if (!shipment)
       return res
         .status(404)
@@ -361,7 +299,9 @@ exports.updateShipmentLocation = async (req, res) => {
   }
 };
 
-// ---------------- Notify Customer ----------------
+// ============================================================
+// ===================== NOTIFY ACCEPTED ======================
+// ============================================================
 exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
   try {
     const shipment = await CustomerShipment.findById(shipmentId);
@@ -370,23 +310,57 @@ exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
     const notif = await CustomerNotification.findOne({
       user: shipment.customer,
     });
+
     if (!notif?.subscription || !notif.settings.shipmentUpdates) return;
 
     const payload = JSON.stringify({
       title: "Shipment Accepted",
-      body: `Your shipment for ${shipment.pickupDate} has been accepted by ${shipperName}.`,
+      body: `Shipment ${shipment.shipmentCode} accepted by ${shipperName}`,
       type: "shipment_update",
     });
 
-    try {
-      await webpush.sendNotification(notif.subscription, payload);
-    } catch (err) {
-      if (err.statusCode === 410 || err.statusCode === 404) {
-        notif.subscription = null;
-        await notif.save();
-      } else console.error(err);
-    }
+    await webpush.sendNotification(notif.subscription, payload);
   } catch (err) {
     console.error(err);
+  }
+};
+// ============================================================
+// ===================== DELETE SHIPMENT ======================
+// ============================================================
+exports.deleteShipment = async (req, res) => {
+  try {
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
+
+    if (!shipment)
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
+
+    if (shipment.publish)
+      return res.status(400).json({
+        success: false,
+        message: "Published shipment cannot be deleted",
+      });
+
+    // delete horse files from cloudinary
+    for (const h of shipment.horses) {
+      if (h.photo?.public_id) await deleteFromCloudinary(h.photo.public_id);
+      if (h.cogins?.public_id) await deleteFromCloudinary(h.cogins.public_id);
+      if (h.healthCertificate?.public_id)
+        await deleteFromCloudinary(h.healthCertificate.public_id);
+    }
+
+    await shipment.deleteOne();
+
+    res.status(200).json({
+      success: true,
+      message: "Shipment deleted successfully",
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };

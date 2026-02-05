@@ -58,6 +58,11 @@ const shipmentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    shipmentCode: {
+      type: String,
+      unique: true,
+      index: true,
+    },
 
     status: {
       type: String,

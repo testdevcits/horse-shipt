@@ -17,15 +17,19 @@ const quoteSchema = new mongoose.Schema(
       index: true,
     },
 
+    // ================= CONTRACT ID =================
+    // Deterministic & reusable contract identifier
+    contractId: {
+      type: String,
+      required: true,
+      unique: true,
+      index: true,
+    },
+
     // ================= VEHICLE =================
     vehicle: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "ShipperVehicle",
-    },
-
-    vehicleNumber: {
-      type: String, // store vehicle number as string
-      default: null,
     },
 
     // ================= PRICING =================
@@ -53,11 +57,11 @@ const quoteSchema = new mongoose.Schema(
 
     // ================= TIMING =================
     pickupTime: {
-      type: String, // "HH:mm"
+      type: String,
     },
 
     estimatedArrivalTime: {
-      type: String, // "HH:mm"
+      type: String,
     },
 
     estimatedDeliveryDays: {
@@ -107,12 +111,12 @@ const quoteSchema = new mongoose.Schema(
 
     shipperSignature: {
       type: String,
-      default: null, // base64 or URL
+      default: null,
     },
 
     customerSignature: {
       type: String,
-      default: null, // base64 or URL
+      default: null,
     },
 
     contractAccepted: {
@@ -140,10 +144,7 @@ const quoteSchema = new mongoose.Schema(
 );
 
 // ================= INDEXES =================
-// Prevent same shipper from sending multiple offers for same shipment
 quoteSchema.index({ shipment: 1, shipper: 1 }, { unique: true });
-
-// Fast customer quote listing
 quoteSchema.index({ shipment: 1, status: 1 });
 
 // ================= MIDDLEWARE =================

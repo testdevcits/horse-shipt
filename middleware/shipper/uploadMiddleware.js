@@ -7,21 +7,21 @@ const fs = require("fs");
 // -------------------------
 let uploadPath;
 
-// 🧠 Detect if running in a read-only environment (Vercel / AWS Lambda)
+// Detect if running in a read-only environment (Vercel / AWS Lambda)
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
   uploadPath = path.join("/tmp", "uploads/profilePictures");
 } else {
   uploadPath = path.join(__dirname, "../../uploads/profilePictures");
 }
 
-// ✅ Ensure folder exists safely
+// Ensure folder exists safely
 try {
   if (!fs.existsSync(uploadPath)) {
     fs.mkdirSync(uploadPath, { recursive: true });
-    console.log("✅ Upload folder ready:", uploadPath);
+    console.log("Upload folder ready:", uploadPath);
   }
 } catch (err) {
-  console.error("❌ Error creating upload folder:", err.message);
+  console.error("Error creating upload folder:", err.message);
 }
 
 // -------------------------
