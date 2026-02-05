@@ -73,11 +73,9 @@ exports.getAvailableShipments = async (req, res) => {
     })
       .populate("customer", "name email phone")
       .select(
-        "pickupLocation pickupDate deliveryLocation deliveryDate horses numberOfHorses additionalInfo"
+        "pickupLocation pickupDate deliveryLocation deliveryDate horses numberOfHorses additionalInfo publishedAt"
       )
       .sort({ pickupDate: 1 });
-
-    console.log(`Found ${shipments.length} available shipments.`);
 
     res.status(200).json({ success: true, shipments });
   } catch (err) {
