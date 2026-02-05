@@ -6,13 +6,11 @@ const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
-const generateContractPDF = require("../../utils/pdf/generateContractPDF"); // tumhara existing PDF function
+const generateContractPDF = require("../../utils/pdf/generateContractPDF"); // tumhara PDF utility
 
-// ====================================================
-// SHIPPER SIDE CONTROLLERS
-// ====================================================
-
-// ---------------- ADD QUOTE (SHIPPER) ----------------
+// ===============================
+// ADD QUOTE (SHIPPER)
+// ===============================
 exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
@@ -32,7 +30,7 @@ exports.addQuote = async (req, res) => {
       shipperSignature,
     } = req.body;
 
-    // Validation
+    // ----------------- VALIDATION -----------------
     if (
       !shipment ||
       !vehicle ||
@@ -50,7 +48,7 @@ exports.addQuote = async (req, res) => {
       });
     }
 
-    // Fetch shipment
+    // ----------------- FETCH SHIPMENT -----------------
     const shipmentExists = await CustomerShipment.findById(shipment).populate(
       "customer"
     );
@@ -59,7 +57,7 @@ exports.addQuote = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Shipment not found" });
 
-    // Fetch vehicle
+    // ----------------- FETCH VEHICLE -----------------
     const vehicleExists = await ShipperVehicle.findOne({
       _id: vehicle,
       shipper: shipperId,
@@ -70,7 +68,7 @@ exports.addQuote = async (req, res) => {
         message: "Vehicle not found or does not belong to you",
       });
 
-    // Prevent duplicate quote by same shipper
+    // ----------------- PREVENT DUPLICATE QUOTE -----------------
     const alreadyQuoted = await ShipmentQuote.findOne({
       shipment,
       shipper: shipperId,
@@ -81,7 +79,7 @@ exports.addQuote = async (req, res) => {
         message: "You have already sent a quote for this shipment",
       });
 
-    // Generate PDF buffer using existing utility
+    // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
       shipment: shipmentExists,
       customer: shipmentExists.customer,
@@ -102,7 +100,7 @@ exports.addQuote = async (req, res) => {
       shipperSignature,
     });
 
-    // Upload PDF to Cloudinary using shipmentCode + shipperId as unique public_id
+    // ----------------- UPLOAD TO CLOUDINARY -----------------
     const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
@@ -112,7 +110,7 @@ exports.addQuote = async (req, res) => {
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
-    // Create quote
+    // ----------------- CREATE QUOTE -----------------
     const quote = await ShipmentQuote.create({
       shipment,
       shipper: shipperId,
@@ -139,7 +137,7 @@ exports.addQuote = async (req, res) => {
       contractAcceptedAt: null,
     });
 
-    // Notifications
+    // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
     if (!shipperSettings)
       shipperSettings = await ShipperSettings.create({ shipperId });
@@ -159,6 +157,7 @@ exports.addQuote = async (req, res) => {
         `Quote sent successfully for shipment ${shipment}.`
       );
 
+    // ----------------- RESPONSE -----------------
     return res
       .status(201)
       .json({ success: true, message: "Quote sent successfully", quote });
