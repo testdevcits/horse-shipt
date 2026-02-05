@@ -73,11 +73,25 @@ exports.getAvailableShipments = async (req, res) => {
     })
       .populate("customer", "name email phone")
       .select(
-        "pickupLocation pickupDate deliveryLocation deliveryDate horses numberOfHorses additionalInfo publishedAt"
+        `
+        shipmentCode
+        pickupLocation
+        pickupDate
+        deliveryLocation
+        deliveryDate
+        horses
+        numberOfHorses
+        additionalInfo
+        publishedAt
+        status
+        `
       )
-      .sort({ pickupDate: 1 });
+      .sort({ publishedAt: -1 }); // latest published first
 
-    res.status(200).json({ success: true, shipments });
+    res.status(200).json({
+      success: true,
+      shipments,
+    });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
     res.status(500).json({
