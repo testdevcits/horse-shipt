@@ -13,7 +13,11 @@ async function generateContractPDF({
 }) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: "A4", margin: 50 });
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: 50,
+        autoFirstPage: true,
+      });
 
       const buffers = [];
       doc.on("data", buffers.push.bind(buffers));
@@ -41,47 +45,47 @@ async function generateContractPDF({
       }
 
       doc.font("Title").fontSize(22).text("HorseShipt™", 120, 25);
-      doc.moveDown();
+      doc.moveDown(0.5);
       doc.font("Bold").fontSize(18).text("Shipment Contract", {
         align: "center",
       });
-      doc.moveDown(2);
+      doc.moveDown(1.2);
 
       /* ===================== HELPERS ===================== */
       const drawRow = (label, value) => {
         doc.font("Bold").text(label, { continued: true });
         doc.font("Roboto").text(value || "N/A");
-        doc.moveDown(0.4);
+        doc.moveDown(0.3);
       };
 
       /* ===================== CONTENT ===================== */
       doc
         .font("Bold")
-        .fontSize(14)
+        .fontSize(13)
         .text("Customer Information", { underline: true });
-      doc.moveDown(0.5);
+      doc.moveDown(0.3);
       drawRow("Name: ", customer.name);
       drawRow("Email: ", customer.email);
       drawRow("Shipment ID: ", shipment._id.toString());
-      doc.moveDown();
+      doc.moveDown(0.5);
 
       doc
         .font("Bold")
-        .fontSize(14)
+        .fontSize(13)
         .text("Shipment Details", { underline: true });
-      doc.moveDown(0.5);
+      doc.moveDown(0.3);
       drawRow("Pickup Location: ", shipment.pickupLocation);
       drawRow("Pickup Date: ", shipment.pickupDate?.toDateString());
       drawRow("Delivery Location: ", shipment.deliveryLocation);
       drawRow("Delivery Date: ", shipment.deliveryDate?.toDateString());
       drawRow("Number of Horses: ", shipment.numberOfHorses?.toString());
-      doc.moveDown();
+      doc.moveDown(0.5);
 
       doc
         .font("Bold")
-        .fontSize(14)
+        .fontSize(13)
         .text("Shipper & Quote Details", { underline: true });
-      doc.moveDown(0.5);
+      doc.moveDown(0.3);
       drawRow("Shipper Name: ", shipper.name);
       drawRow("Shipper Email: ", shipper.email);
       drawRow("Vehicle: ", vehicle.vehicleNumber);
@@ -92,16 +96,18 @@ async function generateContractPDF({
       drawRow("Pickup Time: ", quote.pickupTime);
       drawRow("Estimated Arrival: ", quote.estimatedArrivalTime);
 
+      /* ===================== NOTES (HEIGHT LIMITED) ===================== */
       if (quote.notes) {
-        doc.moveDown();
+        doc.moveDown(0.5);
         doc.font("Bold").text("Notes:");
-        doc.font("Roboto").text(quote.notes);
+        doc.font("Roboto").text(quote.notes, {
+          height: 60, // 🔒 LIMIT HEIGHT → NO PAGE BREAK
+          ellipsis: true,
+        });
       }
 
-      /* ===================== SIGNATURES (FLOW BASED, NO NEW PAGE) ===================== */
-      doc.moveDown(2);
-
-      const signatureY = doc.y; // 👈 current cursor position
+      /* ===================== SIGNATURES (FIXED SAFE ZONE) ===================== */
+      const safeSignatureY = doc.page.height - 120;
 
       if (shipperSignature) {
         const shipperImg = Buffer.from(
@@ -109,8 +115,10 @@ async function generateContractPDF({
           "base64"
         );
 
-        doc.font("Bold").text("Shipper Signature:");
-        doc.image(shipperImg, 50, doc.y + 5, { fit: [150, 50] });
+        doc.font("Bold").text("Shipper Signature:", 50, safeSignatureY - 15);
+        doc.image(shipperImg, 50, safeSignatureY, {
+          fit: [150, 45],
+        });
       }
 
       if (customerSignature) {
@@ -119,10 +127,12 @@ async function generateContractPDF({
           "base64"
         );
 
-        doc.font("Bold").text("Customer Signature:", 350, signatureY);
-        doc.image(customerImg, 350, signatureY + 15, { fit: [150, 50] });
+        doc.font("Bold").text("Customer Signature:", 350, safeSignatureY - 15);
+        doc.image(customerImg, 350, safeSignatureY, {
+          fit: [150, 45],
+        });
       } else {
-        doc.font("Bold").text("Customer Signature:", 350, signatureY);
+        doc.font("Bold").text("Customer Signature:", 350, safeSignatureY - 15);
       }
 
       doc.end();
