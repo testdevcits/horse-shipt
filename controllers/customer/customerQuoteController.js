@@ -1,8 +1,9 @@
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
-const PDFDocument = require("pdfkit");
+const { PDFDocument } = require("pdf-lib");
 const cloudinary = require("../../utils/cloudinary");
+const fetch = require("node-fetch");
 const streamifier = require("streamifier");
 
 /* =========================================================
@@ -111,6 +112,7 @@ exports.getQuoteById = async (req, res) => {
 
 /* =========================================================
    CUSTOMER ACCEPT QUOTE WITH SIGNATURE
+   -> Existing PDF overwrite with customer signature
 ========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
   try {
@@ -131,28 +133,15 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       .populate("shipper");
 
     if (!quote) {
-      return res.status(404).json({
-        success: false,
-        message: "Quote not found",
-      });
-    }
-
-    // Fetch shipment and populate customer
-    const shipment = await CustomerShipment.findById(
-      quote.shipment._id
-    ).populate("customer");
-
-    if (!shipment) {
-      return res.status(404).json({
-        success: false,
-        message: "Shipment not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Quote not found" });
     }
 
     // Authorization
     if (
-      !shipment.customer ||
-      shipment.customer._id.toString() !== customerId.toString()
+      !quote.shipment.customer ||
+      quote.shipment.customer.toString() !== customerId.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -160,83 +149,80 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // Validate signature buffer
-    const signatureBuffer = Buffer.from(
-      customerSignature.replace(/^data:image\/\w+;base64,/, ""),
-      "base64"
-    );
-
-    if (!signatureBuffer || signatureBuffer.length < 10) {
+    if (!quote.contract?.url || !quote.contract?.public_id) {
       return res.status(400).json({
         success: false,
-        message: "Invalid signature",
+        message: "Original contract PDF not found",
       });
     }
 
-    /* =====================================================
-       GENERATE CONTRACT PDF
-    ===================================================== */
-    const doc = new PDFDocument({ margin: 50 });
-    const buffers = [];
-    doc.on("data", buffers.push.bind(buffers));
+    // -------------------- FETCH EXISTING PDF --------------------
+    const pdfBufferResponse = await fetch(quote.contract.url);
+    const existingPdfBytes = await pdfBufferResponse.arrayBuffer();
 
-    doc.fontSize(16).text("Shipment Contract", { underline: true });
-    doc.moveDown();
+    // -------------------- LOAD PDF --------------------
+    const pdfDoc = await PDFDocument.load(existingPdfBytes);
 
-    doc.fontSize(12).text(`Quote ID: ${quote._id}`);
-    doc.text(`Customer: ${shipment.customer.name}`);
-    doc.text(`Shipper: ${quote.shipper?.companyName || quote.shipper?.name}`);
-    doc.text(`Total Price: ${quote.totalPrice}`);
-    doc.text(`Payment Method: ${quote.paymentMethod}`);
-    doc.moveDown();
+    // -------------------- ADD CUSTOMER SIGNATURE --------------------
+    const pages = pdfDoc.getPages();
+    const lastPage = pages[pages.length - 1];
 
-    doc.text("Customer Signature:");
-    doc.image(signatureBuffer, { width: 150, height: 60 });
-    doc.end();
+    const signatureBytes = Buffer.from(
+      customerSignature.replace(/^data:image\/\w+;base64,/, ""),
+      "base64"
+    );
+    const signatureImage = await pdfDoc.embedPng(signatureBytes);
 
-    const pdfBuffer = await new Promise((resolve, reject) => {
-      const chunks = [];
-      doc.on("data", (chunk) => chunks.push(chunk));
-      doc.on("end", () => resolve(Buffer.concat(chunks)));
-      doc.on("error", reject);
+    const sigDims = signatureImage.scale(0.5); // adjust size
+    const x = 350; // X coordinate
+    const y = 50; // Y coordinate from bottom
+
+    lastPage.drawImage(signatureImage, {
+      x,
+      y,
+      width: sigDims.width,
+      height: sigDims.height,
     });
 
-    /* =====================================================
-       UPLOAD PDF TO CLOUDINARY
-    ===================================================== */
+    // -------------------- SAVE PDF --------------------
+    const updatedPdfBytes = await pdfDoc.save();
+
+    // -------------------- UPLOAD TO CLOUDINARY (overwrite same public_id) --------------------
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
-        { resource_type: "raw", folder: "shipment_contracts" },
+        {
+          resource_type: "raw",
+          public_id: quote.contract.public_id,
+          overwrite: true,
+        },
         (err, result) => (err ? reject(err) : resolve(result))
       );
-      streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
+      streamifier
+        .createReadStream(Buffer.from(updatedPdfBytes))
+        .pipe(uploadStream);
     });
 
-    /* =====================================================
-       UPDATE QUOTE
-    ===================================================== */
+    // -------------------- UPDATE QUOTE --------------------
     quote.customerSignature = customerSignature;
-    quote.contract = {
-      url: uploadResult.secure_url,
-      public_id: uploadResult.public_id,
-    };
+    quote.contract.url = uploadResult.secure_url;
     quote.contractAccepted = true;
     quote.contractAcceptedAt = new Date();
     quote.status = "accepted";
     await quote.save();
 
-    // Reject other quotes
+    // -------------------- REJECT OTHER QUOTES --------------------
     await ShipmentQuote.updateMany(
-      { shipment: shipment._id, _id: { $ne: quote._id } },
+      { shipment: quote.shipment._id, _id: { $ne: quote._id } },
       { status: "rejected" }
     );
 
-    // Update shipment
+    // -------------------- UPDATE SHIPMENT --------------------
+    const shipment = await CustomerShipment.findById(quote.shipment._id);
     shipment.status = "assigned";
     shipment.assignedShipper = quote.shipper._id;
     await shipment.save();
 
-    // Save customer quote history
+    // -------------------- SAVE CUSTOMER QUOTE HISTORY --------------------
     await CustomerQuote.create({
       shipmentId: shipment._id,
       customerId,
@@ -248,7 +234,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Quote accepted and contract signed successfully",
+      message: "Quote accepted and customer signature added successfully",
       quote,
     });
   } catch (error) {
