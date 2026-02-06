@@ -1,12 +1,12 @@
-const Shipper = require("../../models/shipper/shipperModel");
+const Customer = require("../../models/customer/customerModel");
 const formatChatUser = require("../../utils/formatChatUser");
 
 /**
- * Customer → Shipper list (for chat)
+ * Fetch Customers → Shipper list (for chat)
  */
 exports.getShippersForChat = async (req, res) => {
   try {
-    const shippers = await Shipper.find(
+    const customers = await Customer.find(
       { isActive: true },
       {
         name: 1,
@@ -17,19 +17,19 @@ exports.getShippersForChat = async (req, res) => {
       }
     ).sort({ updatedAt: -1 });
 
-    const formattedShippers = shippers.map((shipper) =>
-      formatChatUser(shipper, "shipper")
+    const formattedCustomers = customers.map((customer) =>
+      formatChatUser(customer, "customer")
     );
 
     res.status(200).json({
       success: true,
-      data: formattedShippers,
+      data: formattedCustomers,
     });
   } catch (error) {
-    console.error("Get shippers for chat error:", error);
+    console.error("Get customers for chat error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch shippers for chat",
+      message: "Failed to fetch customers for chat",
     });
   }
 };

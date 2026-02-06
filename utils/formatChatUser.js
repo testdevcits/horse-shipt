@@ -4,7 +4,7 @@ module.exports = (user, role) => {
   // 2. Google OAuth profile picture
   // 3. Backend default image
   const resolvedAvatar =
-    user.profileImage?.url ||
+    user.profileImage?.url || // <-- this handles your customer profileImage
     user.profilePicture ||
     "/assets/images/default_profile.png";
 
