@@ -15,15 +15,11 @@ async function generateContractPDF({
   return new Promise((resolve, reject) => {
     try {
       const PAGE_MARGIN = 60;
-      const PAGE_WIDTH = 595.28; // A4 width in pt
-      const PAGE_HEIGHT = 841.89; // A4 height in pt
+      const PAGE_WIDTH = 595.28; // A4 width
+      const PAGE_HEIGHT = 841.89; // A4 height
       const CONTENT_WIDTH = PAGE_WIDTH - 2 * PAGE_MARGIN;
 
-      const doc = new PDFDocument({
-        size: "A4",
-        margin: PAGE_MARGIN,
-      });
-
+      const doc = new PDFDocument({ size: "A4", margin: PAGE_MARGIN });
       const buffers = [];
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
@@ -51,6 +47,7 @@ async function generateContractPDF({
         doc.image(logoPath, PAGE_MARGIN, 22, { width: 55 });
       }
 
+      // HORSESHIPT™
       doc
         .fillColor("#ffffff")
         .font("Title")
@@ -60,10 +57,11 @@ async function generateContractPDF({
           width: CONTENT_WIDTH,
         });
 
+      // Shipment Code just below HORSESHIPT™
       doc
         .font("Bold")
-        .fontSize(9)
-        .text(shipmentCode || "", PAGE_MARGIN, 58, {
+        .fontSize(12)
+        .text(`Shipment Code: ${shipmentCode || "N/A"}`, PAGE_MARGIN, 55, {
           align: "right",
           width: CONTENT_WIDTH,
         });
@@ -92,19 +90,18 @@ async function generateContractPDF({
       };
 
       const drawRow = (label, value) => {
+        const labelWidth = 130; // fixed width for labels
         doc
           .font("Bold")
           .fontSize(10)
           .fillColor("#000000")
-          .text(label, PAGE_MARGIN, doc.y, {
-            continued: true,
-          });
+          .text(label, PAGE_MARGIN, doc.y, { continued: true });
         doc
           .font("Roboto")
           .fontSize(10)
-          .fillColor("#2E86AB") // 💙 value color
-          .text(value || "N/A", PAGE_MARGIN + 100, doc.y, {
-            width: CONTENT_WIDTH - 100,
+          .fillColor("#2E86AB")
+          .text(value || "N/A", PAGE_MARGIN + labelWidth, doc.y, {
+            width: CONTENT_WIDTH - labelWidth,
             align: "left",
             lineGap: 2,
           });
@@ -147,7 +144,7 @@ async function generateContractPDF({
 
       /* ===================== SIGNATURES ===================== */
       const signatureHeight = 70;
-      const signatureY = PAGE_HEIGHT - PAGE_MARGIN - signatureHeight - 50; // footer safe
+      const signatureY = PAGE_HEIGHT - PAGE_MARGIN - signatureHeight - 50; // keep footer safe
 
       if (shipperSignature) {
         const shipperImg = Buffer.from(
@@ -185,13 +182,18 @@ async function generateContractPDF({
       /* ===================== FOOTER ===================== */
       doc
         .fontSize(6)
-        .fillColor("#888888") // subtle gray
+        .fillColor("#888888")
         .opacity(0.7)
         .text(
-          `Digitally generated contract | Ref: ${shipmentCode}-${customer._id}`,
+          `Digitally issued shipment contract | Authorized by HORSESHIPT™" | Ref: ${
+            shipmentCode || "N/A"
+          }`,
           PAGE_MARGIN,
           PAGE_HEIGHT - PAGE_MARGIN - 20,
-          { align: "center", width: CONTENT_WIDTH }
+          {
+            align: "center",
+            width: CONTENT_WIDTH,
+          }
         )
         .opacity(1);
 
