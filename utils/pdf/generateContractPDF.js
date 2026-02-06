@@ -14,8 +14,10 @@ async function generateContractPDF({
 }) {
   return new Promise((resolve, reject) => {
     try {
-      const PAGE_MARGIN = 60; // 🔥 PRINT SAFE MARGIN
-      const CONTENT_WIDTH = 475;
+      const PAGE_MARGIN = 60;
+      const PAGE_WIDTH = 595.28; // A4 width in pt
+      const PAGE_HEIGHT = 841.89; // A4 height in pt
+      const CONTENT_WIDTH = PAGE_WIDTH - 2 * PAGE_MARGIN;
 
       const doc = new PDFDocument({
         size: "A4",
@@ -66,7 +68,6 @@ async function generateContractPDF({
           width: CONTENT_WIDTH,
         });
 
-      /* reset */
       doc.fillColor("#000000");
       doc.y = 115;
 
@@ -83,6 +84,7 @@ async function generateContractPDF({
         doc
           .font("Bold")
           .fontSize(13)
+          .fillColor("#000000")
           .text(text.toUpperCase(), PAGE_MARGIN, doc.y, {
             width: CONTENT_WIDTH,
           });
@@ -90,63 +92,74 @@ async function generateContractPDF({
       };
 
       const drawRow = (label, value) => {
-        doc.font("Bold").text(label, PAGE_MARGIN, doc.y, { continued: true });
-        doc.font("Roboto").text(value || "N/A", {
-          width: CONTENT_WIDTH,
-        });
+        doc
+          .font("Bold")
+          .fontSize(10)
+          .fillColor("#000000")
+          .text(label, PAGE_MARGIN, doc.y, {
+            continued: true,
+          });
+        doc
+          .font("Roboto")
+          .fontSize(10)
+          .fillColor("#2E86AB") // 💙 value color
+          .text(value || "N/A", PAGE_MARGIN + 100, doc.y, {
+            width: CONTENT_WIDTH - 100,
+            align: "left",
+            lineGap: 2,
+          });
         doc.moveDown(0.35);
       };
 
       /* ===================== CONTENT ===================== */
       sectionTitle("Customer Information");
-      drawRow("Name: ", customer.name);
-      drawRow("Email: ", customer.email);
-      doc.moveDown(0.6);
+      drawRow("Name:", customer.name);
+      drawRow("Email:", customer.email);
+      doc.moveDown(0.4);
 
       sectionTitle("Shipment Details");
-      drawRow("Pickup Location: ", shipment.pickupLocation);
-      drawRow("Pickup Date: ", shipment.pickupDate?.toDateString());
-      drawRow("Delivery Location: ", shipment.deliveryLocation);
-      drawRow("Delivery Date: ", shipment.deliveryDate?.toDateString());
-      drawRow("Number of Horses: ", shipment.numberOfHorses?.toString());
-      doc.moveDown(0.6);
+      drawRow("Pickup Location:", shipment.pickupLocation);
+      drawRow("Pickup Date:", shipment.pickupDate?.toDateString());
+      drawRow("Delivery Location:", shipment.deliveryLocation);
+      drawRow("Delivery Date:", shipment.deliveryDate?.toDateString());
+      drawRow("Number of Horses:", shipment.numberOfHorses?.toString());
+      doc.moveDown(0.4);
 
       sectionTitle("Shipper & Quote Details");
-      drawRow("Shipper Name: ", shipper.name);
-      drawRow("Shipper Email: ", shipper.email);
-      drawRow("Vehicle: ", vehicle.vehicleNumber);
-      drawRow("Transport Type: ", vehicle.transportType);
-      drawRow("Total Price: ", `${quote.totalPrice} ${quote.currency}`);
-      drawRow("Payment Method: ", quote.paymentMethod);
-      drawRow("Payment Due: ", quote.paymentDue);
-      drawRow("Pickup Time: ", quote.pickupTime);
-      drawRow("Estimated Arrival: ", quote.estimatedArrivalTime);
+      drawRow("Shipper Name:", shipper.name);
+      drawRow("Shipper Email:", shipper.email);
+      drawRow("Vehicle:", vehicle.vehicleNumber);
+      drawRow("Transport Type:", vehicle.transportType);
+      drawRow("Total Price:", `${quote.totalPrice} ${quote.currency}`);
+      drawRow("Payment Method:", quote.paymentMethod);
+      drawRow("Payment Due:", quote.paymentDue);
+      drawRow("Pickup Time:", quote.pickupTime);
+      drawRow("Estimated Arrival:", quote.estimatedArrivalTime);
 
       if (quote.notes) {
-        doc.moveDown(0.5);
-        doc.font("Bold").text("NOTES:", PAGE_MARGIN);
-        doc.font("Roboto").text(quote.notes, {
+        doc.moveDown(0.4);
+        doc.font("Bold").fillColor("#000000").text("NOTES:", PAGE_MARGIN);
+        doc.font("Roboto").fillColor("#2E86AB").text(quote.notes, {
           width: CONTENT_WIDTH,
-          height: 70,
-          ellipsis: true,
+          lineGap: 2,
         });
       }
 
       /* ===================== SIGNATURES ===================== */
-      const signatureY = doc.page.height - 170;
+      const signatureHeight = 70;
+      const signatureY = PAGE_HEIGHT - PAGE_MARGIN - signatureHeight - 50; // footer safe
 
       if (shipperSignature) {
         const shipperImg = Buffer.from(
           shipperSignature.replace(/^data:image\/\w+;base64,/, ""),
           "base64"
         );
-
         doc
           .font("Bold")
+          .fillColor("#000000")
           .text("SHIPPER SIGNATURE:", PAGE_MARGIN, signatureY - 25);
-
         doc.image(shipperImg, PAGE_MARGIN, signatureY, {
-          fit: [190, 70], // 🔥 BIGGER & CLEAR
+          fit: [190, signatureHeight],
         });
       }
 
@@ -155,33 +168,30 @@ async function generateContractPDF({
           customerSignature.replace(/^data:image\/\w+;base64,/, ""),
           "base64"
         );
-
         doc
           .font("Bold")
+          .fillColor("#000000")
           .text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureY - 25);
-
         doc.image(customerImg, PAGE_MARGIN + 260, signatureY, {
-          fit: [190, 70],
+          fit: [190, signatureHeight],
         });
       } else {
         doc
           .font("Bold")
+          .fillColor("#000000")
           .text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureY - 25);
       }
 
-      /* ===================== FOOTER (LOCKED) ===================== */
+      /* ===================== FOOTER ===================== */
       doc
         .fontSize(6)
-        .fillColor("#bbbbbb")
+        .fillColor("#888888") // subtle gray
         .opacity(0.7)
         .text(
           `Digitally generated contract | Ref: ${shipmentCode}-${customer._id}`,
           PAGE_MARGIN,
-          doc.page.height - 40,
-          {
-            align: "center",
-            width: CONTENT_WIDTH,
-          }
+          PAGE_HEIGHT - PAGE_MARGIN - 20,
+          { align: "center", width: CONTENT_WIDTH }
         )
         .opacity(1);
 
