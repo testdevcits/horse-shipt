@@ -19,6 +19,7 @@ const {
   requestOtp,
   verifyOtp,
   updateCustomerProfileImage,
+  getCustomerProfile,
 } = require("../../controllers/customer/customerController");
 
 const {
@@ -182,6 +183,12 @@ router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
 // CHAT LIST (Customer Dashboard)
 // ====================================================
 router.get("/chat/shippers", customerAuth, getShippersForChat);
+
+// ===================================================
+// GET /api/customer/profile
+// ===================================================
+// Protected route: only accessible if customer is logged in
+router.get("/profile", customerAuth, getCustomerProfile);
 
 router.put(
   "/profile-image",

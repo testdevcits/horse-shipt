@@ -357,3 +357,66 @@ exports.updateCustomerProfileImage = async (req, res) => {
     });
   }
 };
+
+// ===================================================
+// Get Customer Profile
+// ===================================================
+exports.getCustomerProfile = async (req, res) => {
+  try {
+    const customer = await Customer.findById(req.user.id)
+      .select(
+        "uniqueId name email role firstName lastName locale emailVerified " +
+          "profileImage profilePicture bannerImage currentLocation isLogin"
+      )
+      .lean();
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: "Customer not found",
+      });
+    }
+
+    // ================================
+    // Profile Image Resolution Priority
+    // 1. Uploaded profileImage (Cloudinary)
+    // 2. Google OAuth profilePicture
+    // 3. Default local image
+    // ================================
+    const resolvedProfileImage =
+      customer.profileImage?.url ||
+      customer.profilePicture ||
+      "/images/default_profile.png";
+
+    // ================================
+    // Banner Image Resolution
+    // ================================
+    const resolvedBannerImage =
+      customer.bannerImage?.url || "/images/default_banner.png";
+
+    res.status(200).json({
+      success: true,
+      message: "Customer profile fetched successfully",
+      data: {
+        uniqueId: customer.uniqueId,
+        name: customer.name,
+        email: customer.email,
+        role: customer.role,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        locale: customer.locale || "",
+        emailVerified: customer.emailVerified,
+        currentLocation: customer.currentLocation || null,
+        isLogin: customer.isLogin,
+        profileImage: resolvedProfileImage,
+        bannerImage: resolvedBannerImage,
+      },
+    });
+  } catch (error) {
+    console.error("Get Customer Profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch customer profile",
+    });
+  }
+};
