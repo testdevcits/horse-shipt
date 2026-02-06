@@ -24,22 +24,18 @@ async function generateContractPDF({
       doc.on("error", reject);
 
       /* ===================== FONTS ===================== */
-      const robotoRegular = path.join(
-        __dirname,
-        "../../assets/fonts/RobotoSlab-Regular.ttf"
+      doc.registerFont(
+        "Roboto",
+        path.join(__dirname, "../../assets/fonts/RobotoSlab-Regular.ttf")
       );
-      const openSansBold = path.join(
-        __dirname,
-        "../../assets/fonts/OpenSans-Bold.ttf"
+      doc.registerFont(
+        "Bold",
+        path.join(__dirname, "../../assets/fonts/OpenSans-Bold.ttf")
       );
-      const oswaldBold = path.join(
-        __dirname,
-        "../../assets/fonts/Oswald-Bold.ttf"
+      doc.registerFont(
+        "Title",
+        path.join(__dirname, "../../assets/fonts/Oswald-Bold.ttf")
       );
-
-      doc.registerFont("Roboto", robotoRegular);
-      doc.registerFont("Bold", openSansBold);
-      doc.registerFont("Title", oswaldBold);
 
       /* ===================== HEADER ===================== */
       const logoPath = path.join(__dirname, "../../assets/logo.png");
@@ -107,7 +103,7 @@ async function generateContractPDF({
         doc.font("Roboto").text(quote.notes);
       }
 
-      /* ===================== SIGNATURES ===================== */
+      /* ===================== SIGNATURES (BOX FREE) ===================== */
       const bottomY = doc.page.height - 140;
 
       // ----- Shipper Signature -----
@@ -119,12 +115,11 @@ async function generateContractPDF({
 
         doc.font("Bold").text("Shipper Signature:", 50, bottomY);
         doc.image(shipperImg, 50, bottomY + 20, {
-          width: 150,
-          height: 50,
+          fit: [150, 50],
         });
       }
 
-      // ----- Customer Signature (SAME STYLE, NO BORDER) -----
+      // ----- Customer Signature -----
       if (customerSignature) {
         const customerImg = Buffer.from(
           customerSignature.replace(/^data:image\/\w+;base64,/, ""),
@@ -133,11 +128,9 @@ async function generateContractPDF({
 
         doc.font("Bold").text("Customer Signature:", 350, bottomY);
         doc.image(customerImg, 350, bottomY + 20, {
-          width: 150,
-          height: 50,
+          fit: [150, 50],
         });
       } else {
-        // Just label, no box
         doc.font("Bold").text("Customer Signature:", 350, bottomY);
       }
 
