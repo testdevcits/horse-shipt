@@ -14,9 +14,12 @@ async function generateContractPDF({
 }) {
   return new Promise((resolve, reject) => {
     try {
+      const PAGE_MARGIN = 60; // 🔥 PRINT SAFE MARGIN
+      const CONTENT_WIDTH = 475;
+
       const doc = new PDFDocument({
         size: "A4",
-        margin: 50,
+        margin: PAGE_MARGIN,
       });
 
       const buffers = [];
@@ -39,59 +42,66 @@ async function generateContractPDF({
       );
 
       /* ===================== HEADER ===================== */
-      doc.rect(0, 0, doc.page.width, 80).fill("#BF9B53");
+      doc.rect(0, 0, doc.page.width, 90).fill("#BF9B53");
 
       const logoPath = path.join(__dirname, "../../assets/logo.png");
       if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, 50, 18, { width: 50 });
+        doc.image(logoPath, PAGE_MARGIN, 22, { width: 55 });
       }
 
       doc
         .fillColor("#ffffff")
         .font("Title")
         .fontSize(22)
-        .text("HORSESHIPT™", 0, 26, {
+        .text("HORSESHIPT™", PAGE_MARGIN, 28, {
           align: "right",
-          width: doc.page.width - 50,
+          width: CONTENT_WIDTH,
         });
 
       doc
         .font("Bold")
         .fontSize(9)
-        .text(shipmentCode || "", 0, 52, {
+        .text(shipmentCode || "", PAGE_MARGIN, 58, {
           align: "right",
-          width: doc.page.width - 50,
+          width: CONTENT_WIDTH,
         });
 
-      /* 🔴 VERY IMPORTANT: reset cursor after header */
+      /* reset */
       doc.fillColor("#000000");
-      doc.y = 100;
+      doc.y = 115;
 
       /* ===================== TITLE ===================== */
-      doc
-        .font("Bold")
-        .fontSize(18)
-        .text("SHIPMENT CONTRACT", { align: "center" });
+      doc.font("Bold").fontSize(18).text("SHIPMENT CONTRACT", {
+        align: "center",
+        width: CONTENT_WIDTH,
+      });
 
-      doc.moveDown(1);
+      doc.moveDown(1.2);
 
       /* ===================== HELPERS ===================== */
       const sectionTitle = (text) => {
-        doc.font("Bold").fontSize(13).text(text.toUpperCase());
-        doc.moveDown(0.25);
+        doc
+          .font("Bold")
+          .fontSize(13)
+          .text(text.toUpperCase(), PAGE_MARGIN, doc.y, {
+            width: CONTENT_WIDTH,
+          });
+        doc.moveDown(0.4);
       };
 
       const drawRow = (label, value) => {
-        doc.font("Bold").text(label, { continued: true });
-        doc.font("Roboto").text(value || "N/A");
-        doc.moveDown(0.2);
+        doc.font("Bold").text(label, PAGE_MARGIN, doc.y, { continued: true });
+        doc.font("Roboto").text(value || "N/A", {
+          width: CONTENT_WIDTH,
+        });
+        doc.moveDown(0.35);
       };
 
       /* ===================== CONTENT ===================== */
       sectionTitle("Customer Information");
       drawRow("Name: ", customer.name);
       drawRow("Email: ", customer.email);
-      doc.moveDown(0.4);
+      doc.moveDown(0.6);
 
       sectionTitle("Shipment Details");
       drawRow("Pickup Location: ", shipment.pickupLocation);
@@ -99,7 +109,7 @@ async function generateContractPDF({
       drawRow("Delivery Location: ", shipment.deliveryLocation);
       drawRow("Delivery Date: ", shipment.deliveryDate?.toDateString());
       drawRow("Number of Horses: ", shipment.numberOfHorses?.toString());
-      doc.moveDown(0.4);
+      doc.moveDown(0.6);
 
       sectionTitle("Shipper & Quote Details");
       drawRow("Shipper Name: ", shipper.name);
@@ -113,16 +123,17 @@ async function generateContractPDF({
       drawRow("Estimated Arrival: ", quote.estimatedArrivalTime);
 
       if (quote.notes) {
-        doc.moveDown(0.3);
-        doc.font("Bold").text("NOTES:");
+        doc.moveDown(0.5);
+        doc.font("Bold").text("NOTES:", PAGE_MARGIN);
         doc.font("Roboto").text(quote.notes, {
-          height: 55,
+          width: CONTENT_WIDTH,
+          height: 70,
           ellipsis: true,
         });
       }
 
       /* ===================== SIGNATURES ===================== */
-      const safeSignatureY = doc.page.height - 130;
+      const signatureY = doc.page.height - 170;
 
       if (shipperSignature) {
         const shipperImg = Buffer.from(
@@ -130,9 +141,12 @@ async function generateContractPDF({
           "base64"
         );
 
-        doc.font("Bold").text("SHIPPER SIGNATURE:", 50, safeSignatureY - 22);
-        doc.image(shipperImg, 50, safeSignatureY + 8, {
-          fit: [150, 45],
+        doc
+          .font("Bold")
+          .text("SHIPPER SIGNATURE:", PAGE_MARGIN, signatureY - 25);
+
+        doc.image(shipperImg, PAGE_MARGIN, signatureY, {
+          fit: [190, 70], // 🔥 BIGGER & CLEAR
         });
       }
 
@@ -142,26 +156,32 @@ async function generateContractPDF({
           "base64"
         );
 
-        doc.font("Bold").text("CUSTOMER SIGNATURE:", 350, safeSignatureY - 22);
-        doc.image(customerImg, 350, safeSignatureY + 8, {
-          fit: [150, 45],
+        doc
+          .font("Bold")
+          .text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureY - 25);
+
+        doc.image(customerImg, PAGE_MARGIN + 260, signatureY, {
+          fit: [190, 70],
         });
       } else {
-        doc.font("Bold").text("CUSTOMER SIGNATURE:", 350, safeSignatureY - 22);
+        doc
+          .font("Bold")
+          .text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureY - 25);
       }
 
-      /* ===================== SECURITY FOOTER ===================== */
+      /* ===================== FOOTER (LOCKED) ===================== */
       doc
-        .opacity(0.6)
         .fontSize(6)
-        .fillColor("#cccccc")
+        .fillColor("#bbbbbb")
+        .opacity(0.7)
         .text(
-          `Digitally generated contract | Ref: ${
-            shipmentCode || shipment._id
-          }-${customer._id}`,
-          0,
-          doc.page.height - 30,
-          { align: "center" }
+          `Digitally generated contract | Ref: ${shipmentCode}-${customer._id}`,
+          PAGE_MARGIN,
+          doc.page.height - 40,
+          {
+            align: "center",
+            width: CONTENT_WIDTH,
+          }
         )
         .opacity(1);
 
