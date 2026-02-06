@@ -1,18 +1,22 @@
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+
 const { PDFDocument } = require("pdf-lib");
 const cloudinary = require("../../utils/cloudinary");
 const fetch = require("node-fetch");
 const streamifier = require("streamifier");
 
+/* =========================================================
+   ACCEPT QUOTE WITH CUSTOMER SIGNATURE
+========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
   try {
     const { quoteId } = req.params;
     const { customerSignature } = req.body;
     const customerId = req.user._id;
 
-    // -------------------- VALIDATION --------------------
+    /* ---------------- VALIDATION ---------------- */
     if (
       !customerSignature ||
       typeof customerSignature !== "string" ||
@@ -24,7 +28,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // -------------------- FETCH QUOTE --------------------
+    /* ---------------- FETCH QUOTE ---------------- */
     const quote = await ShipmentQuote.findById(quoteId)
       .populate("shipment")
       .populate("shipper");
@@ -36,7 +40,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // -------------------- PREVENT DOUBLE ACCEPT --------------------
     if (quote.contractAccepted) {
       return res.status(400).json({
         success: false,
@@ -44,7 +47,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // -------------------- AUTHORIZATION --------------------
+    /* ---------------- AUTHORIZATION ---------------- */
     if (
       !quote.shipment?.customer ||
       quote.shipment.customer.toString() !== customerId.toString()
@@ -55,7 +58,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // -------------------- CONTRACT CHECK --------------------
+    /* ---------------- CONTRACT CHECK ---------------- */
     if (!quote.contract?.url || !quote.contract?.public_id) {
       return res.status(400).json({
         success: false,
@@ -70,16 +73,18 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    // -------------------- FETCH EXISTING PDF --------------------
+    /* ---------------- FETCH EXISTING PDF ---------------- */
     const pdfResponse = await fetch(quote.contract.url);
     const existingPdfBytes = await pdfResponse.arrayBuffer();
 
-    // -------------------- LOAD PDF --------------------
+    /* ---------------- LOAD PDF ---------------- */
     const pdfDoc = await PDFDocument.load(existingPdfBytes);
     const pages = pdfDoc.getPages();
     const lastPage = pages[pages.length - 1];
 
-    // -------------------- EMBED CUSTOMER SIGNATURE --------------------
+    const { width, height } = lastPage.getSize();
+
+    /* ---------------- EMBED CUSTOMER SIGNATURE ---------------- */
     const customerSigBytes = Buffer.from(
       customerSignature.replace(/^data:image\/\w+;base64,/, ""),
       "base64"
@@ -87,30 +92,32 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     const customerSigImage = await pdfDoc.embedPng(customerSigBytes);
 
-    // ✅ EXACT SAME SIZE AS SHIPPER (PDFKit side)
+    /* ---------------- SIGNATURE POSITION (FIXED) ---------------- */
     const SIGN_WIDTH = 150;
     const SIGN_HEIGHT = 50;
+    const BOTTOM_MARGIN = 60;
 
-    // ✅ MATCH PDFKIT POSITION (right side)
-    const X = 350;
-    const Y = 50;
+    // Left side was shipper (already drawn by PDFKit)
+    // Right side is customer
+    const CUSTOMER_X = width - SIGN_WIDTH - 60;
+    const SIGN_Y = BOTTOM_MARGIN;
 
     lastPage.drawImage(customerSigImage, {
-      x: X,
-      y: Y,
+      x: CUSTOMER_X,
+      y: SIGN_Y,
       width: SIGN_WIDTH,
       height: SIGN_HEIGHT,
     });
 
-    // -------------------- SAVE UPDATED PDF --------------------
+    /* ---------------- SAVE UPDATED PDF ---------------- */
     const updatedPdfBytes = await pdfDoc.save();
 
-    // -------------------- UPLOAD TO CLOUDINARY (OVERWRITE) --------------------
+    /* ---------------- UPLOAD TO CLOUDINARY (OVERWRITE) ---------------- */
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: "raw",
-          public_id: quote.contract.public_id,
+          public_id: quote.contract.public_id, // SAME PDF
           overwrite: true,
         },
         (err, result) => (err ? reject(err) : resolve(result))
@@ -121,7 +128,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         .pipe(uploadStream);
     });
 
-    // -------------------- UPDATE QUOTE --------------------
+    /* ---------------- UPDATE QUOTE ---------------- */
     quote.customerSignature = customerSignature;
     quote.contract.url = uploadResult.secure_url;
     quote.contractAccepted = true;
@@ -129,19 +136,19 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     quote.status = "accepted";
     await quote.save();
 
-    // -------------------- REJECT OTHER QUOTES --------------------
+    /* ---------------- REJECT OTHER QUOTES ---------------- */
     await ShipmentQuote.updateMany(
       { shipment: quote.shipment._id, _id: { $ne: quote._id } },
       { status: "rejected" }
     );
 
-    // -------------------- UPDATE SHIPMENT --------------------
+    /* ---------------- UPDATE SHIPMENT ---------------- */
     await CustomerShipment.findByIdAndUpdate(quote.shipment._id, {
       status: "assigned",
       assignedShipper: quote.shipper._id,
     });
 
-    // -------------------- SAVE CUSTOMER QUOTE HISTORY --------------------
+    /* ---------------- SAVE CUSTOMER QUOTE HISTORY ---------------- */
     await CustomerQuote.create({
       shipmentId: quote.shipment._id,
       customerId,
@@ -173,7 +180,6 @@ exports.getQuotesByShipment = async (req, res) => {
     const { shipmentId } = req.params;
     const customerId = req.user._id;
 
-    // Validate shipment
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customer",
       "name email"
@@ -186,7 +192,6 @@ exports.getQuotesByShipment = async (req, res) => {
       });
     }
 
-    // Authorization
     if (
       !shipment.customer ||
       shipment.customer._id.toString() !== customerId.toString()
@@ -197,7 +202,6 @@ exports.getQuotesByShipment = async (req, res) => {
       });
     }
 
-    // Fetch quotes
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
       .populate("vehicle")
@@ -211,7 +215,7 @@ exports.getQuotesByShipment = async (req, res) => {
     });
   } catch (error) {
     console.error("getQuotesByShipment error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch quotes",
     });
@@ -245,7 +249,6 @@ exports.getQuoteById = async (req, res) => {
       });
     }
 
-    // Authorization
     if (
       !quote.shipment.customer ||
       quote.shipment.customer._id.toString() !== customerId.toString()
@@ -256,13 +259,13 @@ exports.getQuoteById = async (req, res) => {
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       quote,
     });
   } catch (error) {
     console.error("getQuoteById error:", error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch quote details",
     });
