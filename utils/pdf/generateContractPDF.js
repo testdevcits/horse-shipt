@@ -4,6 +4,7 @@ const path = require("path");
 
 async function generateContractPDF({
   shipment,
+  shipmentCode,
   customer,
   shipper,
   vehicle,
@@ -16,7 +17,6 @@ async function generateContractPDF({
       const doc = new PDFDocument({
         size: "A4",
         margin: 50,
-        autoFirstPage: true,
       });
 
       const buffers = [];
@@ -39,53 +39,69 @@ async function generateContractPDF({
       );
 
       /* ===================== HEADER ===================== */
+      doc.rect(0, 0, doc.page.width, 80).fill("#BF9B53");
+
       const logoPath = path.join(__dirname, "../../assets/logo.png");
       if (fs.existsSync(logoPath)) {
-        doc.image(logoPath, 50, 20, { width: 60 });
+        doc.image(logoPath, 50, 18, { width: 50 });
       }
 
-      doc.font("Title").fontSize(22).text("HorseShipt™", 120, 25);
-      doc.moveDown(0.5);
-      doc.font("Bold").fontSize(18).text("Shipment Contract", {
-        align: "center",
-      });
-      doc.moveDown(1.2);
+      doc
+        .fillColor("#ffffff")
+        .font("Title")
+        .fontSize(22)
+        .text("HORSESHIPT™", 0, 26, {
+          align: "right",
+          width: doc.page.width - 50,
+        });
+
+      doc
+        .font("Bold")
+        .fontSize(9)
+        .text(shipmentCode || "", 0, 52, {
+          align: "right",
+          width: doc.page.width - 50,
+        });
+
+      /* 🔴 VERY IMPORTANT: reset cursor after header */
+      doc.fillColor("#000000");
+      doc.y = 100;
+
+      /* ===================== TITLE ===================== */
+      doc
+        .font("Bold")
+        .fontSize(18)
+        .text("SHIPMENT CONTRACT", { align: "center" });
+
+      doc.moveDown(1);
 
       /* ===================== HELPERS ===================== */
+      const sectionTitle = (text) => {
+        doc.font("Bold").fontSize(13).text(text.toUpperCase());
+        doc.moveDown(0.25);
+      };
+
       const drawRow = (label, value) => {
         doc.font("Bold").text(label, { continued: true });
         doc.font("Roboto").text(value || "N/A");
-        doc.moveDown(0.3);
+        doc.moveDown(0.2);
       };
 
       /* ===================== CONTENT ===================== */
-      doc
-        .font("Bold")
-        .fontSize(13)
-        .text("Customer Information", { underline: true });
-      doc.moveDown(0.3);
+      sectionTitle("Customer Information");
       drawRow("Name: ", customer.name);
       drawRow("Email: ", customer.email);
-      drawRow("Shipment ID: ", shipment._id.toString());
-      doc.moveDown(0.5);
+      doc.moveDown(0.4);
 
-      doc
-        .font("Bold")
-        .fontSize(13)
-        .text("Shipment Details", { underline: true });
-      doc.moveDown(0.3);
+      sectionTitle("Shipment Details");
       drawRow("Pickup Location: ", shipment.pickupLocation);
       drawRow("Pickup Date: ", shipment.pickupDate?.toDateString());
       drawRow("Delivery Location: ", shipment.deliveryLocation);
       drawRow("Delivery Date: ", shipment.deliveryDate?.toDateString());
       drawRow("Number of Horses: ", shipment.numberOfHorses?.toString());
-      doc.moveDown(0.5);
+      doc.moveDown(0.4);
 
-      doc
-        .font("Bold")
-        .fontSize(13)
-        .text("Shipper & Quote Details", { underline: true });
-      doc.moveDown(0.3);
+      sectionTitle("Shipper & Quote Details");
       drawRow("Shipper Name: ", shipper.name);
       drawRow("Shipper Email: ", shipper.email);
       drawRow("Vehicle: ", vehicle.vehicleNumber);
@@ -96,18 +112,17 @@ async function generateContractPDF({
       drawRow("Pickup Time: ", quote.pickupTime);
       drawRow("Estimated Arrival: ", quote.estimatedArrivalTime);
 
-      /* ===================== NOTES (HEIGHT LIMITED) ===================== */
       if (quote.notes) {
-        doc.moveDown(0.5);
-        doc.font("Bold").text("Notes:");
+        doc.moveDown(0.3);
+        doc.font("Bold").text("NOTES:");
         doc.font("Roboto").text(quote.notes, {
-          height: 60, // 🔒 LIMIT HEIGHT → NO PAGE BREAK
+          height: 55,
           ellipsis: true,
         });
       }
 
-      /* ===================== SIGNATURES (FIXED SAFE ZONE) ===================== */
-      const safeSignatureY = doc.page.height - 120;
+      /* ===================== SIGNATURES ===================== */
+      const safeSignatureY = doc.page.height - 130;
 
       if (shipperSignature) {
         const shipperImg = Buffer.from(
@@ -115,8 +130,8 @@ async function generateContractPDF({
           "base64"
         );
 
-        doc.font("Bold").text("Shipper Signature:", 50, safeSignatureY - 15);
-        doc.image(shipperImg, 50, safeSignatureY, {
+        doc.font("Bold").text("SHIPPER SIGNATURE:", 50, safeSignatureY - 22);
+        doc.image(shipperImg, 50, safeSignatureY + 8, {
           fit: [150, 45],
         });
       }
@@ -127,13 +142,28 @@ async function generateContractPDF({
           "base64"
         );
 
-        doc.font("Bold").text("Customer Signature:", 350, safeSignatureY - 15);
-        doc.image(customerImg, 350, safeSignatureY, {
+        doc.font("Bold").text("CUSTOMER SIGNATURE:", 350, safeSignatureY - 22);
+        doc.image(customerImg, 350, safeSignatureY + 8, {
           fit: [150, 45],
         });
       } else {
-        doc.font("Bold").text("Customer Signature:", 350, safeSignatureY - 15);
+        doc.font("Bold").text("CUSTOMER SIGNATURE:", 350, safeSignatureY - 22);
       }
+
+      /* ===================== SECURITY FOOTER ===================== */
+      doc
+        .opacity(0.6)
+        .fontSize(6)
+        .fillColor("#cccccc")
+        .text(
+          `Digitally generated contract | Ref: ${
+            shipmentCode || shipment._id
+          }-${customer._id}`,
+          0,
+          doc.page.height - 30,
+          { align: "center" }
+        )
+        .opacity(1);
 
       doc.end();
     } catch (err) {

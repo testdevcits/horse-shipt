@@ -80,6 +80,7 @@ exports.addQuote = async (req, res) => {
     // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
       shipment: shipmentExists,
+      shipmentCode: shipmentExists.shipmentCode,
       customer: shipmentExists.customer,
       shipper: req.user,
       vehicle: vehicleExists,
