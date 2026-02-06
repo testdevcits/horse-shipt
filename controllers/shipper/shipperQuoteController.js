@@ -187,11 +187,14 @@ exports.getMyQuotes = async (req, res) => {
         "pickupLocation deliveryLocation status pickupDate deliveryDate numberOfHorses shipmentCode"
       )
       .populate("vehicle")
+      .populate("shipper", "name email")
       .sort({ createdAt: -1 });
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Quotes fetched successfully", quotes });
+    return res.status(200).json({
+      success: true,
+      message: "Quotes fetched successfully",
+      quotes,
+    });
   } catch (err) {
     console.error("[GET MY QUOTES ERROR]:", err);
     return res.status(500).json({
