@@ -2,13 +2,12 @@ const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 
-const { PDFDocument } = require("pdf-lib");
 const cloudinary = require("../../utils/cloudinary");
-const fetch = require("node-fetch");
 const streamifier = require("streamifier");
+const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 
 /* =========================================================
-   ACCEPT QUOTE WITH CUSTOMER SIGNATURE
+   ACCEPT QUOTE (RE-GENERATE PDF WITH CUSTOMER SIGNATURE)
 ========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
   try {
@@ -30,8 +29,12 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     /* ---------------- FETCH QUOTE ---------------- */
     const quote = await ShipmentQuote.findById(quoteId)
-      .populate("shipment")
-      .populate("shipper");
+      .populate({
+        path: "shipment",
+        populate: { path: "customer" },
+      })
+      .populate("shipper")
+      .populate("vehicle");
 
     if (!quote) {
       return res.status(404).json({
@@ -47,88 +50,58 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    /* ---------------- AUTHORIZATION ---------------- */
-    if (
-      !quote.shipment?.customer ||
-      quote.shipment.customer.toString() !== customerId.toString()
-    ) {
+    /* ---------------- AUTH ---------------- */
+    if (quote.shipment.customer._id.toString() !== customerId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Not authorized to accept this quote",
-      });
-    }
-
-    /* ---------------- CONTRACT CHECK ---------------- */
-    if (!quote.contract?.url || !quote.contract?.public_id) {
-      return res.status(400).json({
-        success: false,
-        message: "Original contract PDF not found",
+        message: "Not authorized",
       });
     }
 
     if (!quote.shipperSignature) {
       return res.status(400).json({
         success: false,
-        message: "Shipper signature missing in contract",
+        message: "Shipper signature missing",
       });
     }
 
-    /* ---------------- FETCH EXISTING PDF ---------------- */
-    const pdfResponse = await fetch(quote.contract.url);
-    const existingPdfBytes = await pdfResponse.arrayBuffer();
-
-    /* ---------------- LOAD PDF ---------------- */
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
-    const pages = pdfDoc.getPages();
-    const lastPage = pages[pages.length - 1];
-
-    const { width, height } = lastPage.getSize();
-
-    /* ---------------- EMBED CUSTOMER SIGNATURE ---------------- */
-    const customerSigBytes = Buffer.from(
-      customerSignature.replace(/^data:image\/\w+;base64,/, ""),
-      "base64"
-    );
-
-    const customerSigImage = await pdfDoc.embedPng(customerSigBytes);
-
-    /* ---------------- SIGNATURE POSITION (FIXED) ---------------- */
-    const SIGN_WIDTH = 150;
-    const SIGN_HEIGHT = 50;
-    const BOTTOM_MARGIN = 60;
-
-    // Left side was shipper (already drawn by PDFKit)
-    // Right side is customer
-    const CUSTOMER_X = width - SIGN_WIDTH - 60;
-    const SIGN_Y = BOTTOM_MARGIN;
-
-    lastPage.drawImage(customerSigImage, {
-      x: CUSTOMER_X,
-      y: SIGN_Y,
-      width: SIGN_WIDTH,
-      height: SIGN_HEIGHT,
+    /* ---------------- RE-GENERATE PDF ---------------- */
+    const pdfBuffer = await generateContractPDF({
+      shipment: quote.shipment,
+      customer: quote.shipment.customer,
+      shipper: quote.shipper,
+      vehicle: quote.vehicle,
+      quote: {
+        totalPrice: quote.totalPrice,
+        currency: quote.currency,
+        paymentMethod: quote.paymentMethod,
+        paymentDue: quote.paymentDue,
+        pickupTime: quote.pickupTime,
+        estimatedArrivalTime: quote.estimatedArrivalTime,
+        estimatedDeliveryDays: quote.estimatedDeliveryDays,
+        transportType: quote.transportType,
+        stallsRequired: quote.stallsRequired,
+        notes: quote.notes,
+      },
+      shipperSignature: quote.shipperSignature,
+      customerSignature,
     });
 
-    /* ---------------- SAVE UPDATED PDF ---------------- */
-    const updatedPdfBytes = await pdfDoc.save();
-
-    /* ---------------- UPLOAD TO CLOUDINARY (OVERWRITE) ---------------- */
+    /* ---------------- OVERWRITE SAME PDF ---------------- */
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: "raw",
-          public_id: quote.contract.public_id, // SAME PDF
+          public_id: quote.contract.public_id, // SAME FILE
           overwrite: true,
         },
         (err, result) => (err ? reject(err) : resolve(result))
       );
 
-      streamifier
-        .createReadStream(Buffer.from(updatedPdfBytes))
-        .pipe(uploadStream);
+      streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
-    /* ---------------- UPDATE QUOTE ---------------- */
+    /* ---------------- UPDATE DB ---------------- */
     quote.customerSignature = customerSignature;
     quote.contract.url = uploadResult.secure_url;
     quote.contractAccepted = true;
@@ -148,7 +121,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       assignedShipper: quote.shipper._id,
     });
 
-    /* ---------------- SAVE CUSTOMER QUOTE HISTORY ---------------- */
+    /* ---------------- CUSTOMER QUOTE HISTORY ---------------- */
     await CustomerQuote.create({
       shipmentId: quote.shipment._id,
       customerId,
@@ -160,7 +133,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Quote accepted and contract signed successfully",
+      message: "Quote accepted & contract signed successfully",
       quote,
     });
   } catch (error) {
