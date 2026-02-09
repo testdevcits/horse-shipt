@@ -1,6 +1,5 @@
 const Horse = require("../../models/customer/Horse");
 const mongoose = require("mongoose");
-const { uploadToCloudinary } = require("../../utils/cloudinary");
 
 /**
  * =====================================
@@ -66,13 +65,22 @@ exports.createHorse = async (req, res) => {
       });
     }
 
-    // Map uploaded files
-    const fileMap = {};
-    (req.files || []).forEach((file) => {
-      fileMap[file.fieldname] = file;
+    // Check for duplicates
+    const existingHorse = await Horse.findOne({
+      owner: customerId,
+      registeredName: registeredName.trim(),
     });
 
-    // Build horse data object
+    if (existingHorse) {
+      console.warn("Duplicate horse detected");
+      return res.status(409).json({
+        success: false,
+        message: "You have already saved a horse with this Registered Name",
+        data: { horse: existingHorse },
+      });
+    }
+
+    // Build horse data object (Step 3 only)
     const horseData = {
       owner: customerId,
       registeredName: registeredName.trim(),
@@ -87,14 +95,7 @@ exports.createHorse = async (req, res) => {
       notes: notes?.trim() || generalInfo?.trim() || "",
     };
 
-    // Upload photo if provided
-    if (fileMap["horses[0][photo]"] || fileMap.photo) {
-      console.log("Uploading photo to Cloudinary...");
-      horseData.photo = await uploadToCloudinary(
-        fileMap["horses[0][photo]"] || fileMap.photo
-      );
-      console.log("Photo uploaded:", horseData.photo);
-    }
+    // Step 3 does NOT save photos, Step 4 handles that
 
     // Save to database
     const horse = await Horse.create(horseData);
