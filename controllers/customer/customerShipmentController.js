@@ -99,7 +99,7 @@ exports.createShipment = async (req, res) => {
     if (req.body.horses) {
       horseData = Array.isArray(req.body.horses)
         ? req.body.horses
-        : JSON.parse(req.body.horses);
+        : JSON.parse(req.body.horses); // Support JSON string from frontend
     }
 
     if (horseData.length !== numberOfHorses) {
@@ -137,31 +137,34 @@ exports.createShipment = async (req, res) => {
         otherBreed: h.otherBreed || "",
         sex: h.sex,
         size: h.size || "",
-        requestedStallSize: h.stallType, // 🔑 FIXED MAPPING
+        requestedStallSize: h.stallType, // ✅ maps frontend stallType
         generalInfo: h.generalInfo || "",
         documents: {},
       };
 
-      /* ---------------- PHOTO ---------------- */
+      /* ---------------- FILES ---------------- */
+      // Photo
       if (fileMap[`horses[${i}][photo]`]) {
         horseObj.photo = await uploadToCloudinary(
           fileMap[`horses[${i}][photo]`]
         );
       }
 
-      /* ---------------- DOCUMENTS ---------------- */
-      if (fileMap[`horses[${i}][cogins]`]) {
+      // Coggins
+      if (fileMap[`horses[${i}][coggins]`]) {
         horseObj.documents.cogins = await uploadToCloudinary(
-          fileMap[`horses[${i}][cogins]`]
+          fileMap[`horses[${i}][coggins]`]
         );
       }
 
+      // Health Certificate
       if (fileMap[`horses[${i}][healthCertificate]`]) {
         horseObj.documents.healthCertificate = await uploadToCloudinary(
           fileMap[`horses[${i}][healthCertificate]`]
         );
       }
 
+      // Any other document
       if (fileMap[`horses[${i}][otherDocument]`]) {
         horseObj.documents.other = await uploadToCloudinary(
           fileMap[`horses[${i}][otherDocument]`]
@@ -189,7 +192,7 @@ exports.createShipment = async (req, res) => {
 
     await shipment.save();
 
-    /* ---------------- SHIPMENT CODE ---------------- */
+    /* ---------------- GENERATE SHIPMENT CODE ---------------- */
     if (!shipment.shipmentCode) {
       const year = new Date().getFullYear();
       const shortId = shipment._id.toString().slice(-6).toUpperCase();
