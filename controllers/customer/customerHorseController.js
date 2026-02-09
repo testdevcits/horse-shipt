@@ -11,17 +11,19 @@ exports.createHorse = async (req, res) => {
   try {
     const customerId = req.user._id;
 
-    const { registeredName, barnName, breed, colour, age, sex, generalInfo } =
-      req.body;
+    // SUPPORT BOTH CASES
+    const horseInput = req.body.horses?.[0] || req.body;
 
-    // ---------- Basic Validation ----------
+    console.log("Parsed horseInput:", horseInput);
+    console.log("Files:", req.files);
+
+    const { registeredName, barnName, breed, colour, age, sex, generalInfo } =
+      horseInput;
+
     if (!registeredName || registeredName.trim() === "") {
       return res.status(400).json({
         success: false,
         message: "Registered name is required",
-        errors: {
-          registeredName: "Registered name cannot be empty",
-        },
       });
     }
 
@@ -31,7 +33,6 @@ exports.createHorse = async (req, res) => {
       fileMap[file.fieldname] = file;
     });
 
-    // ---------- Horse Payload ----------
     const horseData = {
       owner: customerId,
       registeredName: registeredName.trim(),
@@ -44,29 +45,20 @@ exports.createHorse = async (req, res) => {
     };
 
     // ---------- Upload Files ----------
-    if (fileMap.photo) {
-      horseData.photo = await uploadToCloudinary(fileMap.photo);
-    }
-
-    if (fileMap.cogins) {
-      horseData.cogins = await uploadToCloudinary(fileMap.cogins);
-    }
-
-    if (fileMap.healthCertificate) {
-      horseData.healthCertificate = await uploadToCloudinary(
-        fileMap.healthCertificate
+    if (fileMap["horses[0][photo]"] || fileMap.photo) {
+      horseData.photo = await uploadToCloudinary(
+        fileMap["horses[0][photo]"] || fileMap.photo
       );
     }
 
-    // ---------- Save Horse ----------
     const horse = await Horse.create(horseData);
+
+    console.log("Horse saved:", horse._id);
 
     return res.status(201).json({
       success: true,
       message: "Horse saved successfully",
-      data: {
-        horse,
-      },
+      data: { horse },
     });
   } catch (err) {
     console.error("Create Horse Error:", err);
