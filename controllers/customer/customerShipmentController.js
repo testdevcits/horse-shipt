@@ -83,52 +83,90 @@ exports.createShipment = async (req, res) => {
       publish,
     } = req.body;
 
-    // ---------- File Map ----------
+    // ---------------- File Map ----------------
     const fileMap = {};
     (req.files || []).forEach((file) => {
       fileMap[file.fieldname] = file;
     });
 
-    // ---------- Horses ----------
-    let horseData = req.body.horses
-      ? Array.isArray(req.body.horses)
+    // ---------------- Parse Horses ----------------
+    let horseData = [];
+    if (req.body.horses) {
+      horseData = Array.isArray(req.body.horses)
         ? req.body.horses
-        : JSON.parse(req.body.horses)
-      : [];
+        : JSON.parse(req.body.horses);
+    }
+
+    if (horseData.length !== numberOfHorses) {
+      return res.status(400).json({
+        success: false,
+        message: "numberOfHorses does not match horse details",
+      });
+    }
 
     const horses = [];
 
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
+
+      // ---------- Mandatory validations ----------
+      if (!h.registeredName || !h.breed || !h.sex || !h.requestedStallSize) {
+        return res.status(400).json({
+          success: false,
+          message: `Missing required fields for horse ${i + 1}`,
+        });
+      }
+
+      if (h.breed === "Other Breed" && !h.otherBreed) {
+        return res.status(400).json({
+          success: false,
+          message: `Other breed is required for horse ${i + 1}`,
+        });
+      }
+
+      // ---------- Horse Object ----------
       const horseObj = {
-        registeredName: h.registeredName || "",
+        registeredName: h.registeredName,
         barnName: h.barnName || "",
-        breed: h.breed || "",
-        colour: h.colour || "",
-        age: h.age || "",
-        sex: h.sex || "",
+        breed: h.breed,
+        otherBreed: h.otherBreed || "",
+        sex: h.sex,
+        size: h.size || "",
+        requestedStallSize: h.requestedStallSize,
         generalInfo: h.generalInfo || "",
+        documents: {},
       };
 
-      if (fileMap[`horses[${i}][photo]`])
+      // ---------- Photo ----------
+      if (fileMap[`horses[${i}][photo]`]) {
         horseObj.photo = await uploadToCloudinary(
           fileMap[`horses[${i}][photo]`]
         );
+      }
 
-      if (fileMap[`horses[${i}][cogins]`])
-        horseObj.cogins = await uploadToCloudinary(
-          fileMap[`horses[${i}][cogins]`]
+      // ---------- Documents ----------
+      if (fileMap[`horses[${i}][coggins]`]) {
+        horseObj.documents.coggins = await uploadToCloudinary(
+          fileMap[`horses[${i}][coggins]`]
         );
+      }
 
-      if (fileMap[`horses[${i}][healthCertificate]`])
-        horseObj.healthCertificate = await uploadToCloudinary(
+      if (fileMap[`horses[${i}][healthCertificate]`]) {
+        horseObj.documents.healthCertificate = await uploadToCloudinary(
           fileMap[`horses[${i}][healthCertificate]`]
         );
+      }
+
+      if (fileMap[`horses[${i}][otherDocument]`]) {
+        horseObj.documents.other = await uploadToCloudinary(
+          fileMap[`horses[${i}][otherDocument]`]
+        );
+      }
 
       horses.push(horseObj);
     }
 
-    // ---------- Create Shipment ----------
+    // ---------------- Create Shipment ----------------
     const shipment = new CustomerShipment({
       customer: customerId,
       pickupLocation,
@@ -138,15 +176,15 @@ exports.createShipment = async (req, res) => {
       deliveryTimeOption,
       deliveryDate,
       numberOfHorses,
-      additionalInfo: additionalInfo || "",
       horses,
+      additionalInfo: additionalInfo || "",
       publish: publish === "true" || publish === true,
       status: "pending",
     });
 
     await shipment.save();
 
-    // ---------- ADD SHIPMENT CODE (NEW) ----------
+    // ---------------- Shipment Code ----------------
     if (!shipment.shipmentCode) {
       const year = new Date().getFullYear();
       const shortId = shipment._id.toString().slice(-6).toUpperCase();
@@ -154,8 +192,9 @@ exports.createShipment = async (req, res) => {
       await shipment.save();
     }
 
-    // ---------- Notification ----------
+    // ---------------- Notification ----------------
     const notif = await CustomerNotification.findOne({ user: customerId });
+
     if (notif?.subscription && notif?.settings?.shipmentUpdates) {
       const payload = JSON.stringify({
         title: "Shipment Created",
@@ -173,10 +212,10 @@ exports.createShipment = async (req, res) => {
       }
     }
 
-    res.status(201).json({ success: true, shipment });
+    return res.status(201).json({ success: true, shipment });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    console.error("Create Shipment Error:", err);
+    return res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
@@ -185,13 +224,34 @@ exports.createShipment = async (req, res) => {
 // ============================================================
 exports.getShipmentsByCustomer = async (req, res) => {
   try {
-    const shipments = await CustomerShipment.find({
-      customer: req.user._id,
-    }).sort({ createdAt: -1 });
+    const customerId = req.user._id;
 
-    res.status(200).json({ success: true, shipments });
+    const shipments = await CustomerShipment.find({ customer: customerId })
+      .sort({ createdAt: -1 })
+      .select(
+        `
+        shipmentCode
+        status
+        publish
+        publishedAt
+        pickupLocation
+        pickupDate
+        deliveryLocation
+        deliveryDate
+        numberOfHorses
+        horses
+        createdAt
+        `
+      )
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: shipments.length,
+      shipments,
+    });
   } catch (err) {
-    console.error(err);
+    console.error("Get Shipments By Customer Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -201,19 +261,50 @@ exports.getShipmentsByCustomer = async (req, res) => {
 // ============================================================
 exports.getShipmentById = async (req, res) => {
   try {
-    const shipment = await exports.fetchShipmentById(
-      req.params.shipmentId,
-      req.user._id
-    );
+    const { shipmentId } = req.params;
+    const customerId = req.user._id;
 
-    if (!shipment)
+    const shipment = await CustomerShipment.findOne({
+      _id: shipmentId,
+      customer: customerId,
+    })
+      .select(
+        `
+        shipmentCode
+        status
+        publish
+        publishedAt
+
+        pickupLocation
+        pickupTimeOption
+        pickupDate
+
+        deliveryLocation
+        deliveryTimeOption
+        deliveryDate
+
+        numberOfHorses
+        horses
+
+        additionalInfo
+        createdAt
+        updatedAt
+        `
+      )
+      .lean();
+
+    if (!shipment) {
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
+    }
 
-    res.status(200).json({ success: true, shipment });
+    res.status(200).json({
+      success: true,
+      shipment,
+    });
   } catch (err) {
-    console.error(err);
+    console.error("Get Shipment By Id Error:", err);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -224,27 +315,59 @@ exports.getShipmentById = async (req, res) => {
 exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
+    const customerId = req.user._id;
 
-    if (!mongoose.Types.ObjectId.isValid(shipmentId))
-      return res.status(400).json({ message: "Invalid shipment ID" });
+    // ---------- Validate ObjectId ----------
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid shipment ID" });
+    }
 
+    // ---------- Find Shipment ----------
     const shipment = await CustomerShipment.findOne({
       _id: shipmentId,
-      customer: req.user._id,
+      customer: customerId,
     });
 
-    if (!shipment)
-      return res.status(404).json({ message: "Shipment not found" });
+    if (!shipment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
+    }
 
+    // ---------- Prevent Re-Publish ----------
+    if (shipment.publish) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already published",
+      });
+    }
+
+    // ---------- Publish Shipment ----------
     shipment.publish = true;
     shipment.status = "open_for_offers";
     shipment.publishedAt = new Date();
 
     await shipment.save();
-    res.json({ success: true, shipment });
+
+    res.status(200).json({
+      success: true,
+      message: "Shipment published successfully",
+      shipment: {
+        _id: shipment._id,
+        shipmentCode: shipment.shipmentCode,
+        status: shipment.status,
+        publish: shipment.publish,
+        publishedAt: shipment.publishedAt,
+      },
+    });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Publish Shipment Error:", err);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 };
 
@@ -304,26 +427,47 @@ exports.updateShipmentLocation = async (req, res) => {
 // ============================================================
 exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
   try {
-    const shipment = await CustomerShipment.findById(shipmentId);
+    // ---------- Validate shipmentId ----------
+    if (!shipmentId) return;
+
+    const shipment = await CustomerShipment.findById(shipmentId)
+      .select("shipmentCode customer")
+      .lean();
+
     if (!shipment) return;
 
+    // ---------- Find Customer Notification ----------
     const notif = await CustomerNotification.findOne({
       user: shipment.customer,
-    });
+    }).lean();
 
-    if (!notif?.subscription || !notif.settings.shipmentUpdates) return;
+    if (!notif?.subscription || !notif?.settings?.shipmentUpdates) return;
 
     const payload = JSON.stringify({
       title: "Shipment Accepted",
       body: `Shipment ${shipment.shipmentCode} accepted by ${shipperName}`,
       type: "shipment_update",
+      shipmentId: shipmentId,
     });
 
-    await webpush.sendNotification(notif.subscription, payload);
+    try {
+      await webpush.sendNotification(notif.subscription, payload);
+    } catch (pushErr) {
+      // ---------- Clean expired subscription ----------
+      if (pushErr.statusCode === 404 || pushErr.statusCode === 410) {
+        await CustomerNotification.updateOne(
+          { user: shipment.customer },
+          { $set: { subscription: null } }
+        );
+      } else {
+        console.error("WebPush Error:", pushErr);
+      }
+    }
   } catch (err) {
-    console.error(err);
+    console.error("Notify Shipment Accepted Error:", err);
   }
 };
+
 // ============================================================
 // ===================== DELETE SHIPMENT ======================
 // ============================================================

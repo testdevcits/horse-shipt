@@ -1,38 +1,82 @@
 const mongoose = require("mongoose");
 
-// ---------------- Horse Schema ----------------
-const horseSchema = new mongoose.Schema({
-  registeredName: { type: String, required: true },
-  barnName: { type: String, default: "" },
-  breed: { type: String, default: "" },
-  colour: { type: String, default: "" },
-  age: { type: String, default: "" },
-  sex: { type: String, default: "" },
-
-  photo: {
-    url: { type: String, default: null },
-    public_id: { type: String, default: null },
-  },
-
-  cogins: {
-    url: { type: String, default: null },
-    public_id: { type: String, default: null },
-  },
-
-  healthCertificate: {
-    url: { type: String, default: null },
-    public_id: { type: String, default: null },
-  },
-
-  generalInfo: { type: String, default: "" },
-});
-
 // ---------------- Location Schema ----------------
 const locationSchema = new mongoose.Schema({
   latitude: { type: Number, required: true },
   longitude: { type: Number, required: true },
   updatedAt: { type: Date, default: Date.now },
 });
+
+// ---------------- Horse Snapshot Schema (Shipment Specific) ----------------
+const horseSchema = new mongoose.Schema(
+  {
+    // Identity
+    registeredName: { type: String, required: true },
+    barnName: { type: String, default: "" },
+
+    // Breed
+    breed: {
+      type: String,
+      required: true,
+    },
+    otherBreed: {
+      type: String,
+      default: "",
+      validate: {
+        validator: function (value) {
+          if (this.breed === "Other Breed") {
+            return value && value.trim().length > 0;
+          }
+          return true;
+        },
+        message: "Other breed is required when 'Other Breed' is selected",
+      },
+    },
+
+    // Sex
+    sex: {
+      type: String,
+      enum: ["Stallion", "Gelding", "Mare", "Colt", "Filly"],
+      required: true,
+    },
+
+    // Size (hands / height / text)
+    size: { type: String, default: "" },
+
+    // Requested Stall Size
+    requestedStallSize: {
+      type: String,
+      enum: ["Box", "1/2 Box", "Single Stall"],
+      required: true,
+    },
+
+    // Optional Photo
+    photo: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+    },
+
+    // Documents (Shipment Specific)
+    documents: {
+      coggins: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+      },
+      healthCertificate: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+      },
+      other: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+      },
+    },
+
+    // Notes
+    generalInfo: { type: String, default: "" },
+  },
+  { _id: false }
+);
 
 // ---------------- Shipment Schema ----------------
 const shipmentSchema = new mongoose.Schema(
@@ -49,20 +93,15 @@ const shipmentSchema = new mongoose.Schema(
       default: null,
     },
 
-    publish: {
-      type: Boolean,
-      default: false,
-    },
-
-    publishedAt: {
-      type: Date,
-      default: null,
-    },
     shipmentCode: {
       type: String,
       unique: true,
       index: true,
     },
+
+    publish: { type: Boolean, default: false },
+
+    publishedAt: { type: Date, default: null },
 
     status: {
       type: String,
@@ -78,22 +117,37 @@ const shipmentSchema = new mongoose.Schema(
       default: "pending",
     },
 
+    // Pickup
     pickupLocation: { type: String, required: true },
     pickupTimeOption: { type: String, required: true },
     pickupDate: { type: Date, required: true },
 
+    // Delivery
     deliveryLocation: { type: String, required: true },
     deliveryTimeOption: { type: String, required: true },
     deliveryDate: { type: Date, required: true },
 
-    numberOfHorses: { type: Number, required: true, min: 1 },
+    // Horses
+    numberOfHorses: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
 
-    horses: [horseSchema],
+    horses: {
+      type: [horseSchema],
+      validate: {
+        validator: function (value) {
+          return value.length === this.numberOfHorses;
+        },
+        message: "Number of horses must match horse details provided",
+      },
+    },
 
     additionalInfo: { type: String, default: "" },
 
+    // Live Tracking
     currentLocation: { type: locationSchema, default: null },
-
     locationHistory: { type: [locationSchema], default: [] },
   },
   { timestamps: true }

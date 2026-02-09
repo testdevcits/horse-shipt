@@ -58,6 +58,10 @@ const {
 const {
   getShippersForChat,
 } = require("../../controllers/customer/customerChatListController");
+const {
+  createHorse,
+  getMyHorses,
+} = require("../../controllers/customer/customerHorseController");
 
 // ====================================================
 // CUSTOMER PROFILE
@@ -196,6 +200,10 @@ router.put(
   upload.single("image"), // field name in form-data: 'image'
   updateCustomerProfileImage
 );
+
+router.post("/horses", customerAuth, upload.any(), createHorse);
+
+router.get("/horses", customerAuth, getMyHorses);
 
 // ====================================================
 // EXPORT ROUTER
