@@ -82,8 +82,8 @@ exports.createHorse = async (req, res) => {
       barnName: barnName?.trim() || "",
       breed: breed.trim(),
       otherBreed: otherBreed?.trim() || "",
-      colour: colour?.trim() || "", // ✅ Save colour
-      age: age?.trim() || "", // ✅ Save age
+      colour: colour?.trim() || "",
+      age: age?.trim() || "",
       sex,
       defaultStallSize: stallType || "Box",
       notes: notes?.trim() || generalInfo?.trim() || "",
