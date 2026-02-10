@@ -1,5 +1,4 @@
 const Horse = require("../../models/customer/Horse");
-const mongoose = require("mongoose");
 
 /**
  * =====================================
@@ -10,69 +9,75 @@ exports.createHorse = async (req, res) => {
   try {
     const customerId = req.user._id;
 
-    // Support both single object and array from frontend
-    const horseInput = req.body.horses?.[0] || req.body;
-
     console.log("----- Create Horse Request -----");
     console.log("User ID:", customerId);
-    console.log("Horse Input:", horseInput);
-    console.log("Files Received:", req.files);
+    console.log("Request Body:", req.body);
+    console.log("Files:", req.files);
 
-    const {
-      registeredName,
-      barnName,
-      breed,
-      otherBreed,
-      colour,
-      age,
-      sex,
-      size,
-      defaultStallSize,
-      notes,
-      generalInfo,
-    } = horseInput;
+    /**
+     * -------------------------------------
+     * Handle multipart/form-data & JSON
+     * -------------------------------------
+     */
+    const horseInput = {
+      registeredName:
+        req.body["horses[0][registeredName]"] || req.body.registeredName,
+      barnName: req.body["horses[0][barnName]"] || req.body.barnName,
+      breed: req.body["horses[0][breed]"] || req.body.breed,
+      otherBreed: req.body["horses[0][otherBreed]"] || req.body.otherBreed,
+      colour: req.body["horses[0][colour]"] || req.body.colour,
+      age: req.body["horses[0][age]"] || req.body.age,
+      sex: req.body["horses[0][sex]"] || req.body.sex,
+      size: req.body["horses[0][size]"] || req.body.size,
+      stallType:
+        req.body["horses[0][stallType]"] || req.body.defaultStallSize || "Box",
+      notes:
+        req.body["horses[0][notes]"] ||
+        req.body["horses[0][generalInfo]"] ||
+        req.body.notes ||
+        "",
+    };
 
-    // ================= VALIDATION =================
-    if (!registeredName || registeredName.trim() === "") {
-      console.warn("Validation failed: Registered Name missing");
+    /**
+     * ================= VALIDATION =================
+     */
+    if (!horseInput.registeredName?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Registered name is required",
       });
     }
 
-    if (!breed || breed.trim() === "") {
-      console.warn("Validation failed: Breed missing");
+    if (!horseInput.breed?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Breed is required",
       });
     }
 
-    if (breed === "Other Breed" && (!otherBreed || otherBreed.trim() === "")) {
-      console.warn("Validation failed: Other Breed missing");
+    if (horseInput.breed === "Other Breed" && !horseInput.otherBreed?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Other breed is required",
       });
     }
 
-    if (!sex || sex.trim() === "") {
-      console.warn("Validation failed: Sex missing");
+    if (!horseInput.sex?.trim()) {
       return res.status(400).json({
         success: false,
         message: "Sex is required",
       });
     }
 
-    // ================= DUPLICATE CHECK =================
+    /**
+     * ================= DUPLICATE CHECK =================
+     */
     const existingHorse = await Horse.findOne({
       owner: customerId,
-      registeredName: registeredName.trim(),
+      registeredName: horseInput.registeredName.trim(),
     });
 
     if (existingHorse) {
-      console.warn("Duplicate horse detected");
       return res.status(409).json({
         success: false,
         message: "You have already saved a horse with this Registered Name",
@@ -80,24 +85,26 @@ exports.createHorse = async (req, res) => {
       });
     }
 
-    // ================= BUILD DATA =================
+    /**
+     * ================= BUILD DATA =================
+     */
     const horseData = {
       owner: customerId,
-      registeredName: registeredName.trim(),
-      barnName: barnName?.trim() || "",
-      breed: breed.trim(),
-      otherBreed: otherBreed?.trim() || "",
-      colour: colour?.trim() || "",
-      age: age?.trim() || "",
-      sex,
-      size: size?.trim() || "",
-      defaultStallSize: defaultStallSize || "Box",
-      notes: notes?.trim() || generalInfo?.trim() || "",
+      registeredName: horseInput.registeredName.trim(),
+      barnName: horseInput.barnName?.trim() || "",
+      breed: horseInput.breed.trim(),
+      otherBreed: horseInput.otherBreed?.trim() || "",
+      colour: horseInput.colour?.trim() || "",
+      age: horseInput.age ? Number(horseInput.age) : null,
+      sex: horseInput.sex,
+      size: horseInput.size || "",
+      defaultStallSize: horseInput.stallType || "Box",
+      notes: horseInput.notes?.trim() || "",
     };
 
-    // Step 3 does NOT save photos (handled in later step)
-
-    // ================= SAVE =================
+    /**
+     * ================= SAVE =================
+     */
     const horse = await Horse.create(horseData);
 
     console.log("Horse successfully saved:", horse._id);
@@ -108,9 +115,9 @@ exports.createHorse = async (req, res) => {
       data: { horse },
     });
   } catch (err) {
-    console.error("Create Horse Error:", err);
+    console.error("❌ Create Horse Error:", err);
 
-    // Handle Mongo duplicate index error safely
+    // Duplicate index error (Mongo)
     if (err.code === 11000) {
       return res.status(409).json({
         success: false,
@@ -120,7 +127,7 @@ exports.createHorse = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Unable to save horse. Please try again.",
+      message: err.message || "Unable to save horse. Please try again.",
     });
   }
 };
@@ -138,8 +145,6 @@ exports.getMyHorses = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log(`Fetched ${horses.length} horses for user ${req.user._id}`);
-
     return res.status(200).json({
       success: true,
       message: "Saved horses fetched successfully",
@@ -149,7 +154,7 @@ exports.getMyHorses = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error("Get My Horses Error:", err);
+    console.error("❌ Get My Horses Error:", err);
     return res.status(500).json({
       success: false,
       message: "Unable to fetch horses. Please try again.",
