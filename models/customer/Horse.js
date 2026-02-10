@@ -8,12 +8,29 @@ const horseSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    registeredName: { type: String, required: true },
-    barnName: { type: String, default: "" },
-    breed: { type: String, required: true },
+
+    registeredName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    barnName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    breed: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
     otherBreed: {
       type: String,
       default: "",
+      trim: true,
       validate: {
         validator: function (v) {
           if (this.breed === "Other Breed") {
@@ -24,23 +41,47 @@ const horseSchema = new mongoose.Schema(
         message: "Other breed is required",
       },
     },
+
+    colour: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    age: {
+      type: String, // keep string (2, 3 yrs, 4+, etc.)
+      default: "",
+      trim: true,
+    },
+
     sex: {
       type: String,
       enum: ["Stallion", "Gelding", "Mare", "Colt", "Filly"],
       required: true,
     },
-    size: { type: String, default: "" },
+
+    size: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     defaultStallSize: {
       type: String,
       enum: ["Box", "1/2 Box", "Single Stall"],
       default: "Box",
     },
-    notes: { type: String, default: "" },
+
+    notes: {
+      type: String,
+      default: "",
+      trim: true,
+    },
   },
   { timestamps: true }
 );
 
-// Unique per customer: combination of owner + registeredName
+// Unique per customer
 horseSchema.index({ owner: 1, registeredName: 1 }, { unique: true });
 
 module.exports = mongoose.model("Horse", horseSchema);

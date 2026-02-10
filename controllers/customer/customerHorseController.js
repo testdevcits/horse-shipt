@@ -32,7 +32,7 @@ exports.createHorse = async (req, res) => {
       generalInfo,
     } = horseInput;
 
-    // Validation
+    // ================= VALIDATION =================
     if (!registeredName || registeredName.trim() === "") {
       console.warn("Validation failed: Registered Name missing");
       return res.status(400).json({
@@ -65,7 +65,7 @@ exports.createHorse = async (req, res) => {
       });
     }
 
-    // Check for duplicates
+    // ================= DUPLICATE CHECK =================
     const existingHorse = await Horse.findOne({
       owner: customerId,
       registeredName: registeredName.trim(),
@@ -80,24 +80,24 @@ exports.createHorse = async (req, res) => {
       });
     }
 
-    // Build horse data object (Step 3 only)
+    // ================= BUILD DATA =================
     const horseData = {
       owner: customerId,
       registeredName: registeredName.trim(),
       barnName: barnName?.trim() || "",
-      breed: breed?.trim(),
+      breed: breed.trim(),
       otherBreed: otherBreed?.trim() || "",
       colour: colour?.trim() || "",
-      age: age || "",
+      age: age?.trim() || "",
       sex,
-      size: size || "",
+      size: size?.trim() || "",
       defaultStallSize: defaultStallSize || "Box",
       notes: notes?.trim() || generalInfo?.trim() || "",
     };
 
-    // Step 3 does NOT save photos, Step 4 handles that
+    // Step 3 does NOT save photos (handled in later step)
 
-    // Save to database
+    // ================= SAVE =================
     const horse = await Horse.create(horseData);
 
     console.log("Horse successfully saved:", horse._id);
@@ -109,6 +109,15 @@ exports.createHorse = async (req, res) => {
     });
   } catch (err) {
     console.error("Create Horse Error:", err);
+
+    // Handle Mongo duplicate index error safely
+    if (err.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "Duplicate horse name for this customer",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: "Unable to save horse. Please try again.",
