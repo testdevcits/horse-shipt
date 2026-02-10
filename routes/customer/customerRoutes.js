@@ -201,7 +201,7 @@ router.put(
   updateCustomerProfileImage
 );
 
-router.post("/horses", customerAuth, upload.none(), createHorse);
+router.post("/horses", customerAuth, createHorse);
 
 router.get("/horses", customerAuth, getMyHorses);
 

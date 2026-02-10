@@ -60,12 +60,6 @@ const horseSchema = new mongoose.Schema(
       required: true,
     },
 
-    size: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-
     defaultStallSize: {
       type: String,
       enum: ["Box", "1/2 Box", "Single Stall"],

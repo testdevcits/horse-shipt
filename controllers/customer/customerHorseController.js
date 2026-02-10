@@ -21,7 +21,6 @@ exports.createHorse = async (req, res) => {
       colour,
       age,
       sex,
-      size,
       stallType,
       notes,
       generalInfo,
@@ -62,6 +61,7 @@ exports.createHorse = async (req, res) => {
       });
     }
 
+    // Check if horse with same registered name already exists for this user
     const existingHorse = await Horse.findOne({
       owner: customerId,
       registeredName: registeredName.trim(),
@@ -75,18 +75,21 @@ exports.createHorse = async (req, res) => {
       });
     }
 
+    // Prepare horse data to save
     const horseData = {
       owner: customerId,
       registeredName: registeredName.trim(),
       barnName: barnName?.trim() || "",
       breed: breed.trim(),
       otherBreed: otherBreed?.trim() || "",
+      colour: colour?.trim() || "", // ✅ Save colour
+      age: age?.trim() || "", // ✅ Save age
       sex,
-      size: size || "",
       defaultStallSize: stallType || "Box",
       notes: notes?.trim() || generalInfo?.trim() || "",
     };
 
+    // Save horse
     const horse = await Horse.create(horseData);
 
     console.log("Horse saved:", horse._id);
