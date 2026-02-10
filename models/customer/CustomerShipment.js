@@ -15,10 +15,7 @@ const horseSchema = new mongoose.Schema(
     barnName: { type: String, default: "" },
 
     // Breed
-    breed: {
-      type: String,
-      required: true,
-    },
+    breed: { type: String, required: true },
     otherBreed: {
       type: String,
       default: "",
@@ -40,8 +37,9 @@ const horseSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Size (hands / height / text)
-    size: { type: String, default: "" },
+    // Colour and Age (NEW)
+    colour: { type: String, default: "" },
+    age: { type: Number, default: null },
 
     // Requested Stall Size
     requestedStallSize: {
@@ -100,7 +98,6 @@ const shipmentSchema = new mongoose.Schema(
     },
 
     publish: { type: Boolean, default: false },
-
     publishedAt: { type: Date, default: null },
 
     status: {

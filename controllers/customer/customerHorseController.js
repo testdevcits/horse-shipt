@@ -131,3 +131,144 @@ exports.getMyHorses = async (req, res) => {
     });
   }
 };
+
+/**
+ * =====================================
+ * UPDATE HORSE
+ * =====================================
+ */
+exports.updateHorse = async (req, res) => {
+  try {
+    const customerId = req.user._id;
+    const horseId = req.params.horseId;
+
+    if (!horseId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Horse ID is required" });
+    }
+
+    const horse = await Horse.findOne({ _id: horseId, owner: customerId });
+    if (!horse) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Horse not found" });
+    }
+
+    const {
+      registeredName,
+      barnName,
+      breed,
+      otherBreed,
+      colour,
+      age,
+      sex,
+      stallType,
+      notes,
+      generalInfo,
+    } = req.body || {};
+
+    // Validations
+    if (registeredName && !registeredName.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Registered name cannot be empty" });
+    }
+    if (breed && !breed.trim()) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Breed cannot be empty" });
+    }
+    if (breed === "Other Breed" && (!otherBreed || !otherBreed.trim())) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Other breed is required" });
+    }
+    if (
+      sex &&
+      !["Stallion", "Gelding", "Mare", "Colt", "Filly"].includes(sex)
+    ) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid sex value" });
+    }
+
+    // Check duplicate registered name
+    if (registeredName && registeredName !== horse.registeredName) {
+      const existingHorse = await Horse.findOne({
+        owner: customerId,
+        registeredName: registeredName.trim(),
+        _id: { $ne: horseId },
+      });
+      if (existingHorse) {
+        return res.status(409).json({
+          success: false,
+          message: "Another horse with this registered name already exists",
+        });
+      }
+    }
+
+    // Update fields
+    horse.registeredName = registeredName?.trim() || horse.registeredName;
+    horse.barnName = barnName?.trim() || horse.barnName;
+    horse.breed = breed?.trim() || horse.breed;
+    horse.otherBreed = otherBreed?.trim() || horse.otherBreed;
+    horse.colour = colour?.trim() || horse.colour;
+    horse.age = age?.trim() || horse.age;
+    horse.sex = sex || horse.sex;
+    horse.defaultStallSize = stallType || horse.defaultStallSize;
+    horse.notes = notes?.trim() || generalInfo?.trim() || horse.notes;
+
+    await horse.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Horse updated successfully",
+      horse,
+    });
+  } catch (err) {
+    console.error("Update Horse Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Unable to update horse",
+    });
+  }
+};
+
+/**
+ * =====================================
+ * DELETE HORSE
+ * =====================================
+ */
+exports.deleteHorse = async (req, res) => {
+  try {
+    const customerId = req.user._id;
+    const horseId = req.params.horseId;
+
+    if (!horseId) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Horse ID is required" });
+    }
+
+    const horse = await Horse.findOne({ _id: horseId, owner: customerId });
+    if (!horse) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Horse not found" });
+    }
+
+    await horse.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Horse deleted successfully",
+    });
+  } catch (err) {
+    console.error("Delete Horse Error:", err);
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Unable to delete horse",
+    });
+  }
+};

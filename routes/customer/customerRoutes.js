@@ -61,6 +61,8 @@ const {
 const {
   createHorse,
   getMyHorses,
+  updateHorse,
+  deleteHorse,
 } = require("../../controllers/customer/customerHorseController");
 
 // ====================================================
@@ -208,10 +210,15 @@ router.put(
   updateCustomerProfileImage
 );
 
+// ---------------- HORSE ----------------
+
 router.post("/horses", customerAuth, createHorse);
 
 router.get("/horses", customerAuth, getMyHorses);
 
+router.put("/horses/:horseId", customerAuth, updateHorse);
+
+router.delete("/horses/:horseId", customerAuth, deleteHorse);
 // ====================================================
 // EXPORT ROUTER
 // ====================================================

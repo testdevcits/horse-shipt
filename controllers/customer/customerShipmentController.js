@@ -81,16 +81,16 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 // ============================================================
 exports.createShipment = async (req, res) => {
   try {
-    console.log("===== CREATE SHIPMENT REQUEST =====");
-    console.log("User ID:", req.user._id);
-    console.log("Request body:", req.body);
-    console.log(
-      "Files received:",
-      (req.files || []).map((f) => ({
-        field: f.fieldname,
-        name: f.originalname,
-      }))
-    );
+    // console.log("===== CREATE SHIPMENT REQUEST =====");
+    // console.log("User ID:", req.user._id);
+    // console.log("Request body:", req.body);
+    // console.log(
+    //   "Files received:",
+    //   (req.files || []).map((f) => ({
+    //     field: f.fieldname,
+    //     name: f.originalname,
+    //   }))
+    // );
 
     const customerId = req.user._id;
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
@@ -146,13 +146,14 @@ exports.createShipment = async (req, res) => {
 
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
+
       const horseObj = {
         registeredName: h.registeredName || "",
         barnName: h.barnName || "",
         breed: h.breed || "",
         otherBreed: h.otherBreed || "",
         colour: h.colour || "",
-        age: h.age || "",
+        age: h.age || null,
         sex: h.sex || "",
         generalInfo: h.generalInfo || "",
         requestedStallSize: h.stallType || "Box",
@@ -165,6 +166,7 @@ exports.createShipment = async (req, res) => {
         }`
       );
 
+      // ---------- Upload files ----------
       if (fileMap[`horses[${i}][photo]`]) {
         horseObj.photo = await uploadToCloudinary(
           fileMap[`horses[${i}][photo]`],
@@ -219,10 +221,10 @@ exports.createShipment = async (req, res) => {
       const shortId = shipment._id.toString().slice(-6).toUpperCase();
       shipment.shipmentCode = `HS-SHIP-${year}-${shortId}`;
       await shipment.save();
-      console.log(
-        "[CREATE SHIPMENT] Shipment code generated:",
-        shipment.shipmentCode
-      );
+      // console.log(
+      //   "[CREATE SHIPMENT] Shipment code generated:",
+      //  shipment.shipmentCode
+      // );
     }
 
     // ---------- Notifications ----------
@@ -238,16 +240,16 @@ exports.createShipment = async (req, res) => {
         await webpush.sendNotification(notif.subscription, payload);
         console.log("[CREATE SHIPMENT] Push notification sent");
       } catch (err) {
-        console.warn(
-          "[CREATE SHIPMENT] Push notification failed",
-          err.statusCode
-        );
+        // console.warn(
+        //   "[CREATE SHIPMENT] Push notification failed",
+        //   err.statusCode
+        // );
         if (err.statusCode === 410 || err.statusCode === 404) {
           notif.subscription = null;
           await notif.save();
-          console.log(
-            "[CREATE SHIPMENT] Subscription removed due to invalid endpoint"
-          );
+          // console.log(
+          //   "[CREATE SHIPMENT] Subscription removed due to invalid endpoint"
+          // );
         }
       }
     }
@@ -264,11 +266,11 @@ exports.createShipment = async (req, res) => {
 // ============================================================
 exports.getShipmentsByCustomer = async (req, res) => {
   try {
-    console.log(`[GET SHIPMENTS] User ID: ${req.user._id}`);
+    // console.log(`[GET SHIPMENTS] User ID: ${req.user._id}`);
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
     }).sort({ createdAt: -1 });
-    console.log(`[GET SHIPMENTS] Found ${shipments.length} shipments`);
+    // console.log(`[GET SHIPMENTS] Found ${shipments.length} shipments`);
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[GET SHIPMENTS ERROR]", err);
@@ -281,13 +283,13 @@ exports.getShipmentsByCustomer = async (req, res) => {
 // ============================================================
 exports.getShipmentById = async (req, res) => {
   try {
-    console.log(`[GET SHIPMENT BY ID] Shipment ID: ${req.params.shipmentId}`);
+    // console.log(`[GET SHIPMENT BY ID] Shipment ID: ${req.params.shipmentId}`);
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
     );
     if (!shipment) {
-      console.warn("[GET SHIPMENT BY ID] Shipment not found");
+      // console.warn("[GET SHIPMENT BY ID] Shipment not found");
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
@@ -305,7 +307,7 @@ exports.getShipmentById = async (req, res) => {
 exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-    console.log(`[PUBLISH SHIPMENT] Shipment ID: ${shipmentId}`);
+    // console.log(`[PUBLISH SHIPMENT] Shipment ID: ${shipmentId}`);
 
     if (!mongoose.Types.ObjectId.isValid(shipmentId))
       return res.status(400).json({ message: "Invalid shipment ID" });
@@ -322,10 +324,10 @@ exports.publishShipment = async (req, res) => {
     shipment.publishedAt = new Date();
 
     await shipment.save();
-    console.log(
-      "[PUBLISH SHIPMENT] Shipment published:",
-      shipment.shipmentCode
-    );
+    // console.log(
+    //   "[PUBLISH SHIPMENT] Shipment published:",
+    //   shipment.shipmentCode
+    // );
     res.json({ success: true, shipment });
   } catch (err) {
     console.error("[PUBLISH SHIPMENT ERROR]", err);
@@ -350,12 +352,10 @@ exports.deleteShipment = async (req, res) => {
 
     if (shipment.publish) {
       console.warn("[DELETE SHIPMENT] Cannot delete published shipment");
-      return res
-        .status(400)
-        .json({
-          success: false,
-          message: "Published shipment cannot be deleted",
-        });
+      return res.status(400).json({
+        success: false,
+        message: "Published shipment cannot be deleted",
+      });
     }
 
     // Delete horse files
