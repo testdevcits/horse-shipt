@@ -9,9 +9,9 @@ let uploadPath;
 
 // Detect if running in a read-only environment (Vercel / AWS Lambda)
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-  uploadPath = path.join("/tmp", "uploads/profilePictures");
+  uploadPath = path.join("/tmp", "uploads/shipments");
 } else {
-  uploadPath = path.join(__dirname, "../../uploads/profilePictures");
+  uploadPath = path.join(__dirname, "../../uploads/shipments");
 }
 
 // Ensure folder exists safely
@@ -38,13 +38,16 @@ const storage = multer.diskStorage({
 });
 
 // -------------------------
-// File filter (images only)
+// File filter (images + PDFs)
 // -------------------------
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype.startsWith("image/")) {
+  if (
+    file.mimetype.startsWith("image/") || // images
+    file.mimetype === "application/pdf" // PDFs
+  ) {
     cb(null, true);
   } else {
-    cb(new Error("Only images allowed!"), false);
+    cb(new Error("Only images or PDFs allowed!"), false);
   }
 };
 
@@ -54,7 +57,7 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({
   storage,
   fileFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB for shipments
 });
 
 module.exports = upload;

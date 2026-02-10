@@ -105,7 +105,25 @@ router.post("/test-notification", customerAuth, sendTestNotification);
 // ====================================================
 
 // Create shipment (images / docs → Cloudinary)
-router.post("/shipments", customerAuth, createShipment);
+router.post(
+  "/shipments",
+  customerAuth,
+  upload.any(), // temp storage for Cloudinary
+  (req, res, next) => {
+    console.log("=== Shipment Create Debug ===");
+    console.log("User ID:", req.user._id);
+    console.log("Body:", req.body);
+    console.log(
+      "Files received:",
+      req.files.map((f) => ({
+        fieldname: f.fieldname,
+        originalname: f.originalname,
+      }))
+    );
+    next();
+  },
+  createShipment
+);
 
 router.get("/shipments", customerAuth, getShipmentsByCustomer);
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
