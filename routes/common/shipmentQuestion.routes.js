@@ -52,47 +52,46 @@ router.post(
 // SAFE ROLE CHECK MIDDLEWARE
 // ========================================================
 const allowCustomerOrShipper = async (req, res, next) => {
-  debugLog("GET QUESTIONS HIT", {
-    shipmentId: req.params.shipmentId,
-    token: req.headers.authorization,
-  });
+  console.log("===== AUTH CHECK START =====");
 
-  const token = req.headers.authorization;
+  try {
+    // Try shipper FIRST
+    try {
+      await new Promise((resolve, reject) =>
+        shipperAuth(req, res, (err) => (err ? reject(err) : resolve()))
+      );
 
-  if (!token) {
-    console.log("No token provided");
-    return res.status(401).json({
-      success: false,
-      message: "No token provided",
-    });
-  }
-
-  // ===== TRY CUSTOMER =====
-  customerAuth(req, res, (err) => {
-    if (!err && req.user) {
-      console.log("Authenticated as CUSTOMER");
-      req.user.role = "customer";
+      req.user.role = "shipper";
+      console.log("Authenticated as SHIPPER");
       return next();
+    } catch (shipperErr) {
+      console.log("Shipper auth failed");
     }
 
-    console.log("Customer auth failed, trying shipper...");
+    // Try customer
+    try {
+      await new Promise((resolve, reject) =>
+        customerAuth(req, res, (err) => (err ? reject(err) : resolve()))
+      );
 
-    // ===== TRY SHIPPER =====
-    shipperAuth(req, res, (err2) => {
-      if (!err2 && req.user) {
-        console.log("Authenticated as SHIPPER");
-        req.user.role = "shipper";
-        return next();
-      }
+      req.user.role = "customer";
+      console.log("Authenticated as CUSTOMER");
+      return next();
+    } catch (customerErr) {
+      console.log("Customer auth failed");
+    }
 
-      console.log("Both auth failed");
-
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized",
-      });
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized",
     });
-  });
+  } catch (error) {
+    console.log("Auth middleware crash:", error);
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized",
+    });
+  }
 };
 
 // ========================================================
