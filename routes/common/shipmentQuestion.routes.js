@@ -8,45 +8,14 @@ const {
 const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
 
 // ========================================================
-// DEBUG HELPER
-// ========================================================
-const debugLog = (label, data) => {
-  console.log(`\n========== ${label} ==========`);
-  console.log(data);
-  console.log("================================\n");
-};
-
-// ========================================================
 // SHIPPER ROUTES
 // ========================================================
-router.post(
-  "/ask",
-  (req, res, next) => {
-    debugLog("ASK ROUTE HIT", {
-      body: req.body,
-      headers: req.headers.authorization,
-    });
-    next();
-  },
-  shipperAuth,
-  controller.askQuestion
-);
+router.post("/ask", shipperAuth, controller.askQuestion);
 
 // ========================================================
 // CUSTOMER ROUTES
 // ========================================================
-router.post(
-  "/answer",
-  (req, res, next) => {
-    debugLog("ANSWER ROUTE HIT", {
-      body: req.body,
-      headers: req.headers.authorization,
-    });
-    next();
-  },
-  customerAuth,
-  controller.answerQuestion
-);
+router.post("/answer", customerAuth, controller.answerQuestion);
 
 // ========================================================
 // SAFE ROLE CHECK MIDDLEWARE
@@ -60,7 +29,7 @@ const allowCustomerOrShipper = async (req, res, next) => {
       );
       req.user.role = "shipper";
       return next();
-    } catch (shipperErr) {}
+    } catch (err) {}
 
     // Try customer
     try {
@@ -69,17 +38,11 @@ const allowCustomerOrShipper = async (req, res, next) => {
       );
       req.user.role = "customer";
       return next();
-    } catch (customerErr) {}
+    } catch (err) {}
 
-    return res.status(401).json({
-      success: false,
-      message: "Unauthorized",
-    });
-  } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: "Unauthorized",
-    });
+    return res.status(401).json({ success: false, message: "Unauthorized" });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 

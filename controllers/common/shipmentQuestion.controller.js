@@ -75,7 +75,6 @@ exports.answerQuestion = async (req, res) => {
       });
     }
 
-    // Ensure correct customer
     if (questionDoc.customerId.toString() !== customerId.toString()) {
       return res.status(403).json({
         success: false,
@@ -152,9 +151,10 @@ exports.getShipmentQuestions = async (req, res) => {
         .populate({
           path: "shipperId",
           select: "name companyName",
-          options: { strictPopulate: false },
+          options: { strictPopulate: false }, // safe populate
         })
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .lean();
 
       pendingQuestions = await ShipmentQuestion.find({
         shipmentId,
@@ -165,9 +165,9 @@ exports.getShipmentQuestions = async (req, res) => {
           select: "name companyName",
           options: { strictPopulate: false },
         })
-        .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .lean();
     }
-
     // ================= SHIPPER VIEW =================
     else {
       answeredQuestions = await ShipmentQuestion.find({
