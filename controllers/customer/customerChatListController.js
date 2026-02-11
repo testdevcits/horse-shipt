@@ -1,13 +1,13 @@
-const Customer = require("../../models/customer/customerModel");
+const Shipper = require("../../models/shipper/shipperModel"); // Shipers ka model
 const formatChatUser = require("../../utils/formatChatUser");
 
 /**
- * Fetch Customers → Shipper list (for chat)
+ * Fetch Shippers for Chat
  */
 exports.getShippersForChat = async (req, res) => {
   try {
-    const customers = await Customer.find(
-      { isActive: true },
+    const shippers = await Shipper.find(
+      { isActive: true }, // sirf active shippers
       {
         name: 1,
         email: 1,
@@ -17,19 +17,19 @@ exports.getShippersForChat = async (req, res) => {
       }
     ).sort({ updatedAt: -1 });
 
-    const formattedCustomers = customers.map((customer) =>
-      formatChatUser(customer, "customer")
+    const formattedShippers = shippers.map((shipper) =>
+      formatChatUser(shipper, "shipper")
     );
 
     res.status(200).json({
       success: true,
-      data: formattedCustomers,
+      data: formattedShippers,
     });
   } catch (error) {
-    console.error("Get customers for chat error:", error);
+    console.error("Get shippers for chat error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch customers for chat",
+      message: "Failed to fetch shippers for chat",
     });
   }
 };
