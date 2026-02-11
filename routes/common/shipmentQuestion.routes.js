@@ -22,26 +22,34 @@ router.post("/answer", customerAuth, controller.answerQuestion);
 // ========================================================
 const allowCustomerOrShipper = async (req, res, next) => {
   try {
-    // Try shipper first
+    // Try Shipper
     try {
       await new Promise((resolve, reject) =>
         shipperAuth(req, res, (err) => (err ? reject(err) : resolve()))
       );
       req.user.role = "shipper";
       return next();
-    } catch (err) {}
+    } catch (shipperErr) {
+      console.log("Shipper auth failed:", shipperErr?.message || shipperErr);
+    }
 
-    // Try customer
+    // Try Customer
     try {
       await new Promise((resolve, reject) =>
         customerAuth(req, res, (err) => (err ? reject(err) : resolve()))
       );
       req.user.role = "customer";
       return next();
-    } catch (err) {}
+    } catch (customerErr) {
+      console.log("Customer auth failed:", customerErr?.message || customerErr);
+    }
 
-    return res.status(401).json({ success: false, message: "Unauthorized" });
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized: invalid or missing token for Shipper/Customer",
+    });
   } catch (err) {
+    console.error("allowCustomerOrShipper error:", err);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
