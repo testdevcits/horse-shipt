@@ -24,23 +24,27 @@ router.post("/answer", customerAuth, controller.answerQuestion);
 //Custom middleware to allow both roles
 const allowCustomerOrShipper = async (req, res, next) => {
   try {
-    await customerAuth(req, res, async (err) => {
-      if (!err && req.user) {
-        req.user.role = "customer";
-        return next();
-      }
+    // 🔹 Try customer first
+    try {
+      await new Promise((resolve, reject) =>
+        customerAuth(req, res, (err) => (err ? reject(err) : resolve()))
+      );
+      req.user.role = "customer";
+      return next();
+    } catch (_) {}
 
-      await shipperAuth(req, res, async (err2) => {
-        if (!err2 && req.user) {
-          req.user.role = "shipper";
-          return next();
-        }
+    // 🔹 Try shipper
+    try {
+      await new Promise((resolve, reject) =>
+        shipperAuth(req, res, (err) => (err ? reject(err) : resolve()))
+      );
+      req.user.role = "shipper";
+      return next();
+    } catch (_) {}
 
-        return res.status(401).json({
-          success: false,
-          message: "Unauthorized",
-        });
-      });
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized",
     });
   } catch (error) {
     return res.status(401).json({
