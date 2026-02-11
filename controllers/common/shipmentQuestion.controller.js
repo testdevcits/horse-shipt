@@ -145,18 +145,27 @@ exports.getShipmentQuestions = async (req, res) => {
         });
       }
 
+      // Use populate but keep it optional
       answeredQuestions = await ShipmentQuestion.find({
         shipmentId,
         status: "answered",
       })
-        .populate("shipperId", "name companyName")
+        .populate({
+          path: "shipperId",
+          select: "name companyName",
+          options: { strictPopulate: false }, // skip if shipper missing
+        })
         .sort({ createdAt: -1 });
 
       pendingQuestions = await ShipmentQuestion.find({
         shipmentId,
         status: "pending",
       })
-        .populate("shipperId", "name companyName")
+        .populate({
+          path: "shipperId",
+          select: "name companyName",
+          options: { strictPopulate: false },
+        })
         .sort({ createdAt: -1 });
     }
 
@@ -183,6 +192,7 @@ exports.getShipmentQuestions = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("getShipmentQuestions Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch questions",
