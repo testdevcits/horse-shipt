@@ -103,11 +103,13 @@ app.use("/assets", express.static(path.join(__dirname, "assets")));
 const authRoutes = require("./routes/authRoutes");
 const customerRoutes = require("./routes/customer/customerRoutes");
 const shipperRoutes = require("./routes/shipper/shipperRoutes");
+const shipmentQuestionRoutes = require("./routes/common/shipmentQuestion.routes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
+app.use("/api/questions", shipmentQuestionRoutes);
 
 // -------------------------
 // Default Route

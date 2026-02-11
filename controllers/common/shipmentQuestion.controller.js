@@ -1,0 +1,171 @@
+const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
+const CustomerShipment = require("../../models/customer/CustomerShipment");
+
+// ========================================================
+// SHIPPER: ASK QUESTION
+// ========================================================
+exports.askQuestion = async (req, res) => {
+  try {
+    const { shipmentId, question } = req.body;
+    const shipperId = req.user._id; // from shipperAuth
+
+    if (!shipmentId || !question || !question.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment ID and question are required",
+      });
+    }
+
+    const shipment = await CustomerShipment.findById(shipmentId);
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    const newQuestion = await ShipmentQuestion.create({
+      shipmentId,
+      shipperId,
+      customerId: shipment.customer,
+      question: question.trim(),
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Question submitted successfully",
+      data: newQuestion,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message: "You have already asked a question for this shipment",
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit question",
+      error: error.message,
+    });
+  }
+};
+
+// ========================================================
+// CUSTOMER: ANSWER QUESTION
+// ========================================================
+exports.answerQuestion = async (req, res) => {
+  try {
+    const { questionId, answer } = req.body;
+    const customerId = req.user._id; // from customerAuth
+
+    if (!questionId || !answer || !answer.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Question ID and answer are required",
+      });
+    }
+
+    const questionDoc = await ShipmentQuestion.findById(questionId);
+    if (!questionDoc) {
+      return res.status(404).json({
+        success: false,
+        message: "Question not found",
+      });
+    }
+
+    // Ensure correct customer
+    if (questionDoc.customerId.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not allowed to answer this question",
+      });
+    }
+
+    if (questionDoc.status === "answered") {
+      return res.status(400).json({
+        success: false,
+        message: "This question has already been answered",
+      });
+    }
+
+    questionDoc.answer = answer.trim();
+    questionDoc.status = "answered";
+    questionDoc.answeredAt = new Date();
+
+    await questionDoc.save();
+
+    return res.json({
+      success: true,
+      message: "Answer submitted successfully",
+      data: questionDoc,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to submit answer",
+      error: error.message,
+    });
+  }
+};
+
+// ========================================================
+// GET QUESTIONS (CUSTOMER / SHIPPER)
+// ========================================================
+exports.getShipmentQuestions = async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+    const userId = req.user._id;
+
+    if (!shipmentId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment ID is required",
+      });
+    }
+
+    const shipment = await CustomerShipment.findById(shipmentId);
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    let questions = [];
+
+    // ================= CUSTOMER VIEW =================
+    if (req.user.role === "customer") {
+      if (shipment.customer.toString() !== userId.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You are not allowed to view these questions",
+        });
+      }
+
+      questions = await ShipmentQuestion.find({ shipmentId })
+        .populate("shipperId", "name companyName")
+        .sort({ createdAt: -1 });
+    }
+
+    // ================= SHIPPER VIEW =================
+    else {
+      questions = await ShipmentQuestion.find({
+        shipmentId,
+        shipperId: userId,
+      }).sort({ createdAt: -1 });
+    }
+
+    return res.json({
+      success: true,
+      data: questions,
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch questions",
+      error: error.message,
+    });
+  }
+};
