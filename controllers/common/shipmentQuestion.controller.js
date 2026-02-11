@@ -111,7 +111,7 @@ exports.answerQuestion = async (req, res) => {
 };
 
 // ========================================================
-// GET QUESTIONS (CUSTOMER / SHIPPER)
+// GET QUESTIONS (CUSTOMER / SHIPPER) - SEPARATE ANSWERED & PENDING
 // ========================================================
 exports.getShipmentQuestions = async (req, res) => {
   try {
@@ -133,7 +133,8 @@ exports.getShipmentQuestions = async (req, res) => {
       });
     }
 
-    let questions = [];
+    let answeredQuestions = [];
+    let pendingQuestions = [];
 
     // ================= CUSTOMER VIEW =================
     if (req.user.role === "customer") {
@@ -144,22 +145,42 @@ exports.getShipmentQuestions = async (req, res) => {
         });
       }
 
-      questions = await ShipmentQuestion.find({ shipmentId })
+      answeredQuestions = await ShipmentQuestion.find({
+        shipmentId,
+        status: "answered",
+      })
+        .populate("shipperId", "name companyName")
+        .sort({ createdAt: -1 });
+
+      pendingQuestions = await ShipmentQuestion.find({
+        shipmentId,
+        status: "pending",
+      })
         .populate("shipperId", "name companyName")
         .sort({ createdAt: -1 });
     }
 
     // ================= SHIPPER VIEW =================
     else {
-      questions = await ShipmentQuestion.find({
+      answeredQuestions = await ShipmentQuestion.find({
         shipmentId,
         shipperId: userId,
+        status: "answered",
+      }).sort({ createdAt: -1 });
+
+      pendingQuestions = await ShipmentQuestion.find({
+        shipmentId,
+        shipperId: userId,
+        status: "pending",
       }).sort({ createdAt: -1 });
     }
 
     return res.json({
       success: true,
-      data: questions,
+      data: {
+        answered: answeredQuestions,
+        pending: pendingQuestions,
+      },
     });
   } catch (error) {
     return res.status(500).json({
