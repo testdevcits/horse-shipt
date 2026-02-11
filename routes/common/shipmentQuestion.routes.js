@@ -8,52 +8,96 @@ const {
 const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
 
 // ========================================================
+// DEBUG HELPER
+// ========================================================
+const debugLog = (label, data) => {
+  console.log(`\n========== ${label} ==========`);
+  console.log(data);
+  console.log("================================\n");
+};
+
+// ========================================================
 // SHIPPER ROUTES
 // ========================================================
-router.post("/ask", shipperAuth, controller.askQuestion);
+router.post(
+  "/ask",
+  (req, res, next) => {
+    debugLog("ASK ROUTE HIT", {
+      body: req.body,
+      headers: req.headers.authorization,
+    });
+    next();
+  },
+  shipperAuth,
+  controller.askQuestion
+);
 
 // ========================================================
 // CUSTOMER ROUTES
 // ========================================================
-router.post("/answer", customerAuth, controller.answerQuestion);
-
-// ========================================================
-// GET QUESTIONS (COMMON)
-// ========================================================
-
-//Custom middleware to allow both roles
-const allowCustomerOrShipper = async (req, res, next) => {
-  try {
-    // 🔹 Try customer first
-    try {
-      await new Promise((resolve, reject) =>
-        customerAuth(req, res, (err) => (err ? reject(err) : resolve()))
-      );
-      req.user.role = "customer";
-      return next();
-    } catch (_) {}
-
-    // 🔹 Try shipper
-    try {
-      await new Promise((resolve, reject) =>
-        shipperAuth(req, res, (err) => (err ? reject(err) : resolve()))
-      );
-      req.user.role = "shipper";
-      return next();
-    } catch (_) {}
-
-    return res.status(401).json({
-      success: false,
-      message: "Unauthorized",
+router.post(
+  "/answer",
+  (req, res, next) => {
+    debugLog("ANSWER ROUTE HIT", {
+      body: req.body,
+      headers: req.headers.authorization,
     });
-  } catch (error) {
+    next();
+  },
+  customerAuth,
+  controller.answerQuestion
+);
+
+// ========================================================
+// SAFE ROLE CHECK MIDDLEWARE
+// ========================================================
+const allowCustomerOrShipper = async (req, res, next) => {
+  debugLog("GET QUESTIONS HIT", {
+    shipmentId: req.params.shipmentId,
+    token: req.headers.authorization,
+  });
+
+  const token = req.headers.authorization;
+
+  if (!token) {
+    console.log("No token provided");
     return res.status(401).json({
       success: false,
-      message: "Unauthorized",
+      message: "No token provided",
     });
   }
+
+  // ===== TRY CUSTOMER =====
+  customerAuth(req, res, (err) => {
+    if (!err && req.user) {
+      console.log("Authenticated as CUSTOMER");
+      req.user.role = "customer";
+      return next();
+    }
+
+    console.log("Customer auth failed, trying shipper...");
+
+    // ===== TRY SHIPPER =====
+    shipperAuth(req, res, (err2) => {
+      if (!err2 && req.user) {
+        console.log("Authenticated as SHIPPER");
+        req.user.role = "shipper";
+        return next();
+      }
+
+      console.log("Both auth failed");
+
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    });
+  });
 };
 
+// ========================================================
+// GET QUESTIONS
+// ========================================================
 router.get(
   "/:shipmentId",
   allowCustomerOrShipper,
