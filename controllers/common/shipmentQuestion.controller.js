@@ -111,7 +111,7 @@ exports.answerQuestion = async (req, res) => {
 };
 
 // ========================================================
-// GET QUESTIONS (CUSTOMER / SHIPPER) - SEPARATE ANSWERED & PENDING
+// GET QUESTIONS (CUSTOMER / SHIPPER) - SAFE POPULATE
 // ========================================================
 exports.getShipmentQuestions = async (req, res) => {
   try {
@@ -145,7 +145,6 @@ exports.getShipmentQuestions = async (req, res) => {
         });
       }
 
-      // Use populate but keep it optional
       answeredQuestions = await ShipmentQuestion.find({
         shipmentId,
         status: "answered",
@@ -153,7 +152,7 @@ exports.getShipmentQuestions = async (req, res) => {
         .populate({
           path: "shipperId",
           select: "name companyName",
-          options: { strictPopulate: false }, // skip if shipper missing
+          options: { strictPopulate: false },
         })
         .sort({ createdAt: -1 });
 
@@ -192,7 +191,6 @@ exports.getShipmentQuestions = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("getShipmentQuestions Error:", error);
     return res.status(500).json({
       success: false,
       message: "Failed to fetch questions",

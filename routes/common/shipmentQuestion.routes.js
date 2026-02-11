@@ -52,41 +52,30 @@ router.post(
 // SAFE ROLE CHECK MIDDLEWARE
 // ========================================================
 const allowCustomerOrShipper = async (req, res, next) => {
-  console.log("===== AUTH CHECK START =====");
-
   try {
-    // Try shipper FIRST
+    // Try shipper first
     try {
       await new Promise((resolve, reject) =>
         shipperAuth(req, res, (err) => (err ? reject(err) : resolve()))
       );
-
       req.user.role = "shipper";
-      console.log("Authenticated as SHIPPER");
       return next();
-    } catch (shipperErr) {
-      console.log("Shipper auth failed");
-    }
+    } catch (shipperErr) {}
 
     // Try customer
     try {
       await new Promise((resolve, reject) =>
         customerAuth(req, res, (err) => (err ? reject(err) : resolve()))
       );
-
       req.user.role = "customer";
-      console.log("Authenticated as CUSTOMER");
       return next();
-    } catch (customerErr) {
-      console.log("Customer auth failed");
-    }
+    } catch (customerErr) {}
 
     return res.status(401).json({
       success: false,
       message: "Unauthorized",
     });
   } catch (error) {
-    console.log("Auth middleware crash:", error);
     return res.status(401).json({
       success: false,
       message: "Unauthorized",
