@@ -18,20 +18,20 @@ const generateToken = (admin) => {
 };
 
 // ===============================
-//  EMAIL SETUP (Custom SMTP)
+//  EMAIL / SMTP SETUP
 // ===============================
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: parseInt(process.env.SMTP_PORT, 10),
-  secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
+  host: process.env.EMAIL_HOST,
+  port: parseInt(process.env.EMAIL_PORT, 10),
+  secure: process.env.EMAIL_PORT == 465, // true for 465, false for 587
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
 // =================================================
-//  ADMIN SIGNUP (OPTIONAL / INTERNAL USE)
+//  ADMIN SIGNUP
 // =================================================
 exports.signupAdmin = async (req, res, next) => {
   try {
@@ -131,11 +131,17 @@ exports.forgotPassword = async (req, res, next) => {
       });
     }
 
-    const otp = admin.generateOtp(); // 6-digit OTP
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Save hashed OTP in DB
+    admin.otp = crypto.createHash("sha256").update(otp).digest("hex");
+    admin.otpExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
     await admin.save();
 
+    // Send OTP via email
     await transporter.sendMail({
-      from: `"Horse Shipt Admin" <${process.env.SMTP_USER}>`,
+      from: process.env.EMAIL_FROM,
       to: admin.email,
       subject: "Password Reset OTP",
       html: `
@@ -178,7 +184,8 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
     }
 
     admin.password = newPassword;
-    admin.clearOtp();
+    admin.otp = undefined;
+    admin.otpExpire = undefined;
 
     await admin.save();
 
