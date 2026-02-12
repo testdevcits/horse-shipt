@@ -157,6 +157,14 @@ exports.verifyOtp = async (req, res, next) => {
 exports.resetPasswordWithOtp = async (req, res, next) => {
   try {
     const { email, otp, newPassword } = req.body;
+
+    if (!email || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP and new password are required",
+      });
+    }
+
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
     const admin = await HorseAdmin.findOne({
@@ -164,19 +172,23 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
       otp: hashedOtp,
       otpExpire: { $gt: Date.now() },
     });
-    if (!admin)
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid or expired OTP" });
 
-    admin.password = newPassword;
-    admin.otp = undefined;
-    admin.otpExpire = undefined;
+    if (!admin) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    admin.password = newPassword; // hashed automatically in model
+    admin.clearOtp();
+
     await admin.save();
 
-    res
-      .status(200)
-      .json({ success: true, message: "Password reset successful" });
+    res.status(200).json({
+      success: true,
+      message: "Password reset successful",
+    });
   } catch (error) {
     next(error);
   }
