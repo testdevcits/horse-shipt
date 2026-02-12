@@ -105,11 +105,15 @@ const customerRoutes = require("./routes/customer/customerRoutes");
 const shipperRoutes = require("./routes/shipper/shipperRoutes");
 const shipmentQuestionRoutes = require("./routes/common/shipmentQuestion.routes");
 
+const adminRoutes = require("./routes/admin/admin.routes");
+
 app.use("/api/auth", authRoutes);
 app.use("/api/customer", customerRoutes);
 app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
+
+app.use("/api/admin", adminRoutes);
 
 // -------------------------
 // Default Route
