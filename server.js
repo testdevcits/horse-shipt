@@ -32,6 +32,7 @@ const app = express();
 // -------------------------
 const allowedOrigins = [
   "http://localhost:3000",
+  "http://localhost:3001",
   "https://horse-shipt-frontend.vercel.app",
 ];
 
