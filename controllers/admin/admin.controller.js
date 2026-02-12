@@ -18,13 +18,15 @@ const generateToken = (admin) => {
 };
 
 // ===============================
-//  EMAIL SETUP
+//  EMAIL SETUP (Custom SMTP)
 // ===============================
 const transporter = nodemailer.createTransport({
-  service: "gmail",
+  host: process.env.SMTP_HOST,
+  port: parseInt(process.env.SMTP_PORT, 10),
+  secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
   auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
   },
 });
 
@@ -55,6 +57,12 @@ exports.signupAdmin = async (req, res, next) => {
       success: true,
       message: "Admin created successfully",
       token,
+      admin: {
+        id: admin._id,
+        name: admin.name,
+        email: admin.email,
+        role: admin.role,
+      },
     });
   } catch (error) {
     next(error);
@@ -108,7 +116,7 @@ exports.loginAdmin = async (req, res, next) => {
 };
 
 // =================================================
-//  FORGOT PASSWORD (SEND OTP)
+//  FORGOT PASSWORD (SEND 6-DIGIT OTP)
 // =================================================
 exports.forgotPassword = async (req, res, next) => {
   try {
@@ -123,12 +131,13 @@ exports.forgotPassword = async (req, res, next) => {
       });
     }
 
-    const otp = admin.generateOtp();
+    const otp = admin.generateOtp(); // 6-digit OTP
     await admin.save();
 
     await transporter.sendMail({
+      from: `"Horse Shipt Admin" <${process.env.SMTP_USER}>`,
       to: admin.email,
-      subject: "Horse Shipt Admin Password Reset OTP",
+      subject: "Password Reset OTP",
       html: `
         <h3>Password Reset OTP</h3>
         <p>Your OTP is:</p>
@@ -147,7 +156,7 @@ exports.forgotPassword = async (req, res, next) => {
 };
 
 // =================================================
-//  VERIFY OTP & RESET PASSWORD
+//  RESET PASSWORD WITH OTP
 // =================================================
 exports.resetPasswordWithOtp = async (req, res, next) => {
   try {
@@ -229,7 +238,7 @@ exports.getAdminProfile = async (req, res, next) => {
 };
 
 // =================================================
-// LOGOUT (JWT – FRONTEND HANDLED)
+//  LOGOUT (JWT FRONTEND HANDLED)
 // =================================================
 exports.logoutAdmin = async (req, res) => {
   res.status(200).json({
