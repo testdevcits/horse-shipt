@@ -22,7 +22,7 @@ const horseAdminSchema = new mongoose.Schema(
       type: String,
       required: true,
       minlength: 6,
-      select: false, // don't return password by default
+      select: false, // do not return password by default
     },
 
     role: {
@@ -32,11 +32,13 @@ const horseAdminSchema = new mongoose.Schema(
     },
 
     otp: {
-      type: String, // store hashed OTP
+      type: String, // hashed OTP
+      select: false,
     },
 
     otpExpire: {
-      type: Date, // OTP expiry timestamp
+      type: Date,
+      select: false, // hidden by default
     },
 
     isActive: {

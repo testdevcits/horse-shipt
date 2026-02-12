@@ -7,14 +7,9 @@ const nodemailer = require("nodemailer");
 //  JWT GENERATOR
 // ===============================
 const generateToken = (admin) => {
-  return jwt.sign(
-    {
-      id: admin._id,
-      role: admin.role,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "1d" }
-  );
+  return jwt.sign({ id: admin._id, role: admin.role }, process.env.JWT_SECRET, {
+    expiresIn: "1d",
+  });
 };
 
 // ===============================
@@ -23,11 +18,8 @@ const generateToken = (admin) => {
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
   port: parseInt(process.env.EMAIL_PORT, 10),
-  secure: process.env.EMAIL_PORT == 465, // true for 465, false for 587
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
+  secure: process.env.EMAIL_PORT == 465,
+  auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
 // =================================================
@@ -38,19 +30,12 @@ exports.signupAdmin = async (req, res, next) => {
     const { name, email, password } = req.body;
 
     const exists = await HorseAdmin.findOne({ email });
-    if (exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Admin already exists",
-      });
-    }
+    if (exists)
+      return res
+        .status(400)
+        .json({ success: false, message: "Admin already exists" });
 
-    const admin = await HorseAdmin.create({
-      name,
-      email,
-      password,
-    });
-
+    const admin = await HorseAdmin.create({ name, email, password });
     const token = generateToken(admin);
 
     res.status(201).json({
@@ -75,24 +60,17 @@ exports.signupAdmin = async (req, res, next) => {
 exports.loginAdmin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-
     const admin = await HorseAdmin.findOne({ email }).select("+password");
-
-    if (!admin) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
+    if (!admin)
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
 
     const isMatch = await admin.comparePassword(password);
-
-    if (!isMatch) {
-      return res.status(401).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
+    if (!isMatch)
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid email or password" });
 
     admin.lastLogin = new Date();
     await admin.save();
@@ -116,58 +94,43 @@ exports.loginAdmin = async (req, res, next) => {
 };
 
 // =================================================
-//  FORGOT PASSWORD (SEND 6-DIGIT OTP)
+//  FORGOT PASSWORD (SEND OTP)
 // =================================================
 exports.forgotPassword = async (req, res, next) => {
   try {
     const { email } = req.body;
-
     const admin = await HorseAdmin.findOne({ email });
+    if (!admin)
+      return res
+        .status(404)
+        .json({ success: false, message: "Admin not found" });
 
-    if (!admin) {
-      return res.status(404).json({
-        success: false,
-        message: "Admin not found",
-      });
-    }
-
-    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    // Save hashed OTP in DB
     admin.otp = crypto.createHash("sha256").update(otp).digest("hex");
     admin.otpExpire = Date.now() + 5 * 60 * 1000; // 5 minutes
     await admin.save();
 
-    // Send OTP via email
     await transporter.sendMail({
       from: process.env.EMAIL_FROM,
       to: admin.email,
       subject: "Password Reset OTP",
-      html: `
-        <h3>Password Reset OTP</h3>
-        <p>Your OTP is:</p>
-        <h2>${otp}</h2>
-        <p>This OTP is valid for 5 minutes.</p>
-      `,
+      html: `<h3>Password Reset OTP</h3><p>Your OTP is:</p><h2>${otp}</h2><p>Valid for 5 minutes.</p>`,
     });
 
-    res.status(200).json({
-      success: true,
-      message: "OTP sent to registered email",
-    });
+    res
+      .status(200)
+      .json({ success: true, message: "OTP sent to registered email" });
   } catch (error) {
     next(error);
   }
 };
 
 // =================================================
-//  RESET PASSWORD WITH OTP
+//  VERIFY OTP (NEW ENDPOINT)
 // =================================================
-exports.resetPasswordWithOtp = async (req, res, next) => {
+exports.verifyOtp = async (req, res, next) => {
   try {
-    const { email, otp, newPassword } = req.body;
-
+    const { email, otp } = req.body;
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
     const admin = await HorseAdmin.findOne({
@@ -175,54 +138,70 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
       otp: hashedOtp,
       otpExpire: { $gt: Date.now() },
     });
+    if (!admin)
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
 
-    if (!admin) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired OTP",
-      });
-    }
-
-    admin.password = newPassword;
-    admin.otp = undefined;
-    admin.otpExpire = undefined;
-
-    await admin.save();
-
-    res.status(200).json({
-      success: true,
-      message: "Password reset successful",
-    });
+    res
+      .status(200)
+      .json({ success: true, message: "OTP verified successfully" });
   } catch (error) {
     next(error);
   }
 };
 
 // =================================================
-//  CHANGE PASSWORD (LOGGED-IN ADMIN)
+//  RESET PASSWORD USING OTP
+// =================================================
+exports.resetPasswordWithOtp = async (req, res, next) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
+
+    const admin = await HorseAdmin.findOne({
+      email,
+      otp: hashedOtp,
+      otpExpire: { $gt: Date.now() },
+    });
+    if (!admin)
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid or expired OTP" });
+
+    admin.password = newPassword;
+    admin.otp = undefined;
+    admin.otpExpire = undefined;
+    await admin.save();
+
+    res
+      .status(200)
+      .json({ success: true, message: "Password reset successful" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
+//  CHANGE PASSWORD
 // =================================================
 exports.changePassword = async (req, res, next) => {
   try {
     const { currentPassword, newPassword } = req.body;
-
     const admin = await HorseAdmin.findById(req.admin.id).select("+password");
 
     const isMatch = await admin.comparePassword(currentPassword);
-
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: "Current password is incorrect",
-      });
-    }
+    if (!isMatch)
+      return res
+        .status(400)
+        .json({ success: false, message: "Current password is incorrect" });
 
     admin.password = newPassword;
     await admin.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Password updated successfully",
-    });
+    res
+      .status(200)
+      .json({ success: true, message: "Password updated successfully" });
   } catch (error) {
     next(error);
   }
@@ -234,22 +213,15 @@ exports.changePassword = async (req, res, next) => {
 exports.getAdminProfile = async (req, res, next) => {
   try {
     const admin = await HorseAdmin.findById(req.admin.id);
-
-    res.status(200).json({
-      success: true,
-      admin,
-    });
+    res.status(200).json({ success: true, admin });
   } catch (error) {
     next(error);
   }
 };
 
 // =================================================
-//  LOGOUT (JWT FRONTEND HANDLED)
+//  LOGOUT
 // =================================================
 exports.logoutAdmin = async (req, res) => {
-  res.status(200).json({
-    success: true,
-    message: "Logged out successfully",
-  });
+  res.status(200).json({ success: true, message: "Logged out successfully" });
 };

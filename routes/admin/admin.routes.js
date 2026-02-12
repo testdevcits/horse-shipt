@@ -8,7 +8,7 @@ const adminAuth = require("../../middleware/admin/adminAuth");
 //  AUTH ROUTES
 // ================================
 
-// (Optional / Internal use only)
+// Signup (Internal use only)
 router.post("/signup", adminController.signupAdmin);
 
 // Login
@@ -16,6 +16,9 @@ router.post("/login", adminController.loginAdmin);
 
 // Forgot password → Send OTP
 router.post("/forgot-password", adminController.forgotPassword);
+
+// Verify OTP (optional separate step for frontend validation)
+router.post("/verify-otp", adminController.verifyOtp);
 
 // Reset password using OTP
 router.post("/reset-password", adminController.resetPasswordWithOtp);
