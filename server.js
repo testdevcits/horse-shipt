@@ -109,6 +109,7 @@ const shipmentQuestionRoutes = require("./routes/common/shipmentQuestion.routes"
 
 const adminRoutes = require("./routes/admin/admin.routes");
 const adminBreedRoutes = require("./routes/admin/breed.routes");
+const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
 
 app.use("/api/auth", authRoutes);
 app.use("/api/customer", customerRoutes);
@@ -122,6 +123,7 @@ app.use("/api/questions", shipmentQuestionRoutes);
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
+app.use("/api/admin/shippers", adminShipperRoutes);
 
 // -------------------------
 // Default Route
