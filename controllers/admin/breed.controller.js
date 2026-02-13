@@ -37,12 +37,48 @@ const createBreed = async (req, res) => {
 
 /**
  * =====================================
- *  GET BREEDS
+ *  GET BREEDS (with pagination)
  * =====================================
  */
 const getBreeds = async (req, res) => {
   try {
-    const breeds = await Breed.find().sort({ name: 1 });
+    let { page = 1, limit = 10, showInactive = false } = req.query;
+    page = parseInt(page);
+    limit = parseInt(limit);
+
+    // Filter active breeds by default
+    const filter = showInactive === "true" ? {} : { isActive: true };
+
+    const total = await Breed.countDocuments(filter);
+
+    const breeds = await Breed.find(filter)
+      .sort({ name: 1 })
+      .skip((page - 1) * limit)
+      .limit(limit);
+
+    return res.status(200).json({
+      success: true,
+      count: breeds.length,
+      total,
+      page,
+      totalPages: Math.ceil(total / limit),
+      data: breeds,
+    });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ message: "Server error" });
+  }
+};
+
+/**
+ * =====================================
+ *  GET ALL BREEDS (FULL, for dropdowns)
+ * =====================================
+ */
+const getAllBreeds = async (req, res) => {
+  try {
+    // Default sirf active breeds
+    const breeds = await Breed.find({ isActive: true }).sort({ name: 1 });
 
     return res.status(200).json({
       success: true,
@@ -117,6 +153,7 @@ const updateBreedStatus = async (req, res) => {
 module.exports = {
   createBreed,
   getBreeds,
+  getAllBreeds,
   deleteBreed,
   updateBreedStatus,
 };

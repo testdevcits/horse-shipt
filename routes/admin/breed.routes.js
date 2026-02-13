@@ -19,10 +19,18 @@ router.post("/", adminAuth, breedController.createBreed);
 
 /**
  * @route   GET /api/admin/breeds
- * @desc    Get all breeds (can filter by active=true if needed)
+ * @desc    Get all breeds (paginated for admin, auth required)
+ * @access  Admin only
+ * @query   page, limit, showInactive
+ */
+router.get("/", adminAuth, breedController.getBreeds);
+
+/**
+ * @route   GET /api/admin/breeds/all
+ * @desc    Get all active breeds (for dropdowns)
  * @access  Public
  */
-router.get("/", breedController.getBreeds);
+router.get("/all", breedController.getAllBreeds);
 
 /**
  * @route   DELETE /api/admin/breeds/:id
