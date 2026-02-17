@@ -27,45 +27,36 @@ connectDB();
 // -------------------------
 const app = express();
 
-// -------------------------
-// Allowed Origins
-// -------------------------
-const allowedOrigins = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://admin-horse-shipt.vercel.app",
-  "https://horse-shipt-frontend.vercel.app",
-  "https://horse-shipt.vercel.app",
-];
-
 // =================================================
-// CORS CONFIG (TOP - VERY IMPORTANT)
+// DYNAMIC CORS CONFIG (BEST & SAFE)
 // =================================================
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Postman / server requests
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-
-      console.error("Blocked by CORS:", origin);
-      return callback(new Error("Not allowed by CORS"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
-
-// =================================================
-// EXPRESS 5 SAFE PRE-FLIGHT HANDLER
-// =================================================
 app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://admin-horse-shipt.vercel.app",
+    "https://horse-shipt-frontend.vercel.app",
+    "https://horse-shipt.vercel.app",
+  ];
+
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
+  }
+
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
+  );
+
   if (req.method === "OPTIONS") {
     return res.sendStatus(204);
   }
+
   next();
 });
 
@@ -90,7 +81,7 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 24, // 1 day
+      maxAge: 1000 * 60 * 60 * 24,
     },
   })
 );
@@ -140,9 +131,6 @@ app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
 
-// -------------------------
-// ADMIN ROUTES
-// -------------------------
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
 app.use("/api/admin/shippers", adminShipperRoutes);
@@ -180,21 +168,15 @@ const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
-    methods: ["GET", "POST", "PUT", "DELETE"],
+    origin: true,
     credentials: true,
   },
-  transports: ["websocket", "polling"],
-  path: "/socket.io",
 });
 
-// Make io accessible in controllers
 app.set("io", io);
 
-// Attach chat socket logic
 require("./sockets/chatSocket")(io);
 
-// Debug socket connections
 io.on("connection", (socket) => {
   console.log("🔹 New Socket Connected:", socket.id);
 
