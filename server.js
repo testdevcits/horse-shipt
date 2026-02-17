@@ -27,38 +27,29 @@ connectDB();
 // -------------------------
 const app = express();
 
-// =================================================
-// DYNAMIC CORS CONFIG (BEST & SAFE)
-// =================================================
+// -------------------------
+// Allowed Origins
+// -------------------------
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://admin-horse-shipt.vercel.app",
+  "https://horse-shipt-frontend.vercel.app",
+];
 
-app.use((req, res, next) => {
-  const origin = req.headers.origin;
-
-  const allowedOrigins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "https://admin-horse-shipt.vercel.app",
-    "https://horse-shipt-frontend.vercel.app",
-    "https://horse-shipt.vercel.app",
-  ];
-
-  if (allowedOrigins.includes(origin)) {
-    res.header("Access-Control-Allow-Origin", origin);
-  }
-
-  res.header("Access-Control-Allow-Credentials", "true");
-  res.header("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
-  res.header(
-    "Access-Control-Allow-Headers",
-    "Origin, X-Requested-With, Content-Type, Accept, Authorization"
-  );
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-
-  next();
-});
+// -------------------------
+// CORS Configuration
+// -------------------------
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // allow tools like Postman
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error("CORS policy: Origin not allowed"));
+    },
+    credentials: true,
+  })
+);
 
 // -------------------------
 // Body Parser Middleware
@@ -97,20 +88,15 @@ require("./config/passport");
 // Upload Directory Setup
 // -------------------------
 let uploadPath;
-
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
   uploadPath = path.join("/tmp", "uploads/profilePictures");
 } else {
   uploadPath = path.join(__dirname, "uploads/profilePictures");
 }
-
-if (!fs.existsSync(uploadPath)) {
-  fs.mkdirSync(uploadPath, { recursive: true });
-}
-
+if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
 console.log("Upload directory ready:", uploadPath);
-
 app.use("/uploads/profilePictures", express.static(uploadPath));
+
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 
 // -------------------------
@@ -130,6 +116,10 @@ app.use("/api/customer", customerRoutes);
 app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
+
+// ================================
+//  ADMIN ROUTES
+// ================================
 
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
@@ -153,8 +143,7 @@ app.use((req, res) => {
 // Global Error Handler
 // -------------------------
 app.use((err, req, res, next) => {
-  console.error("Global Error:", err.message);
-
+  console.error("Global Error:", err.stack);
   res.status(err.statusCode || 500).json({
     success: false,
     message: err.message || "Internal Server Error",
@@ -162,23 +151,29 @@ app.use((err, req, res, next) => {
 });
 
 // =================================================
-// HTTP SERVER + SOCKET.IO
+// HTTP SERVER + SOCKET.IO SETUP
 // =================================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
-    origin: true,
+    origin: allowedOrigins,
+    methods: ["GET", "POST", "PUT"],
     credentials: true,
   },
+  transports: ["websocket", "polling"], // fallback for clients that block websockets
+  path: "/socket.io", // explicit path
 });
 
+// 🔹 Make io accessible in controllers
 app.set("io", io);
 
+// 🔹 Attach chat socket logic
 require("./sockets/chatSocket")(io);
 
+// Optional: log all connections for debugging
 io.on("connection", (socket) => {
-  console.log("🔹 New Socket Connected:", socket.id);
+  console.log("🔹 New Socket Connected:", socket.id, socket.handshake.auth);
 
   socket.on("disconnect", () => {
     console.log("🔹 Socket Disconnected:", socket.id);
