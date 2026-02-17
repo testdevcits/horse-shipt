@@ -38,19 +38,36 @@ const allowedOrigins = [
   "https://horse-shipt.vercel.app",
 ];
 
-// -------------------------
-// CORS Configuration
-// -------------------------
+// =================================================
+// CORS CONFIG (TOP - VERY IMPORTANT)
+// =================================================
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // allow tools like Postman
-      if (allowedOrigins.includes(origin)) return callback(null, true);
-      return callback(new Error("CORS policy: Origin not allowed"));
+      if (!origin) return callback(null, true); // Postman / server requests
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.error("Blocked by CORS:", origin);
+      return callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+// =================================================
+// EXPRESS 5 SAFE PRE-FLIGHT HANDLER
+// =================================================
+app.use((req, res, next) => {
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // -------------------------
 // Body Parser Middleware
@@ -73,7 +90,7 @@ app.use(
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
-      maxAge: 1000 * 60 * 60 * 24,
+      maxAge: 1000 * 60 * 60 * 24, // 1 day
     },
   })
 );
@@ -89,15 +106,20 @@ require("./config/passport");
 // Upload Directory Setup
 // -------------------------
 let uploadPath;
+
 if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
   uploadPath = path.join("/tmp", "uploads/profilePictures");
 } else {
   uploadPath = path.join(__dirname, "uploads/profilePictures");
 }
-if (!fs.existsSync(uploadPath)) fs.mkdirSync(uploadPath, { recursive: true });
-console.log("Upload directory ready:", uploadPath);
-app.use("/uploads/profilePictures", express.static(uploadPath));
 
+if (!fs.existsSync(uploadPath)) {
+  fs.mkdirSync(uploadPath, { recursive: true });
+}
+
+console.log("Upload directory ready:", uploadPath);
+
+app.use("/uploads/profilePictures", express.static(uploadPath));
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 
 // -------------------------
@@ -118,10 +140,9 @@ app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
 
-// ================================
-//  ADMIN ROUTES
-// ================================
-
+// -------------------------
+// ADMIN ROUTES
+// -------------------------
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
 app.use("/api/admin/shippers", adminShipperRoutes);
@@ -144,7 +165,8 @@ app.use((req, res) => {
 // Global Error Handler
 // -------------------------
 app.use((err, req, res, next) => {
-  console.error("Global Error:", err.stack);
+  console.error("Global Error:", err.message);
+
   res.status(err.statusCode || 500).json({
     success: false,
     message: err.message || "Internal Server Error",
@@ -152,29 +174,29 @@ app.use((err, req, res, next) => {
 });
 
 // =================================================
-// HTTP SERVER + SOCKET.IO SETUP
+// HTTP SERVER + SOCKET.IO
 // =================================================
 const server = http.createServer(app);
 
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
-    methods: ["GET", "POST", "PUT"],
+    methods: ["GET", "POST", "PUT", "DELETE"],
     credentials: true,
   },
-  transports: ["websocket", "polling"], // fallback for clients that block websockets
-  path: "/socket.io", // explicit path
+  transports: ["websocket", "polling"],
+  path: "/socket.io",
 });
 
-// 🔹 Make io accessible in controllers
+// Make io accessible in controllers
 app.set("io", io);
 
-// 🔹 Attach chat socket logic
+// Attach chat socket logic
 require("./sockets/chatSocket")(io);
 
-// Optional: log all connections for debugging
+// Debug socket connections
 io.on("connection", (socket) => {
-  console.log("🔹 New Socket Connected:", socket.id, socket.handshake.auth);
+  console.log("🔹 New Socket Connected:", socket.id);
 
   socket.on("disconnect", () => {
     console.log("🔹 Socket Disconnected:", socket.id);
