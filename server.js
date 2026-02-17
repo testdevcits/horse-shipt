@@ -35,6 +35,7 @@ const allowedOrigins = [
   "http://localhost:3001",
   "https://admin-horse-shipt.vercel.app",
   "https://horse-shipt-frontend.vercel.app",
+  "https://horse-shipt.vercel.app",
 ];
 
 // -------------------------
