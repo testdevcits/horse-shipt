@@ -210,14 +210,16 @@ exports.updateShipmentStatus = async (req, res) => {
 // controllers/shipper/shipperShipmentController.js
 
 exports.getAvailableShipmentsForMap = async (req, res) => {
+  console.log("[SHIPPER MAP] req.params:", req.params);
+  console.log("[SHIPPER MAP] req.query:", req.query);
+  console.log("[SHIPPER MAP] req.user:", req.user?.id);
+
   try {
     console.log("[SHIPPER MAP] Fetching shipments for map");
 
-    // Already assigned shipments
     const assignedShipments = await ShipperShipment.find({}, "shipment");
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
-    // Fetch only map-related data
     const shipments = await CustomerShipment.find({
       publish: true,
       status: { $in: ["pending", "open_for_offers"] },
