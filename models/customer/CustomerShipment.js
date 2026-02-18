@@ -7,14 +7,12 @@ const locationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
-// ---------------- Horse Snapshot Schema (Shipment Specific) ----------------
+// ---------------- Horse Snapshot Schema ----------------
 const horseSchema = new mongoose.Schema(
   {
-    // Identity
     registeredName: { type: String, required: true },
     barnName: { type: String, default: "" },
 
-    // Breed
     breed: { type: String, required: true },
     otherBreed: {
       type: String,
@@ -30,31 +28,26 @@ const horseSchema = new mongoose.Schema(
       },
     },
 
-    // Sex
     sex: {
       type: String,
       enum: ["Stallion", "Gelding", "Mare", "Colt", "Filly"],
       required: true,
     },
 
-    // Colour and Age (NEW)
     colour: { type: String, default: "" },
     age: { type: Number, default: null },
 
-    // Requested Stall Size
     requestedStallSize: {
       type: String,
       enum: ["Box", "1/2 Box", "Single Stall"],
       required: true,
     },
 
-    // Optional Photo
     photo: {
       url: { type: String, default: null },
       public_id: { type: String, default: null },
     },
 
-    // Documents (Shipment Specific)
     documents: {
       coggins: {
         url: { type: String, default: null },
@@ -70,7 +63,6 @@ const horseSchema = new mongoose.Schema(
       },
     },
 
-    // Notes
     generalInfo: { type: String, default: "" },
   },
   { _id: false }
@@ -114,17 +106,29 @@ const shipmentSchema = new mongoose.Schema(
       default: "pending",
     },
 
-    // Pickup
+    // ---------------- Pickup ----------------
     pickupLocation: { type: String, required: true },
+
+    pickupCoords: {
+      latitude: { type: Number, required: true },
+      longitude: { type: Number, required: true },
+    },
+
     pickupTimeOption: { type: String, required: true },
     pickupDate: { type: Date, required: true },
 
-    // Delivery
+    // ---------------- Delivery ----------------
     deliveryLocation: { type: String, required: true },
+
+    deliveryCoords: {
+      latitude: { type: Number, required: true },
+      longitude: { type: Number, required: true },
+    },
+
     deliveryTimeOption: { type: String, required: true },
     deliveryDate: { type: Date, required: true },
 
-    // Horses
+    // ---------------- Horses ----------------
     numberOfHorses: {
       type: Number,
       required: true,
@@ -143,7 +147,7 @@ const shipmentSchema = new mongoose.Schema(
 
     additionalInfo: { type: String, default: "" },
 
-    // Live Tracking
+    // ---------------- Live Tracking ----------------
     currentLocation: { type: locationSchema, default: null },
     locationHistory: { type: [locationSchema], default: [] },
   },

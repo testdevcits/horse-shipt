@@ -81,25 +81,10 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 // ============================================================
 exports.createShipment = async (req, res) => {
   try {
-    // console.log("===== CREATE SHIPMENT REQUEST =====");
-    // console.log("User ID:", req.user._id);
-    // console.log("Request body:", req.body);
-    // console.log(
-    //   "Files received:",
-    //   (req.files || []).map((f) => ({
-    //     field: f.fieldname,
-    //     name: f.originalname,
-    //   }))
-    // );
-
     const customerId = req.user._id;
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
 
     if (isNaN(numberOfHorses) || numberOfHorses < 1) {
-      console.warn(
-        "[CREATE SHIPMENT] Invalid numberOfHorses:",
-        req.body.numberOfHorses
-      );
       return res
         .status(400)
         .json({ success: false, message: "Invalid numberOfHorses" });
@@ -116,31 +101,34 @@ exports.createShipment = async (req, res) => {
       publish,
     } = req.body;
 
-    console.log("[CREATE SHIPMENT] Shipment details:", {
-      pickupLocation,
-      pickupTimeOption,
-      pickupDate,
-      deliveryLocation,
-      deliveryTimeOption,
-      deliveryDate,
-      numberOfHorses,
-      publish,
-    });
+    // ✅ NEW: Coordinates Parsing
+    const pickupLat = parseFloat(req.body.pickupLat);
+    const pickupLng = parseFloat(req.body.pickupLng);
+    const deliveryLat = parseFloat(req.body.deliveryLat);
+    const deliveryLng = parseFloat(req.body.deliveryLng);
 
-    // ---------- Map files ----------
+    if (
+      isNaN(pickupLat) ||
+      isNaN(pickupLng) ||
+      isNaN(deliveryLat) ||
+      isNaN(deliveryLng)
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Pickup and Delivery coordinates are required",
+      });
+    }
+
     const fileMap = {};
     (req.files || []).forEach((file) => {
       fileMap[file.fieldname] = file;
     });
-    console.log("[CREATE SHIPMENT] File map keys:", Object.keys(fileMap));
 
-    // ---------- Horses ----------
     let horseData = req.body.horses
       ? Array.isArray(req.body.horses)
         ? req.body.horses
         : JSON.parse(req.body.horses)
       : [];
-    console.log("[CREATE SHIPMENT] Number of horses parsed:", horseData.length);
 
     const horses = [];
 
@@ -160,13 +148,6 @@ exports.createShipment = async (req, res) => {
         documents: {},
       };
 
-      console.log(
-        `[CREATE SHIPMENT] Processing horse ${i + 1}: ${
-          horseObj.registeredName
-        }`
-      );
-
-      // ---------- Upload files ----------
       if (fileMap[`horses[${i}][photo]`]) {
         horseObj.photo = await uploadToCloudinary(
           fileMap[`horses[${i}][photo]`],
@@ -193,65 +174,48 @@ exports.createShipment = async (req, res) => {
       }
 
       horses.push(horseObj);
-      console.log(`[CREATE SHIPMENT] Horse ${i + 1} processed`, horseObj);
     }
 
-    // ---------- Create Shipment ----------
+    // ✅ UPDATED Shipment Creation
     const shipment = new CustomerShipment({
       customer: customerId,
+
       pickupLocation,
+      pickupCoords: {
+        latitude: pickupLat,
+        longitude: pickupLng,
+      },
       pickupTimeOption,
       pickupDate,
+
       deliveryLocation,
+      deliveryCoords: {
+        latitude: deliveryLat,
+        longitude: deliveryLng,
+      },
       deliveryTimeOption,
       deliveryDate,
+
       numberOfHorses,
       additionalInfo: additionalInfo || "",
       horses,
       publish: publish === "true" || publish === true,
       status: "pending",
+
+      // Optional: set initial current location
+      currentLocation: {
+        latitude: pickupLat,
+        longitude: pickupLng,
+      },
     });
 
     await shipment.save();
-    console.log("[CREATE SHIPMENT] Shipment saved:", shipment._id);
 
-    // ---------- Add Shipment Code ----------
     if (!shipment.shipmentCode) {
       const year = new Date().getFullYear();
       const shortId = shipment._id.toString().slice(-6).toUpperCase();
       shipment.shipmentCode = `HS-SHIP-${year}-${shortId}`;
       await shipment.save();
-      // console.log(
-      //   "[CREATE SHIPMENT] Shipment code generated:",
-      //  shipment.shipmentCode
-      // );
-    }
-
-    // ---------- Notifications ----------
-    const notif = await CustomerNotification.findOne({ user: customerId });
-    if (notif?.subscription && notif?.settings?.shipmentUpdates) {
-      const payload = JSON.stringify({
-        title: "Shipment Created",
-        body: `Shipment (${shipment.shipmentCode}) successfully created`,
-        type: "shipment_update",
-      });
-
-      try {
-        await webpush.sendNotification(notif.subscription, payload);
-        console.log("[CREATE SHIPMENT] Push notification sent");
-      } catch (err) {
-        // console.warn(
-        //   "[CREATE SHIPMENT] Push notification failed",
-        //   err.statusCode
-        // );
-        if (err.statusCode === 410 || err.statusCode === 404) {
-          notif.subscription = null;
-          await notif.save();
-          // console.log(
-          //   "[CREATE SHIPMENT] Subscription removed due to invalid endpoint"
-          // );
-        }
-      }
     }
 
     res.status(201).json({ success: true, shipment });
