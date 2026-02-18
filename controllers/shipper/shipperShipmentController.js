@@ -206,3 +206,45 @@ exports.updateShipmentStatus = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+// controllers/shipper/shipperShipmentController.js
+
+exports.getAvailableShipmentsForMap = async (req, res) => {
+  try {
+    console.log("[SHIPPER MAP] Fetching shipments for map");
+
+    // Already assigned shipments
+    const assignedShipments = await ShipperShipment.find({}, "shipment");
+    const assignedIds = assignedShipments.map((s) => s.shipment);
+
+    // Fetch only map-related data
+    const shipments = await CustomerShipment.find({
+      publish: true,
+      status: { $in: ["pending", "open_for_offers"] },
+      _id: { $nin: assignedIds },
+    })
+      .select(
+        `
+        shipmentCode
+        pickupLocation
+        pickupCoords
+        deliveryLocation
+        deliveryCoords
+        status
+      `
+      )
+      .sort({ publishedAt: -1 })
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      shipments,
+    });
+  } catch (error) {
+    console.error("[GET SHIPPER MAP SHIPMENTS ERROR]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
