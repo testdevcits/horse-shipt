@@ -217,16 +217,22 @@ exports.getAvailableShipmentsForMap = async (req, res) => {
   try {
     console.log("[SHIPPER MAP] Fetching shipments for map");
 
+    // Get all assigned shipment IDs
     const assignedShipments = await ShipperShipment.find({}, "shipment");
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
+    // Fetch shipments that are published, open/pending, not assigned
     const shipments = await CustomerShipment.find({
       publish: true,
       status: { $in: ["pending", "open_for_offers"] },
       _id: { $nin: assignedIds },
+      // Only include shipments that have both pickup and delivery coordinates
+      pickupCoords: { $exists: true, $ne: null },
+      deliveryCoords: { $exists: true, $ne: null },
     })
       .select(
         `
+        _id
         shipmentCode
         pickupLocation
         pickupCoords
