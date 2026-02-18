@@ -269,7 +269,7 @@ exports.getShipmentById = async (req, res) => {
 
 exports.getSingleShipmentForMap = async (req, res) => {
   try {
-    const shipment = await Shipment.findById(req.params.id)
+    const shipment = await CustomerShipment.findById(req.params.id)
       .select("_id shipmentCode pickupCoords deliveryCoords status")
       .lean();
 
