@@ -265,6 +265,39 @@ exports.getShipmentById = async (req, res) => {
   }
 };
 
+// GET /api/shipments/:id
+
+exports.getSingleShipmentForMap = async (req, res) => {
+  try {
+    const shipment = await Shipment.findById(req.params.id)
+      .select("_id shipmentCode pickupCoords deliveryCoords status")
+      .lean();
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      shipment: {
+        id: shipment._id,
+        code: shipment.shipmentCode,
+        status: shipment.status,
+        pickup: shipment.pickupCoords,
+        delivery: shipment.deliveryCoords,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
+
 // ============================================================
 // ===================== PUBLISH SHIPMENT =====================
 // ============================================================

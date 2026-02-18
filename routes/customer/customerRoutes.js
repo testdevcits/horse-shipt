@@ -42,6 +42,7 @@ const {
   notifyShipmentAccepted,
   fetchShipmentById,
   publishShipment,
+  getSingleShipmentForMap,
 } = require("../../controllers/customer/customerShipmentController");
 
 const {
@@ -132,6 +133,9 @@ router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
 // Publish shipment
 router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
+
+// Get single shipment (map data only)
+router.get("/shipments/:id/map", customerAuth, getSingleShipmentForMap);
 
 // Update shipment
 router.put(
