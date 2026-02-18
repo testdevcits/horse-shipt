@@ -209,26 +209,23 @@ exports.updateShipmentStatus = async (req, res) => {
 
 // controllers/shipper/shipperShipmentController.js
 
-exports.getAvailableShipmentsForMap = async (req, res) => {
-  console.log("[SHIPPER MAP] req.params:", req.params);
-  console.log("[SHIPPER MAP] req.query:", req.query);
-  console.log("[SHIPPER MAP] req.user:", req.user?.id);
-
+exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
-    console.log("[SHIPPER MAP] Fetching shipments for map");
+    console.log("[SHIPPER MAP] Fetching all published shipments for map");
 
-    // Get all assigned shipment IDs
-    const assignedShipments = await ShipperShipment.find({}, "shipment");
-    const assignedIds = assignedShipments.map((s) => s.shipment);
-
-    // Fetch shipments that are published, open/pending, not assigned
+    // Fetch **all published shipments**, ignore assigned status
     const shipments = await CustomerShipment.find({
       publish: true,
-      status: { $in: ["pending", "open_for_offers"] },
-      _id: { $nin: assignedIds },
-      // Only include shipments that have both pickup and delivery coordinates
-      pickupCoords: { $exists: true, $ne: null },
-      deliveryCoords: { $exists: true, $ne: null },
+      status: {
+        $in: [
+          "pending",
+          "assigned",
+          "picked",
+          "in_transit",
+          "delivered",
+          "open_for_offers",
+        ],
+      },
     })
       .select(
         `
@@ -244,12 +241,23 @@ exports.getAvailableShipmentsForMap = async (req, res) => {
       .sort({ publishedAt: -1 })
       .lean();
 
+    // Ensure coordinates exist, fallback to dummy if missing
+    const safeShipments = shipments.map((s) => ({
+      _id: s._id,
+      shipmentCode: s.shipmentCode,
+      pickupLocation: s.pickupLocation,
+      pickupCoords: s.pickupCoords || { latitude: 0, longitude: 0 },
+      deliveryLocation: s.deliveryLocation,
+      deliveryCoords: s.deliveryCoords || { latitude: 0, longitude: 0 },
+      status: s.status,
+    }));
+
     return res.status(200).json({
       success: true,
-      shipments,
+      shipments: safeShipments,
     });
-  } catch (error) {
-    console.error("[GET SHIPPER MAP SHIPMENTS ERROR]", error);
+  } catch (err) {
+    console.error("[SHIPPER MAP] Error:", err);
     return res.status(500).json({
       success: false,
       message: "Server Error",

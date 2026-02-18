@@ -29,7 +29,7 @@ const {
   updateShipmentStatus,
   getAvailableShipments,
   acceptShipment,
-  getAvailableShipmentsForMap,
+  getAllPublishedShipmentsForMap,
 } = require("../../controllers/shipper/shipperShipmentController");
 
 // -------- Quotes --------
@@ -149,7 +149,7 @@ router.patch(
 // routes/shipper/shipper.routes.js
 
 // Shipper map – all available shipments
-router.get("/shipments/map", shipperAuth, getAvailableShipmentsForMap);
+router.get("/shipments/map", shipperAuth, getAllPublishedShipmentsForMap);
 
 router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 
