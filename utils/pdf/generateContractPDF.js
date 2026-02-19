@@ -15,11 +15,15 @@ async function generateContractPDF({
   return new Promise((resolve, reject) => {
     try {
       const PAGE_MARGIN = 60;
-      const PAGE_WIDTH = 595.28; // A4 width
-      const PAGE_HEIGHT = 841.89; // A4 height
+      const PAGE_WIDTH = 595.28;
+      const PAGE_HEIGHT = 841.89;
       const CONTENT_WIDTH = PAGE_WIDTH - 2 * PAGE_MARGIN;
 
-      const doc = new PDFDocument({ size: "A4", margin: PAGE_MARGIN });
+      const doc = new PDFDocument({
+        size: "A4",
+        margin: PAGE_MARGIN,
+      });
+
       const buffers = [];
       doc.on("data", buffers.push.bind(buffers));
       doc.on("end", () => resolve(Buffer.concat(buffers)));
@@ -47,7 +51,6 @@ async function generateContractPDF({
         doc.image(logoPath, PAGE_MARGIN, 22, { width: 55 });
       }
 
-      // HORSESHIPT™
       doc
         .fillColor("#ffffff")
         .font("Title")
@@ -57,7 +60,6 @@ async function generateContractPDF({
           width: CONTENT_WIDTH,
         });
 
-      // Shipment Code just below HORSESHIPT™
       doc
         .font("Bold")
         .fontSize(12)
@@ -72,130 +74,135 @@ async function generateContractPDF({
       /* ===================== TITLE ===================== */
       doc.font("Bold").fontSize(18).text("SHIPMENT CONTRACT", {
         align: "center",
-        width: CONTENT_WIDTH,
       });
 
-      doc.moveDown(1.2);
+      doc.moveDown(1.5);
 
       /* ===================== HELPERS ===================== */
+
       const sectionTitle = (text) => {
-        doc
-          .font("Bold")
-          .fontSize(13)
-          .fillColor("#000000")
-          .text(text.toUpperCase(), PAGE_MARGIN, doc.y, {
-            width: CONTENT_WIDTH,
-          });
+        doc.moveDown(0.5);
+        doc.font("Bold").fontSize(13).fillColor("#000000");
+        doc.text(text.toUpperCase());
         doc.moveDown(0.4);
       };
 
       const drawRow = (label, value) => {
-        const labelWidth = 130; // fixed width for labels
+        const labelWidth = 140;
+        const valueWidth = CONTENT_WIDTH - labelWidth;
+
+        const startY = doc.y;
+
+        // Label
         doc
           .font("Bold")
           .fontSize(10)
           .fillColor("#000000")
-          .text(label, PAGE_MARGIN, doc.y, { continued: true });
+          .text(label, PAGE_MARGIN, startY, {
+            width: labelWidth,
+          });
+
+        // Value (wrapped automatically)
         doc
           .font("Roboto")
           .fontSize(10)
           .fillColor("#2E86AB")
-          .text(value || "N/A", PAGE_MARGIN + labelWidth, doc.y, {
-            width: CONTENT_WIDTH - labelWidth,
-            align: "left",
-            lineGap: 2,
+          .text(value || "N/A", PAGE_MARGIN + labelWidth, startY, {
+            width: valueWidth,
           });
-        doc.moveDown(0.35);
+
+        const endY = doc.y;
+        doc.y = endY + 5; // spacing after row
       };
 
       /* ===================== CONTENT ===================== */
+
       sectionTitle("Customer Information");
-      drawRow("Name:", customer.name);
-      drawRow("Email:", customer.email);
-      doc.moveDown(0.4);
+      drawRow("Name:", customer?.name);
+      drawRow("Email:", customer?.email);
 
       sectionTitle("Shipment Details");
-      drawRow("Pickup Location:", shipment.pickupLocation);
-      drawRow("Pickup Date:", shipment.pickupDate?.toDateString());
-      drawRow("Delivery Location:", shipment.deliveryLocation);
-      drawRow("Delivery Date:", shipment.deliveryDate?.toDateString());
-      drawRow("Number of Horses:", shipment.numberOfHorses?.toString());
-      doc.moveDown(0.4);
+      drawRow("Pickup Location:", shipment?.pickupLocation);
+      drawRow(
+        "Pickup Date:",
+        shipment?.pickupDate
+          ? new Date(shipment.pickupDate).toDateString()
+          : "N/A"
+      );
+      drawRow("Delivery Location:", shipment?.deliveryLocation);
+      drawRow(
+        "Delivery Date:",
+        shipment?.deliveryDate
+          ? new Date(shipment.deliveryDate).toDateString()
+          : "N/A"
+      );
+      drawRow("Number of Horses:", shipment?.numberOfHorses?.toString());
 
       sectionTitle("Shipper & Quote Details");
-      drawRow("Shipper Name:", shipper.name);
-      drawRow("Shipper Email:", shipper.email);
-      drawRow("Vehicle:", vehicle.vehicleNumber);
-      drawRow("Transport Type:", vehicle.transportType);
-      drawRow("Total Price:", `${quote.totalPrice} ${quote.currency}`);
-      drawRow("Payment Method:", quote.paymentMethod);
-      drawRow("Payment Due:", quote.paymentDue);
-      drawRow("Pickup Time:", quote.pickupTime);
-      drawRow("Estimated Arrival:", quote.estimatedArrivalTime);
+      drawRow("Shipper Name:", shipper?.name);
+      drawRow("Shipper Email:", shipper?.email);
+      drawRow("Vehicle:", vehicle?.vehicleNumber);
+      drawRow("Transport Type:", vehicle?.transportType);
+      drawRow(
+        "Total Price:",
+        `${quote?.totalPrice || 0} ${quote?.currency || ""}`
+      );
+      drawRow("Payment Method:", quote?.paymentMethod);
+      drawRow("Payment Due:", quote?.paymentDue);
+      drawRow("Pickup Time:", quote?.pickupTime);
+      drawRow("Estimated Arrival:", quote?.estimatedArrivalTime);
 
-      if (quote.notes) {
-        doc.moveDown(0.4);
-        doc.font("Bold").fillColor("#000000").text("NOTES:", PAGE_MARGIN);
-        doc.font("Roboto").fillColor("#2E86AB").text(quote.notes, {
+      if (quote?.notes) {
+        sectionTitle("Notes");
+        doc.font("Roboto").fontSize(10).fillColor("#2E86AB").text(quote.notes, {
           width: CONTENT_WIDTH,
-          lineGap: 2,
         });
       }
 
       /* ===================== SIGNATURES ===================== */
-      const signatureHeight = 70;
-      const signatureY = PAGE_HEIGHT - PAGE_MARGIN - signatureHeight - 50; // keep footer safe
+
+      doc.moveDown(2);
+
+      const signatureStartY = doc.y;
+
+      doc.font("Bold").fontSize(11).fillColor("#000000");
+      doc.text("SHIPPER SIGNATURE:", PAGE_MARGIN, signatureStartY);
 
       if (shipperSignature) {
         const shipperImg = Buffer.from(
           shipperSignature.replace(/^data:image\/\w+;base64,/, ""),
           "base64"
         );
-        doc
-          .font("Bold")
-          .fillColor("#000000")
-          .text("SHIPPER SIGNATURE:", PAGE_MARGIN, signatureY - 25);
-        doc.image(shipperImg, PAGE_MARGIN, signatureY, {
-          fit: [190, signatureHeight],
+        doc.image(shipperImg, PAGE_MARGIN, signatureStartY + 15, {
+          fit: [200, 70],
         });
       }
+
+      doc.text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureStartY);
 
       if (customerSignature) {
         const customerImg = Buffer.from(
           customerSignature.replace(/^data:image\/\w+;base64,/, ""),
           "base64"
         );
-        doc
-          .font("Bold")
-          .fillColor("#000000")
-          .text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureY - 25);
-        doc.image(customerImg, PAGE_MARGIN + 260, signatureY, {
-          fit: [190, signatureHeight],
+        doc.image(customerImg, PAGE_MARGIN + 260, signatureStartY + 15, {
+          fit: [200, 70],
         });
-      } else {
-        doc
-          .font("Bold")
-          .fillColor("#000000")
-          .text("CUSTOMER SIGNATURE:", PAGE_MARGIN + 260, signatureY - 25);
       }
 
       /* ===================== FOOTER ===================== */
       doc
         .fontSize(6)
         .fillColor("#888888")
-        .opacity(0.7)
         .text(
-          `Digitally issued shipment contract | Authorized by HORSESHIPT™" | Ref: ${
-            shipmentCode || "N/A"
-          }`,
+          `Digitally issued shipment contract | Ref: ${shipmentCode || "N/A"}`,
           PAGE_MARGIN,
           PAGE_HEIGHT - PAGE_MARGIN - 20,
           {
             align: "center",
             width: CONTENT_WIDTH,
           }
-        )
-        .opacity(1);
+        );
 
       doc.end();
     } catch (err) {

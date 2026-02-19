@@ -68,6 +68,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     /* ---------------- RE-GENERATE PDF ---------------- */
     const pdfBuffer = await generateContractPDF({
       shipment: quote.shipment,
+      shipmentCode: quote.shipment.shipmentCode,
       customer: quote.shipment.customer,
       shipper: quote.shipper,
       vehicle: quote.vehicle,
