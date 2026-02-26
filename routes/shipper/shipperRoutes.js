@@ -109,6 +109,7 @@ const {
 // -------- Reviews --------
 const {
   updateGoogleReviewLink,
+  getGoogleReviewLink,
 } = require("../../controllers/shipper/shipperReviewController");
 
 // ====================================================
@@ -295,6 +296,7 @@ router.get("/chat/customers", shipperAuth, getCustomersForChat);
 
 // Shipper → Add / Update Google Review Link
 router.put("/reviews/google-link", shipperAuth, updateGoogleReviewLink);
+router.get("/reviews/google-link", shipperAuth, getGoogleReviewLink);
 
 // ====================================================
 // EXPORT

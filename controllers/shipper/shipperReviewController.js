@@ -155,6 +155,34 @@ exports.updateGoogleReviewLink = async (req, res) => {
   }
 };
 
+// Get Google Review Link
+exports.getGoogleReviewLink = async (req, res) => {
+  try {
+    const shipperId = req.user.id; // from shipperAuth middleware
+
+    const shipper = await Shipper.findById(shipperId).select(
+      "googleReviewLink"
+    );
+
+    if (!shipper) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      googleReviewLink: shipper.googleReviewLink || "",
+    });
+  } catch (error) {
+    console.error("Get Google Review Link Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};
 /*
 =====================================================
 Get Reviews By Shipper (Pagination)
