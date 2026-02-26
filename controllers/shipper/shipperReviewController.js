@@ -123,10 +123,16 @@ SHIPPER → Add / Update Google Review Link
 */
 exports.updateGoogleReviewLink = async (req, res) => {
   try {
-    const shipperId = req.user.id;
+    console.log("Update Google Review API Called");
+
+    const shipperId = req.user?.id;
     const { googleReviewLink } = req.body;
 
+    console.log("Shippoer ID:", shipperId);
+    console.log("Received Link:", googleReviewLink);
+
     if (!googleReviewLink) {
+      console.log("Link missing");
       return res.status(400).json({
         success: false,
         message: "Google review link is required",
@@ -135,13 +141,17 @@ exports.updateGoogleReviewLink = async (req, res) => {
 
     // Validate Link
     if (!validateGoogleLink(googleReviewLink)) {
+      console.log("Invalid Google Link Format");
+
       return res.status(400).json({
         success: false,
         message: REVIEW_MESSAGES.INVALID_LINK,
       });
     }
 
-    // Direct Update Query (Best Practice)
+    console.log("Link validation passed");
+
+    // Database Update
     const updatedShipper = await Shipper.findByIdAndUpdate(
       shipperId,
       {
@@ -151,11 +161,16 @@ exports.updateGoogleReviewLink = async (req, res) => {
     );
 
     if (!updatedShipper) {
+      console.log(" Shipper not found in DB");
+
       return res.status(404).json({
         success: false,
         message: REVIEW_MESSAGES.SHIPPER_NOT_FOUND,
       });
     }
+
+    console.log("Database Updated Successfully");
+    console.log("Updated Link:", updatedShipper.googleReviewLink);
 
     return res.status(200).json({
       success: true,
