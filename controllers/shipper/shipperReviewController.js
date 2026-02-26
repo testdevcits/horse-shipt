@@ -123,73 +123,39 @@ SHIPPER → Add / Update Google Review Link
 */
 exports.updateGoogleReviewLink = async (req, res) => {
   try {
-    console.log("Update Google Review API Called");
-
     const shipperId = req.user?.id;
     const { googleReviewLink } = req.body;
 
-    console.log("Shipper ID:", shipperId);
-    console.log("Received Link:", googleReviewLink);
-
-    if (!shipperId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized request",
-      });
-    }
-
-    if (!googleReviewLink) {
+    if (!shipperId || !googleReviewLink) {
       return res.status(400).json({
         success: false,
-        message: "Google review link is required",
+        message: "Invalid request",
       });
     }
 
-    // Validate Link Format
     if (!validateGoogleLink(googleReviewLink)) {
-      console.log("Invalid Google Link Format");
-
       return res.status(400).json({
         success: false,
         message: REVIEW_MESSAGES.INVALID_LINK,
       });
     }
 
-    console.log("Link validation passed");
-
-    // Update Shipper Document
-    const updatedShipper = await Shipper.findByIdAndUpdate(
-      shipperId,
+    await Review.updateMany(
+      { shipperId },
       {
         $set: {
           googleReviewLink: googleReviewLink.trim(),
         },
-      },
-      {
-        new: true,
-        runValidators: true,
       }
     );
-
-    if (!updatedShipper) {
-      console.log("Shipper not found in DB");
-
-      return res.status(404).json({
-        success: false,
-        message: REVIEW_MESSAGES.SHIPPER_NOT_FOUND,
-      });
-    }
-
-    console.log("Database Updated Successfully");
-    console.log("Updated Link:", updatedShipper.googleReviewLink);
 
     return res.status(200).json({
       success: true,
       message: "Google review link updated successfully",
-      data: updatedShipper.googleReviewLink || "",
+      data: googleReviewLink,
     });
   } catch (error) {
-    console.error("Update Google Review Error:", error);
+    console.error(error);
 
     return res.status(500).json({
       success: false,
