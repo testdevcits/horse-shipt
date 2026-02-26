@@ -77,6 +77,14 @@ router.put(
   updateProfile
 );
 
+// ---------------- Reviews ----------------
+const {
+  addReview,
+  updateMyReview,
+  deleteMyReview,
+  getMyReviews,
+  getReviewsByShipper,
+} = require("../../controllers/shipper/shipperReviewController");
 // ====================================================
 // PAYMENT ROUTES
 // ====================================================
@@ -223,6 +231,24 @@ router.get("/horses", customerAuth, getMyHorses);
 router.put("/horses/:horseId", customerAuth, updateHorse);
 
 router.delete("/horses/:horseId", customerAuth, deleteHorse);
+
+// ====================================================
+// CUSTOMER REVIEW ROUTES
+// ====================================================
+
+// Add Review (Manual Rating)
+router.post("/reviews", customerAuth, addReview);
+
+// Update My Review
+router.put("/reviews/:reviewId", customerAuth, updateMyReview);
+
+// Delete My Review
+router.delete("/reviews/:reviewId", customerAuth, deleteMyReview);
+
+// Get My Reviews
+router.get("/reviews", customerAuth, getMyReviews);
+
+router.get("/shipper/:shipperId", getReviewsByShipper);
 // ====================================================
 // EXPORT ROUTER
 // ====================================================

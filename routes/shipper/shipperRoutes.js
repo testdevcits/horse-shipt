@@ -106,6 +106,11 @@ const {
   getCustomersForChat,
 } = require("../../controllers/shipper/shipperChatListController");
 
+// -------- Reviews --------
+const {
+  updateGoogleReviewLink,
+} = require("../../controllers/shipper/shipperReviewController");
+
 // ====================================================
 // SHIPPER PROFILE ROUTES
 // ====================================================
@@ -283,6 +288,13 @@ router.patch("/contracts/deactivate", shipperAuth, deactivateContract);
 // CHAT LIST (Shipper Dashboard)
 // ====================================================
 router.get("/chat/customers", shipperAuth, getCustomersForChat);
+
+// ====================================================
+// SHIPPER REVIEW ROUTES
+// ====================================================
+
+// Shipper → Add / Update Google Review Link
+router.put("/reviews/google-link", shipperAuth, updateGoogleReviewLink);
 
 // ====================================================
 // EXPORT
