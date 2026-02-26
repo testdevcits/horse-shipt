@@ -123,24 +123,34 @@ SHIPPER → Add / Update Google Review Link
 */
 exports.updateGoogleReviewLink = async (req, res) => {
   try {
+    console.log("=== Google Review Update Started ===");
+
     const shipperId = req.user?.id;
     const { googleReviewLink } = req.body;
 
-    if (!shipperId || !googleReviewLink) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid request",
-      });
+    console.log("ShippeID:", shipperId);
+    console.log("Link Received:", googleReviewLink);
+
+    if (!shipperId) {
+      console.log("❌ ShippeID missing");
+      return res.status(400).json({ message: "Unauthorized" });
+    }
+
+    if (!googleReviewLink) {
+      console.log("❌ Link missing");
+      return res.status(400).json({ message: "Link required" });
     }
 
     if (!validateGoogleLink(googleReviewLink)) {
-      return res.status(400).json({
-        success: false,
-        message: REVIEW_MESSAGES.INVALID_LINK,
-      });
+      console.log("❌ Link validation failed");
+      return res.status(400).json({ message: "Invalid link" });
     }
 
-    await Review.updateMany(
+    const Review = require("../../models/shipper/review.model");
+
+    console.log("🔄 Updating DB...");
+
+    const updateResult = await Review.updateMany(
       { shipperId },
       {
         $set: {
@@ -149,17 +159,22 @@ exports.updateGoogleReviewLink = async (req, res) => {
       }
     );
 
+    console.log("Mongo Update Result:", updateResult);
+
+    console.log("Matched Count:", updateResult.matchedCount);
+    console.log("Modified Count:", updateResult.modifiedCount);
+
     return res.status(200).json({
       success: true,
       message: "Google review link updated successfully",
       data: googleReviewLink,
     });
   } catch (error) {
-    console.error(error);
+    console.error("🔥 Google Review Update Error:", error);
 
     return res.status(500).json({
       success: false,
-      message: REVIEW_MESSAGES.SERVER_ERROR,
+      message: "Server error",
     });
   }
 };
