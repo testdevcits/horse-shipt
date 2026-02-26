@@ -2,14 +2,12 @@ const mongoose = require("mongoose");
 
 const shipperVehicleSchema = new mongoose.Schema(
   {
-    // Reference to Shipper (User)
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shipper",
       required: true,
     },
 
-    // Transport Details
     transportType: {
       type: String,
       enum: ["Trucking"],
@@ -17,7 +15,7 @@ const shipperVehicleSchema = new mongoose.Schema(
     },
 
     vehicleType: {
-      type: String, // e.g., "Truck", "Trailer", etc.
+      type: String,
       required: true,
     },
 
@@ -26,10 +24,23 @@ const shipperVehicleSchema = new mongoose.Schema(
       required: true,
       trim: true,
       uppercase: true,
-      unique: true, // prevents duplicate vehicle numbers
+      unique: true,
     },
 
-    // Trailer Type
+    vinNumber: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      sparse: true,
+      default: null,
+    },
+
+    verificationStatus: {
+      type: String,
+      enum: ["PENDING", "VERIFIED", "REJECTED"],
+      default: "PENDING",
+    },
+
     trailerType: {
       type: String,
       enum: ["Stock Trailer", "Slant Load", "Head to Head", "Semi", "Other"],
@@ -47,7 +58,11 @@ const shipperVehicleSchema = new mongoose.Schema(
       required: true,
     },
 
-    // Cloudinary Images
+    vinMetaData: {
+      type: Object,
+      default: null,
+    },
+
     images: [
       {
         public_id: { type: String, required: true },
@@ -55,7 +70,6 @@ const shipperVehicleSchema = new mongoose.Schema(
       },
     ],
 
-    // Additional Notes
     notes: {
       type: String,
       default: "",

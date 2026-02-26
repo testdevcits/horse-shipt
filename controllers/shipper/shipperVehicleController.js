@@ -1,7 +1,11 @@
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+
+const { VEHICLE_MESSAGES } = require("../../utils/response/vehicleMessages");
+
 const { sendShipperEmail } = require("../../utils/shipperMailSend");
 const { sendShipperSms } = require("../../utils/shipperSmsSend");
+
 const cloudinary = require("../../config/cloudinary");
 
 // ====================================================
@@ -18,18 +22,16 @@ exports.addVehicle = async (req, res) => {
       numberOfStalls,
       stallSize,
       notes,
+      vinNumber,
     } = req.body;
 
-    // ---------------- VALIDATION ----------------
     if (!vehicleType || !vehicleNumber || !numberOfStalls || !stallSize) {
       return res.status(400).json({
         success: false,
-        message:
-          "Please fill all required fields (vehicleType, vehicleNumber, numberOfStalls, stallSize)",
+        message: VEHICLE_MESSAGES.REQUIRED_FIELDS,
       });
     }
 
-    // Prevent duplicate vehicle number
     const existingVehicle = await ShipperVehicle.findOne({
       vehicleNumber: vehicleNumber.trim().toUpperCase(),
     });
@@ -37,13 +39,26 @@ exports.addVehicle = async (req, res) => {
     if (existingVehicle) {
       return res.status(409).json({
         success: false,
-        message: "Vehicle with this number already exists",
+        message: VEHICLE_MESSAGES.VEHICLE_ALREADY_EXISTS,
       });
     }
 
-    // ---------------- UPLOAD IMAGES ----------------
+    if (vinNumber) {
+      const vinExists = await ShipperVehicle.findOne({
+        vinNumber: vinNumber.trim().toUpperCase(),
+      });
+
+      if (vinExists) {
+        return res.status(409).json({
+          success: false,
+          message: VEHICLE_MESSAGES.VIN_ALREADY_EXISTS,
+        });
+      }
+    }
+
     let imageArray = [];
-    if (req.files && req.files.length > 0) {
+
+    if (req.files?.length) {
       for (const file of req.files) {
         const result = await cloudinary.uploader.upload(file.path, {
           folder: "shipper_vehicles",
@@ -56,8 +71,7 @@ exports.addVehicle = async (req, res) => {
       }
     }
 
-    // ---------------- CREATE VEHICLE ----------------
-    const newVehicle = await ShipperVehicle.create({
+    const vehicle = await ShipperVehicle.create({
       shipper: shipperId,
       transportType: "Trucking",
       vehicleType,
@@ -66,69 +80,46 @@ exports.addVehicle = async (req, res) => {
       numberOfStalls,
       stallSize,
       notes,
+      vinNumber: vinNumber ? vinNumber.trim().toUpperCase() : null,
+      verificationStatus: "PENDING",
       images: imageArray,
     });
 
-    // ---------------- NOTIFICATIONS ----------------
-    const settings = await ShipperSettings.findOne({ shipperId });
-    const notif = settings?.notifications?.shipment;
-
-    if (notif) {
-      if (notif.email) {
-        await sendShipperEmail(
-          shipperId,
-          "New Vehicle Added",
-          `Your vehicle (${newVehicle.vehicleNumber}) has been added successfully.`
-        );
-      }
-
-      if (notif.sms) {
-        await sendShipperSms(
-          shipperId,
-          `Your vehicle (${newVehicle.vehicleNumber}) has been added successfully.`
-        );
-      }
-    }
-
     res.status(201).json({
       success: true,
-      message: "Vehicle added successfully",
-      vehicle: newVehicle,
+      message: VEHICLE_MESSAGES.VEHICLE_ADDED,
+      vehicle,
     });
   } catch (error) {
-    console.error("Add Vehicle Error:", error);
+    console.error(error);
 
     res.status(500).json({
       success: false,
-      message: "Failed to add vehicle",
-      error: error.message,
+      message: VEHICLE_MESSAGES.VEHICLE_CREATE_ERROR,
     });
   }
 };
 
 // ====================================================
-// GET ALL VEHICLES (SHIPPER)
+// GET VEHICLES
 // ====================================================
 exports.getMyVehicles = async (req, res) => {
   try {
     const shipperId = req.user._id;
 
-    const vehicles = await ShipperVehicle.find({ shipper: shipperId }).sort({
-      createdAt: -1,
-    });
+    const vehicles = await ShipperVehicle.find({
+      shipper: shipperId,
+    }).sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
-      message: "Fetched all your vehicles successfully",
+      message: VEHICLE_MESSAGES.VEHICLE_FETCHED,
       vehicles,
     });
   } catch (error) {
-    console.error("Get My Vehicles Error:", error);
-
     res.status(500).json({
       success: false,
-      message: "Failed to fetch vehicles",
-      error: error.message,
+      message: VEHICLE_MESSAGES.VEHICLE_FETCH_ERROR,
     });
   }
 };
@@ -149,7 +140,7 @@ exports.updateVehicle = async (req, res) => {
     if (!vehicle) {
       return res.status(404).json({
         success: false,
-        message: "Vehicle not found or unauthorized",
+        message: VEHICLE_MESSAGES.VEHICLE_NOT_FOUND,
       });
     }
 
@@ -160,9 +151,9 @@ exports.updateVehicle = async (req, res) => {
       numberOfStalls,
       stallSize,
       notes,
+      vinNumber,
     } = req.body;
 
-    // ---------------- UPDATE FIELDS ----------------
     if (vehicleType) vehicle.vehicleType = vehicleType;
 
     if (vehicleNumber) {
@@ -174,11 +165,15 @@ exports.updateVehicle = async (req, res) => {
       if (exists) {
         return res.status(409).json({
           success: false,
-          message: "Another vehicle with this number already exists",
+          message: VEHICLE_MESSAGES.VEHICLE_ALREADY_EXISTS,
         });
       }
 
       vehicle.vehicleNumber = vehicleNumber.trim().toUpperCase();
+    }
+
+    if (vinNumber !== undefined) {
+      vehicle.vinNumber = vinNumber ? vinNumber.trim().toUpperCase() : null;
     }
 
     if (trailerType) vehicle.trailerType = trailerType;
@@ -186,13 +181,13 @@ exports.updateVehicle = async (req, res) => {
     if (stallSize) vehicle.stallSize = stallSize;
     if (notes) vehicle.notes = notes;
 
-    // ---------------- UPDATE IMAGES ----------------
-    if (req.files && req.files.length > 0) {
+    if (req.files?.length) {
       for (const img of vehicle.images) {
         await cloudinary.uploader.destroy(img.public_id);
       }
 
       let newImages = [];
+
       for (const file of req.files) {
         const result = await cloudinary.uploader.upload(file.path, {
           folder: "shipper_vehicles",
@@ -207,41 +202,19 @@ exports.updateVehicle = async (req, res) => {
       vehicle.images = newImages;
     }
 
+    vehicle.verificationStatus = "PENDING";
+
     await vehicle.save();
-
-    // ---------------- NOTIFICATIONS ----------------
-    const settings = await ShipperSettings.findOne({ shipperId });
-    const notif = settings?.notifications?.shipment;
-
-    if (notif) {
-      if (notif.email) {
-        await sendShipperEmail(
-          shipperId,
-          "Vehicle Updated",
-          `Your vehicle (${vehicle.vehicleNumber}) has been updated successfully.`
-        );
-      }
-
-      if (notif.sms) {
-        await sendShipperSms(
-          shipperId,
-          `Your vehicle (${vehicle.vehicleNumber}) has been updated successfully.`
-        );
-      }
-    }
 
     res.status(200).json({
       success: true,
-      message: "Vehicle updated successfully",
+      message: VEHICLE_MESSAGES.VEHICLE_UPDATED,
       vehicle,
     });
   } catch (error) {
-    console.error("Update Vehicle Error:", error);
-
     res.status(500).json({
       success: false,
-      message: "Failed to update vehicle",
-      error: error.message,
+      message: VEHICLE_MESSAGES.VEHICLE_UPDATE_ERROR,
     });
   }
 };
@@ -262,49 +235,24 @@ exports.deleteVehicle = async (req, res) => {
     if (!vehicle) {
       return res.status(404).json({
         success: false,
-        message: "Vehicle not found or unauthorized",
+        message: VEHICLE_MESSAGES.VEHICLE_NOT_FOUND,
       });
     }
 
-    // Delete images from Cloudinary
     for (const img of vehicle.images) {
       await cloudinary.uploader.destroy(img.public_id);
     }
 
     await vehicle.deleteOne();
 
-    // ---------------- NOTIFICATIONS ----------------
-    const settings = await ShipperSettings.findOne({ shipperId });
-    const notif = settings?.notifications?.shipment;
-
-    if (notif) {
-      if (notif.email) {
-        await sendShipperEmail(
-          shipperId,
-          "Vehicle Deleted",
-          `Your vehicle (${vehicle.vehicleNumber}) has been deleted successfully.`
-        );
-      }
-
-      if (notif.sms) {
-        await sendShipperSms(
-          shipperId,
-          `Your vehicle (${vehicle.vehicleNumber}) has been deleted successfully.`
-        );
-      }
-    }
-
     res.status(200).json({
       success: true,
-      message: "Vehicle deleted successfully",
+      message: VEHICLE_MESSAGES.VEHICLE_DELETED,
     });
   } catch (error) {
-    console.error("Delete Vehicle Error:", error);
-
     res.status(500).json({
       success: false,
-      message: "Failed to delete vehicle",
-      error: error.message,
+      message: VEHICLE_MESSAGES.VEHICLE_DELETE_ERROR,
     });
   }
 };
