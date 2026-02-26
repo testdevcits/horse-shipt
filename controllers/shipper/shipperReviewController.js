@@ -123,9 +123,17 @@ SHIPPER → Add / Update Google Review Link
 */
 exports.updateGoogleReviewLink = async (req, res) => {
   try {
-    const shipperId = req.user.id; // logged in shipper
+    const shipperId = req.user.id;
     const { googleReviewLink } = req.body;
 
+    if (!googleReviewLink) {
+      return res.status(400).json({
+        success: false,
+        message: "Google review link is required",
+      });
+    }
+
+    // Validate Link
     if (!validateGoogleLink(googleReviewLink)) {
       return res.status(400).json({
         success: false,
@@ -133,22 +141,30 @@ exports.updateGoogleReviewLink = async (req, res) => {
       });
     }
 
-    const shipper = await Shipper.findById(shipperId);
-    if (!shipper) {
+    // Direct Update Query (Best Practice)
+    const updatedShipper = await Shipper.findByIdAndUpdate(
+      shipperId,
+      {
+        googleReviewLink,
+      },
+      { new: true }
+    );
+
+    if (!updatedShipper) {
       return res.status(404).json({
         success: false,
         message: REVIEW_MESSAGES.SHIPPER_NOT_FOUND,
       });
     }
 
-    shipper.googleReviewLink = googleReviewLink;
-    await shipper.save();
-
     return res.status(200).json({
       success: true,
-      message: REVIEW_MESSAGES.REVIEW_LINK_UPDATED,
+      message: "Google review link updated successfully",
+      data: updatedShipper.googleReviewLink,
     });
   } catch (error) {
+    console.error("Update Google Review Error:", error);
+
     return res.status(500).json({
       success: false,
       message: REVIEW_MESSAGES.SERVER_ERROR,
