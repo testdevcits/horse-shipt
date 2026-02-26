@@ -20,7 +20,8 @@ Validate Google Review Link
 =====================================================
 */
 function validateGoogleLink(link) {
-  const regex = /^https:\/\/(www\.)?google\.com\/maps\/.*/;
+  const regex =
+    /^https:\/\/(www\.)?(google\.com\/maps\/place\/|search\.google\.com\/local\/writereview\?placeid=).*/;
   return regex.test(link);
 }
 
