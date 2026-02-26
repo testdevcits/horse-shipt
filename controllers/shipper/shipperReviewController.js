@@ -128,49 +128,43 @@ exports.updateGoogleReviewLink = async (req, res) => {
     const shipperId = req.user?.id;
     const { googleReviewLink } = req.body;
 
-    console.log("ShippeID:", shipperId);
-    console.log("Link Received:", googleReviewLink);
-
-    if (!shipperId) {
-      console.log("❌ ShippeID missing");
-      return res.status(400).json({ message: "Unauthorized" });
-    }
-
-    if (!googleReviewLink) {
-      console.log("❌ Link missing");
-      return res.status(400).json({ message: "Link required" });
+    if (!shipperId || !googleReviewLink) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request",
+      });
     }
 
     if (!validateGoogleLink(googleReviewLink)) {
-      console.log("❌ Link validation failed");
-      return res.status(400).json({ message: "Invalid link" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid link",
+      });
     }
 
-    const Review = require("../../models/shipper/review.model");
+    const Shipper = require("../../models/shipper/shipperModel");
 
-    console.log("🔄 Updating DB...");
-
-    const updateResult = await Review.updateMany(
-      { shipperId },
+    const result = await Shipper.findByIdAndUpdate(
+      shipperId,
       {
         $set: {
           googleReviewLink: googleReviewLink.trim(),
         },
+      },
+      {
+        new: true,
       }
     );
 
-    console.log("Mongo Update Result:", updateResult);
-
-    console.log("Matched Count:", updateResult.matchedCount);
-    console.log("Modified Count:", updateResult.modifiedCount);
+    console.log("DB Stored Link:", result?.googleReviewLink);
 
     return res.status(200).json({
       success: true,
       message: "Google review link updated successfully",
-      data: googleReviewLink,
+      data: result.googleReviewLink,
     });
   } catch (error) {
-    console.error("🔥 Google Review Update Error:", error);
+    console.error(error);
 
     return res.status(500).json({
       success: false,
