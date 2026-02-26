@@ -60,6 +60,11 @@ const shipperSchema = new mongoose.Schema(
     isLogin: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
     currentDevice: { type: String },
+    // Google Review Link
+    googleReviewLink: {
+      type: String,
+      default: null,
+    },
 
     // Login History
     loginHistory: [loginHistorySchema],
