@@ -128,18 +128,24 @@ exports.updateGoogleReviewLink = async (req, res) => {
     const shipperId = req.user?.id;
     const { googleReviewLink } = req.body;
 
-    console.log("Shippoer ID:", shipperId);
+    console.log("Shipper ID:", shipperId);
     console.log("Received Link:", googleReviewLink);
 
+    if (!shipperId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized request",
+      });
+    }
+
     if (!googleReviewLink) {
-      console.log("Link missing");
       return res.status(400).json({
         success: false,
         message: "Google review link is required",
       });
     }
 
-    // Validate Link
+    // Validate Link Format
     if (!validateGoogleLink(googleReviewLink)) {
       console.log("Invalid Google Link Format");
 
@@ -151,17 +157,22 @@ exports.updateGoogleReviewLink = async (req, res) => {
 
     console.log("Link validation passed");
 
-    // Database Update
+    // Update Shipper Document
     const updatedShipper = await Shipper.findByIdAndUpdate(
       shipperId,
       {
-        googleReviewLink,
+        $set: {
+          googleReviewLink: googleReviewLink.trim(),
+        },
       },
-      { new: true }
+      {
+        new: true,
+        runValidators: true,
+      }
     );
 
     if (!updatedShipper) {
-      console.log(" Shipper not found in DB");
+      console.log("Shipper not found in DB");
 
       return res.status(404).json({
         success: false,
@@ -175,7 +186,7 @@ exports.updateGoogleReviewLink = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Google review link updated successfully",
-      data: updatedShipper.googleReviewLink,
+      data: updatedShipper.googleReviewLink || "",
     });
   } catch (error) {
     console.error("Update Google Review Error:", error);
