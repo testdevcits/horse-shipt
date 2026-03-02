@@ -289,20 +289,15 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
     console.log("[SHIPPER MAP] Fetching shipments for map");
 
-    /* Already assigned shipments exclude */
+    /*  Get assigned shipments */
     const assignedShipments = await ShipperShipment.find({}, "shipment").lean();
 
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
-    /*  Fetch ONLY available shipments */
+    /*  Fetch available shipments only */
     const shipments = await CustomerShipment.find({
       publish: true,
-
-      /*  REMOVE assigned status */
-      status: {
-        $in: ["pending", "open_for_offers"],
-      },
-
+      status: { $in: ["pending", "open_for_offers"] },
       _id: { $nin: assignedIds },
     })
       .select(
@@ -311,6 +306,7 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       .sort({ publishedAt: -1 })
       .lean();
 
+    /*  If no shipment */
     if (!shipments.length) {
       return res.status(200).json({
         success: true,
@@ -319,7 +315,10 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       });
     }
 
-    /*  Enrich shipment data */
+    /* ===============================
+       Enrich Shipment Response
+    =================================*/
+
     const enrichedShipments = shipments.map((s) => {
       let distanceKm = 0;
       let distanceMiles = 0;
@@ -328,18 +327,23 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       const pickup = s.pickupCoords;
       const delivery = s.deliveryCoords;
 
-      /*  Correct coordinate format */
-      if (pickup?.lat && pickup?.lng && delivery?.lat && delivery?.lng) {
+      /*  FIX — Use latitude / longitude (Schema format) */
+
+      if (
+        pickup?.latitude &&
+        pickup?.longitude &&
+        delivery?.latitude &&
+        delivery?.longitude
+      ) {
         distanceKm = calculateDistance(
-          pickup.lat,
-          pickup.lng,
-          delivery.lat,
-          delivery.lng
+          pickup.latitude,
+          pickup.longitude,
+          delivery.latitude,
+          delivery.longitude
         );
 
         distanceMiles = distanceKm * 0.621371;
 
-        /* Truck average speed = 60 km/h */
         estimatedDurationHours = distanceKm / 60;
       }
 
@@ -350,10 +354,19 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
         deliveryLocation: s.deliveryLocation,
         status: s.status,
 
-        pickupCoords: pickup ? { lat: pickup.lat, lng: pickup.lng } : null,
+        /*  Normalize frontend map format */
+        pickupCoords: pickup
+          ? {
+              lat: pickup.latitude,
+              lng: pickup.longitude,
+            }
+          : null,
 
         deliveryCoords: delivery
-          ? { lat: delivery.lat, lng: delivery.lng }
+          ? {
+              lat: delivery.latitude,
+              lng: delivery.longitude,
+            }
           : null,
 
         estimatedDistance: {
