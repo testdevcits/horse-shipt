@@ -267,7 +267,6 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
     console.log("[SHIPPER MAP] Fetching all published shipments for map");
 
-    // Fetch **all published shipments**, ignore assigned status
     const shipments = await CustomerShipment.find({
       publish: true,
       status: {
@@ -282,39 +281,56 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       },
     })
       .select(
-        `
-        _id
-        shipmentCode
-        pickupLocation
-        pickupCoords
-        deliveryLocation
-        deliveryCoords
-        status
-      `
+        "_id shipmentCode pickupLocation pickupCoords deliveryLocation deliveryCoords status"
       )
       .sort({ publishedAt: -1 })
       .lean();
 
-    // Ensure coordinates exist, fallback to dummy if missing
+    if (!shipments || shipments.length === 0) {
+      return res.status(200).json({
+        success: true,
+        shipments: [],
+        message: "No published shipments found",
+      });
+    }
+
     const safeShipments = shipments.map((s) => ({
       _id: s._id,
       shipmentCode: s.shipmentCode,
       pickupLocation: s.pickupLocation,
-      pickupCoords: s.pickupCoords || { latitude: 0, longitude: 0 },
+      pickupCoords:
+        s.pickupCoords &&
+        typeof s.pickupCoords.latitude === "number" &&
+        typeof s.pickupCoords.longitude === "number"
+          ? {
+              lat: s.pickupCoords.latitude,
+              lng: s.pickupCoords.longitude,
+            }
+          : null,
       deliveryLocation: s.deliveryLocation,
-      deliveryCoords: s.deliveryCoords || { latitude: 0, longitude: 0 },
+      deliveryCoords:
+        s.deliveryCoords &&
+        typeof s.deliveryCoords.latitude === "number" &&
+        typeof s.deliveryCoords.longitude === "number"
+          ? {
+              lat: s.deliveryCoords.latitude,
+              lng: s.deliveryCoords.longitude,
+            }
+          : null,
       status: s.status,
     }));
 
     return res.status(200).json({
       success: true,
+      count: safeShipments.length,
       shipments: safeShipments,
     });
-  } catch (err) {
-    console.error("[SHIPPER MAP] Error:", err);
+  } catch (error) {
+    console.error("[SHIPPER MAP] Error:", error);
+
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: "Server Error while fetching shipments for map",
     });
   }
 };
