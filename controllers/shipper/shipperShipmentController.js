@@ -294,36 +294,69 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       });
     }
 
-    const safeShipments = shipments.map((s) => ({
-      _id: s._id,
-      shipmentCode: s.shipmentCode,
-      pickupLocation: s.pickupLocation,
-      pickupCoords:
-        s.pickupCoords &&
-        typeof s.pickupCoords.latitude === "number" &&
-        typeof s.pickupCoords.longitude === "number"
-          ? {
-              lat: s.pickupCoords.latitude,
-              lng: s.pickupCoords.longitude,
+    const enrichedShipments = await Promise.all(
+      shipments.map(async (s) => {
+        let distance = null;
+        let duration = null;
+
+        if (
+          s.pickupCoords?.latitude &&
+          s.pickupCoords?.longitude &&
+          s.deliveryCoords?.latitude &&
+          s.deliveryCoords?.longitude
+        ) {
+          try {
+            const response = await axios.get(
+              "https://maps.googleapis.com/maps/api/directions/json",
+              {
+                params: {
+                  origin: `${s.pickupCoords.latitude},${s.pickupCoords.longitude}`,
+                  destination: `${s.deliveryCoords.latitude},${s.deliveryCoords.longitude}`,
+                  key: process.env.GOOGLE_MAPS_API_KEY,
+                },
+              }
+            );
+
+            if (response.data.routes && response.data.routes.length > 0) {
+              const leg = response.data.routes[0].legs[0];
+              distance = leg.distance.text;
+              duration = leg.duration.text;
             }
-          : null,
-      deliveryLocation: s.deliveryLocation,
-      deliveryCoords:
-        s.deliveryCoords &&
-        typeof s.deliveryCoords.latitude === "number" &&
-        typeof s.deliveryCoords.longitude === "number"
-          ? {
-              lat: s.deliveryCoords.latitude,
-              lng: s.deliveryCoords.longitude,
-            }
-          : null,
-      status: s.status,
-    }));
+          } catch (err) {
+            console.log("Distance fetch error:", err.message);
+          }
+        }
+
+        return {
+          _id: s._id,
+          shipmentCode: s.shipmentCode,
+          pickupLocation: s.pickupLocation,
+          pickupCoords:
+            s.pickupCoords?.latitude && s.pickupCoords?.longitude
+              ? {
+                  lat: s.pickupCoords.latitude,
+                  lng: s.pickupCoords.longitude,
+                }
+              : null,
+          deliveryLocation: s.deliveryLocation,
+          deliveryCoords:
+            s.deliveryCoords?.latitude && s.deliveryCoords?.longitude
+              ? {
+                  lat: s.deliveryCoords.latitude,
+                  lng: s.deliveryCoords.longitude,
+                }
+              : null,
+          status: s.status,
+          estimatedDistance: distance,
+          estimatedDuration: duration,
+        };
+      })
+    );
 
     return res.status(200).json({
       success: true,
-      count: safeShipments.length,
-      shipments: safeShipments,
+      count: enrichedShipments.length,
+      shipments: enrichedShipments,
     });
   } catch (error) {
     console.error("[SHIPPER MAP] Error:", error);
