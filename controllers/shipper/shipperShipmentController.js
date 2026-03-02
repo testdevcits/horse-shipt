@@ -289,12 +289,27 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
     console.log("[SHIPPER MAP] Fetching shipments for map");
 
-    /*  Get assigned shipments */
+    /* ===============================
+       Pagination Params
+    =================================*/
+
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+
+    const skip = (page - 1) * limit;
+
+    /* ===============================
+       Get Assigned Shipments
+    =================================*/
+
     const assignedShipments = await ShipperShipment.find({}, "shipment").lean();
 
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
-    /*  Fetch available shipments only */
+    /* ===============================
+       Fetch Available Shipments
+    =================================*/
+
     const shipments = await CustomerShipment.find({
       publish: true,
       status: { $in: ["pending", "open_for_offers"] },
@@ -304,16 +319,19 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
         "_id shipmentCode pickupLocation pickupCoords deliveryLocation deliveryCoords status publishedAt"
       )
       .sort({ publishedAt: -1 })
+      .skip(skip)
+      .limit(limit)
       .lean();
 
-    /*  If no shipment */
-    if (!shipments.length) {
-      return res.status(200).json({
-        success: true,
-        count: 0,
-        shipments: [],
-      });
-    }
+    /* ===============================
+       Count Total Documents
+    =================================*/
+
+    const total = await CustomerShipment.countDocuments({
+      publish: true,
+      status: { $in: ["pending", "open_for_offers"] },
+      _id: { $nin: assignedIds },
+    });
 
     /* ===============================
        Enrich Shipment Response
@@ -326,8 +344,6 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
 
       const pickup = s.pickupCoords;
       const delivery = s.deliveryCoords;
-
-      /*  FIX — Use latitude / longitude (Schema format) */
 
       if (
         pickup?.latitude &&
@@ -354,7 +370,6 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
         deliveryLocation: s.deliveryLocation,
         status: s.status,
 
-        /*  Normalize frontend map format */
         pickupCoords: pickup
           ? {
               lat: pickup.latitude,
@@ -378,9 +393,17 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       };
     });
 
+    /* ===============================
+       Response
+    =================================*/
+
     return res.status(200).json({
       success: true,
       count: enrichedShipments.length,
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
       shipments: enrichedShipments,
     });
   } catch (error) {
