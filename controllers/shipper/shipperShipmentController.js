@@ -268,7 +268,7 @@ function toRad(value) {
 }
 
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Earth radius in KM
+  const R = 6371; // Earth radius KM
 
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -282,11 +282,20 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  return R * c; // KM
+  return R * c;
 }
+
 exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
-    console.log("[SHIPPER MAP] Fetching all published shipments for map");
+    console.log("[SHIPPER MAP] Fetching shipments for map");
+
+    /* Already assigned shipments exclude */
+
+    const assignedShipments = await ShipperShipment.find({}, "shipment").lean();
+
+    const assignedIds = assignedShipments.map((s) => s.shipment);
+
+    /*  Fetch published shipments */
 
     const shipments = await CustomerShipment.find({
       publish: true,
@@ -300,42 +309,49 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
           "open_for_offers",
         ],
       },
+      _id: { $nin: assignedIds },
     })
       .select(
-        "_id shipmentCode pickupLocation pickupCoords deliveryLocation deliveryCoords status"
+        "_id shipmentCode pickupLocation pickupCoords deliveryLocation deliveryCoords status publishedAt"
       )
       .sort({ publishedAt: -1 })
       .lean();
 
-    if (!shipments || shipments.length === 0) {
+    if (!shipments.length) {
       return res.status(200).json({
         success: true,
+        count: 0,
         shipments: [],
-        message: "No published shipments found",
       });
     }
+
+    /*  Enrich shipment data */
 
     const enrichedShipments = shipments.map((s) => {
       let distanceKm = 0;
       let distanceMiles = 0;
       let estimatedDurationHours = 0;
 
+      const pickup = s.pickupCoords;
+      const delivery = s.deliveryCoords;
+
       if (
-        typeof s.pickupCoords?.latitude === "number" &&
-        typeof s.pickupCoords?.longitude === "number" &&
-        typeof s.deliveryCoords?.latitude === "number" &&
-        typeof s.deliveryCoords?.longitude === "number"
+        pickup?.latitude &&
+        pickup?.longitude &&
+        delivery?.latitude &&
+        delivery?.longitude
       ) {
         distanceKm = calculateDistance(
-          s.pickupCoords.latitude,
-          s.pickupCoords.longitude,
-          s.deliveryCoords.latitude,
-          s.deliveryCoords.longitude
+          pickup.latitude,
+          pickup.longitude,
+          delivery.latitude,
+          delivery.longitude
         );
 
         distanceMiles = distanceKm * 0.621371;
 
-        // Assume average truck speed 60 km/h
+        /* Assume truck average speed = 60 km/h */
+
         estimatedDurationHours = distanceKm / 60;
       }
 
@@ -343,25 +359,31 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
         _id: s._id,
         shipmentCode: s.shipmentCode,
         pickupLocation: s.pickupLocation,
-        pickupCoords: s.pickupCoords
-          ? {
-              lat: s.pickupCoords.latitude,
-              lng: s.pickupCoords.longitude,
-            }
-          : null,
         deliveryLocation: s.deliveryLocation,
-        deliveryCoords: s.deliveryCoords
+        status: s.status,
+
+        /* Normalize coords for frontend map */
+
+        pickupCoords: pickup
           ? {
-              lat: s.deliveryCoords.latitude,
-              lng: s.deliveryCoords.longitude,
+              lat: pickup.latitude,
+              lng: pickup.longitude,
             }
           : null,
-        status: s.status,
+
+        deliveryCoords: delivery
+          ? {
+              lat: delivery.latitude,
+              lng: delivery.longitude,
+            }
+          : null,
+
         estimatedDistance: {
           km: Number(distanceKm.toFixed(2)),
           miles: Number(distanceMiles.toFixed(2)),
         },
-        estimatedDuration: Number(estimatedDurationHours.toFixed(2)), // in hours
+
+        estimatedDuration: Number(estimatedDurationHours.toFixed(2)),
       };
     });
 
