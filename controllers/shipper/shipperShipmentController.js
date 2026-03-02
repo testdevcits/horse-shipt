@@ -290,25 +290,19 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
     console.log("[SHIPPER MAP] Fetching shipments for map");
 
     /* Already assigned shipments exclude */
-
     const assignedShipments = await ShipperShipment.find({}, "shipment").lean();
 
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
-    /*  Fetch published shipments */
-
+    /*  Fetch ONLY available shipments */
     const shipments = await CustomerShipment.find({
       publish: true,
+
+      /*  REMOVE assigned status */
       status: {
-        $in: [
-          "pending",
-          "assigned",
-          "picked",
-          "in_transit",
-          "delivered",
-          "open_for_offers",
-        ],
+        $in: ["pending", "open_for_offers"],
       },
+
       _id: { $nin: assignedIds },
     })
       .select(
@@ -326,7 +320,6 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
     }
 
     /*  Enrich shipment data */
-
     const enrichedShipments = shipments.map((s) => {
       let distanceKm = 0;
       let distanceMiles = 0;
@@ -335,23 +328,18 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       const pickup = s.pickupCoords;
       const delivery = s.deliveryCoords;
 
-      if (
-        pickup?.latitude &&
-        pickup?.longitude &&
-        delivery?.latitude &&
-        delivery?.longitude
-      ) {
+      /*  Correct coordinate format */
+      if (pickup?.lat && pickup?.lng && delivery?.lat && delivery?.lng) {
         distanceKm = calculateDistance(
-          pickup.latitude,
-          pickup.longitude,
-          delivery.latitude,
-          delivery.longitude
+          pickup.lat,
+          pickup.lng,
+          delivery.lat,
+          delivery.lng
         );
 
         distanceMiles = distanceKm * 0.621371;
 
-        /* Assume truck average speed = 60 km/h */
-
+        /* Truck average speed = 60 km/h */
         estimatedDurationHours = distanceKm / 60;
       }
 
@@ -362,20 +350,10 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
         deliveryLocation: s.deliveryLocation,
         status: s.status,
 
-        /* Normalize coords for frontend map */
-
-        pickupCoords: pickup
-          ? {
-              lat: pickup.latitude,
-              lng: pickup.longitude,
-            }
-          : null,
+        pickupCoords: pickup ? { lat: pickup.lat, lng: pickup.lng } : null,
 
         deliveryCoords: delivery
-          ? {
-              lat: delivery.latitude,
-              lng: delivery.longitude,
-            }
+          ? { lat: delivery.lat, lng: delivery.lng }
           : null,
 
         estimatedDistance: {
