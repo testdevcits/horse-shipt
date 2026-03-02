@@ -1,3 +1,4 @@
+const axios = require("axios");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 
@@ -56,6 +57,7 @@ exports.addVehicle = async (req, res) => {
       }
     }
 
+    // ===== Upload Images =====
     let imageArray = [];
 
     if (req.files?.length) {
@@ -71,6 +73,7 @@ exports.addVehicle = async (req, res) => {
       }
     }
 
+    // ===== Create Vehicle First (PENDING Verification) =====
     const vehicle = await ShipperVehicle.create({
       shipper: shipperId,
       transportType: "Trucking",
@@ -84,6 +87,15 @@ exports.addVehicle = async (req, res) => {
       verificationStatus: "PENDING",
       images: imageArray,
     });
+
+    // ===== Async Verification Trigger =====
+    if (vinNumber) {
+      try {
+        verifyVehicleAsync(vehicle._id, vinNumber);
+      } catch (err) {
+        console.log("Verification Trigger Error:", err);
+      }
+    }
 
     res.status(201).json({
       success: true,
@@ -253,6 +265,66 @@ exports.deleteVehicle = async (req, res) => {
     res.status(500).json({
       success: false,
       message: VEHICLE_MESSAGES.VEHICLE_DELETE_ERROR,
+    });
+  }
+};
+
+exports.verifyVehicle = async (req, res) => {
+  try {
+    const { vehicleId } = req.params;
+
+    const vehicle = await ShipperVehicle.findById(vehicleId);
+
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found",
+      });
+    }
+
+    if (!vehicle.vinNumber) {
+      return res.status(400).json({
+        success: false,
+        message: "VIN number missing",
+      });
+    }
+
+    // External Verification Call
+    const response = await axios.get(
+      `https://vpic.nhtsa.dot.gov/api/vehicles/decodevinvalues/${vehicle.vinNumber}?format=json`
+    );
+
+    const data = response.data?.Results?.[0];
+
+    if (!data) {
+      return res.status(400).json({
+        success: false,
+        message: "Verification failed",
+      });
+    }
+
+    // Update Database
+    vehicle.vinMetaData = data;
+    vehicle.manufacturer = data.Make || "";
+    vehicle.model = data.Model || "";
+    vehicle.modelYear = data.ModelYear || null;
+    vehicle.bodyClass = data.BodyClass || "";
+
+    vehicle.verificationStatus = "VERIFIED";
+
+    await vehicle.save();
+
+    res.json({
+      success: true,
+      message: "Vehicle verified successfully",
+      vehicle,
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).json({
+      success: false,
+      message: "Verification error",
     });
   }
 };

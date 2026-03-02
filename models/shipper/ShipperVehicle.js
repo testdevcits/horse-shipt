@@ -35,10 +35,53 @@ const shipperVehicleSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ===== Vehicle Identification Metadata =====
+
+    manufacturer: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    model: {
+      type: String,
+      trim: true,
+      default: "",
+    },
+
+    modelYear: {
+      type: Number,
+      default: null,
+    },
+
+    bodyClass: {
+      type: String,
+      default: "",
+    },
+
+    engineType: {
+      type: String,
+      default: "",
+    },
+
+    // ===== Verification System =====
+
     verificationStatus: {
       type: String,
       enum: ["PENDING", "VERIFIED", "REJECTED"],
       default: "PENDING",
+    },
+
+    verificationMeta: {
+      verifiedAt: Date,
+      verifiedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Admin",
+      },
+      verificationSource: {
+        type: String,
+        default: "NHTSA_API",
+      },
     },
 
     trailerType: {

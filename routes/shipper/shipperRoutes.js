@@ -53,6 +53,7 @@ const {
   getMyVehicles,
   updateVehicle,
   deleteVehicle,
+  verifyVehicle,
 } = require("../../controllers/shipper/shipperVehicleController");
 
 // -------- Location --------
@@ -183,6 +184,7 @@ router.get("/messages/:shipmentId", shipperAuth, getMessages);
 // ====================================================
 
 router.post("/vehicles", shipperAuth, upload.array("images", 5), addVehicle);
+router.post("/vehicles/verify/:vehicleId", shipperAuth, verifyVehicle);
 
 router.get("/vehicles", shipperAuth, getMyVehicles);
 
