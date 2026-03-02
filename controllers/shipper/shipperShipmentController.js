@@ -57,6 +57,30 @@ exports.getShipmentById = async (req, res) => {
 /* =========================================================
    GET AVAILABLE SHIPMENTS (MARKETPLACE)
 ========================================================= */
+
+// Utility function for distance calculation
+function toRad(value) {
+  return (value * Math.PI) / 180;
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Radius of Earth in KM
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // distance in KM
+}
+
 exports.getAvailableShipments = async (req, res) => {
   try {
     console.log("Fetching all available shipments for shippers...");
@@ -76,21 +100,51 @@ exports.getAvailableShipments = async (req, res) => {
         `
         shipmentCode
         pickupLocation
+        pickupCoords
         pickupDate
         deliveryLocation
+        deliveryCoords
         deliveryDate
         horses
         numberOfHorses
         additionalInfo
         publishedAt
         status
-        `
+      `
       )
-      .sort({ publishedAt: -1 }); // latest published first
+      .sort({ publishedAt: -1 });
+
+    // Add estimated distance to each shipment
+    const shipmentsWithDistance = shipments.map((shipment) => {
+      const pickup = shipment.pickupCoords;
+      const delivery = shipment.deliveryCoords;
+
+      let distanceKm = 0;
+      let distanceMiles = 0;
+
+      if (pickup && delivery) {
+        distanceKm = calculateDistance(
+          pickup.latitude,
+          pickup.longitude,
+          delivery.latitude,
+          delivery.longitude
+        );
+
+        distanceMiles = distanceKm * 0.621371;
+      }
+
+      return {
+        ...shipment.toObject(),
+        estimatedDistance: {
+          km: Number(distanceKm.toFixed(2)),
+          miles: Number(distanceMiles.toFixed(2)),
+        },
+      };
+    });
 
     res.status(200).json({
       success: true,
-      shipments,
+      shipments: shipmentsWithDistance,
     });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
