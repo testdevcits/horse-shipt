@@ -263,6 +263,27 @@ exports.updateShipmentStatus = async (req, res) => {
 
 // controllers/shipper/shipperShipmentController.js
 
+function toRad(value) {
+  return (value * Math.PI) / 180;
+}
+
+function calculateDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371; // Earth radius in KM
+
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // KM
+}
 exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
     console.log("[SHIPPER MAP] Fetching all published shipments for map");
@@ -294,64 +315,55 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
       });
     }
 
-    const enrichedShipments = await Promise.all(
-      shipments.map(async (s) => {
-        let distance = null;
-        let duration = null;
+    const enrichedShipments = shipments.map((s) => {
+      let distanceKm = 0;
+      let distanceMiles = 0;
+      let estimatedDurationHours = 0;
 
-        if (
-          s.pickupCoords?.latitude &&
-          s.pickupCoords?.longitude &&
-          s.deliveryCoords?.latitude &&
-          s.deliveryCoords?.longitude
-        ) {
-          try {
-            const response = await axios.get(
-              "https://maps.googleapis.com/maps/api/directions/json",
-              {
-                params: {
-                  origin: `${s.pickupCoords.latitude},${s.pickupCoords.longitude}`,
-                  destination: `${s.deliveryCoords.latitude},${s.deliveryCoords.longitude}`,
-                  key: process.env.GOOGLE_MAPS_API_KEY,
-                },
-              }
-            );
+      if (
+        typeof s.pickupCoords?.latitude === "number" &&
+        typeof s.pickupCoords?.longitude === "number" &&
+        typeof s.deliveryCoords?.latitude === "number" &&
+        typeof s.deliveryCoords?.longitude === "number"
+      ) {
+        distanceKm = calculateDistance(
+          s.pickupCoords.latitude,
+          s.pickupCoords.longitude,
+          s.deliveryCoords.latitude,
+          s.deliveryCoords.longitude
+        );
 
-            if (response.data.routes && response.data.routes.length > 0) {
-              const leg = response.data.routes[0].legs[0];
-              distance = leg.distance.text;
-              duration = leg.duration.text;
+        distanceMiles = distanceKm * 0.621371;
+
+        // Assume average truck speed 60 km/h
+        estimatedDurationHours = distanceKm / 60;
+      }
+
+      return {
+        _id: s._id,
+        shipmentCode: s.shipmentCode,
+        pickupLocation: s.pickupLocation,
+        pickupCoords: s.pickupCoords
+          ? {
+              lat: s.pickupCoords.latitude,
+              lng: s.pickupCoords.longitude,
             }
-          } catch (err) {
-            console.log("Distance fetch error:", err.message);
-          }
-        }
-
-        return {
-          _id: s._id,
-          shipmentCode: s.shipmentCode,
-          pickupLocation: s.pickupLocation,
-          pickupCoords:
-            s.pickupCoords?.latitude && s.pickupCoords?.longitude
-              ? {
-                  lat: s.pickupCoords.latitude,
-                  lng: s.pickupCoords.longitude,
-                }
-              : null,
-          deliveryLocation: s.deliveryLocation,
-          deliveryCoords:
-            s.deliveryCoords?.latitude && s.deliveryCoords?.longitude
-              ? {
-                  lat: s.deliveryCoords.latitude,
-                  lng: s.deliveryCoords.longitude,
-                }
-              : null,
-          status: s.status,
-          estimatedDistance: distance,
-          estimatedDuration: duration,
-        };
-      })
-    );
+          : null,
+        deliveryLocation: s.deliveryLocation,
+        deliveryCoords: s.deliveryCoords
+          ? {
+              lat: s.deliveryCoords.latitude,
+              lng: s.deliveryCoords.longitude,
+            }
+          : null,
+        status: s.status,
+        estimatedDistance: {
+          km: Number(distanceKm.toFixed(2)),
+          miles: Number(distanceMiles.toFixed(2)),
+        },
+        estimatedDuration: Number(estimatedDurationHours.toFixed(2)), // in hours
+      };
+    });
 
     return res.status(200).json({
       success: true,
