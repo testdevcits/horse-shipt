@@ -113,6 +113,14 @@ const {
   getGoogleReviewLink,
 } = require("../../controllers/shipper/shipperReviewController");
 
+// -------- STRIPE ROUTES --------
+const {
+  createStripeAccount,
+  createOnboardingLink,
+  checkStripeStatus,
+  stripeWebhook,
+} = require("../../controllers/shipper/shipperStripeController");
+
 // ====================================================
 // SHIPPER PROFILE ROUTES
 // ====================================================
@@ -299,7 +307,12 @@ router.get("/chat/customers", shipperAuth, getCustomersForChat);
 router.put("/reviews/google-link", shipperAuth, updateGoogleReviewLink);
 router.get("/reviews/google-link", shipperAuth, getGoogleReviewLink);
 
+router.post("/stripe/create-account", shipperAuth, createStripeAccount);
+router.post("/stripe/onboarding", shipperAuth, createOnboardingLink);
+router.get("/stripe/status", shipperAuth, checkStripeStatus);
+
 // ====================================================
 // EXPORT
 // ====================================================
+
 module.exports = router;

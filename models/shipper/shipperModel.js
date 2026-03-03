@@ -65,7 +65,30 @@ const shipperSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    stripeAccountId: {
+      type: String,
+      default: null,
+    },
 
+    stripeVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    stripeOnboardingCompleted: {
+      type: Boolean,
+      default: false,
+    },
+
+    stripeChargesEnabled: {
+      type: Boolean,
+      default: false,
+    },
+
+    stripePayoutsEnabled: {
+      type: Boolean,
+      default: false,
+    },
     // Login History
     loginHistory: [loginHistorySchema],
   },
