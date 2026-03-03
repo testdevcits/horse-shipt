@@ -181,6 +181,18 @@ app.get("/", (req, res) => {
   res.status(200).send("🐎 Horse Shipt Backend API is running...");
 });
 
+// ================================
+// Stripe Webhook (IMPORTANT)
+// Must be before 404 handler
+// ================================
+
+const stripeController = require("./controllers/shipper/shipperStripeController");
+
+app.post(
+  "/api/stripe/webhook",
+  express.raw({ type: "application/json" }),
+  stripeController.stripeWebhook
+);
 // -------------------------
 // 404 Handler
 // -------------------------
