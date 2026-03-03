@@ -4,7 +4,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const Shipper = require("../../models/shipper/shipperModel");
 
 // ==========================================================
-// CREATE STRIPE CONNECT ACCOUNT
+// CREATE STRIPE CONNECT ACCOUNT (UPDATED)
 // ==========================================================
 
 exports.createStripeAccount = async (req, res) => {
@@ -15,17 +15,22 @@ exports.createStripeAccount = async (req, res) => {
       return res.status(404).json({ message: "Shipper not found" });
     }
 
+    // Prevent duplicate account creation
     if (shipper.stripeAccountId) {
-      return res.status(400).json({
-        message: "Stripe account already created",
+      return res.status(200).json({
+        message: "Stripe account already exists",
+        stripeAccountId: shipper.stripeAccountId,
       });
     }
 
+    // Marketplace Singapore requirement fix
     const account = await stripe.accounts.create({
       type: "express",
-      country: "SG", // change if needed
+      country: "SG",
       email: shipper.email,
+
       capabilities: {
+        card_payments: { requested: true },
         transfers: { requested: true },
       },
     });
@@ -35,66 +40,58 @@ exports.createStripeAccount = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Stripe account created successfully",
       stripeAccountId: account.id,
     });
   } catch (error) {
+    console.error("Create Stripe Account Error:", error.message);
     res.status(500).json({ error: error.message });
   }
 };
 
 // ==========================================================
-// GENERATE STRIPE ONBOARDING LINK
+// CREATE ONBOARDING LINK
 // ==========================================================
 
 exports.createOnboardingLink = async (req, res) => {
   try {
     const shipper = await Shipper.findById(req.user.id);
 
-    if (!shipper) {
-      return res.status(404).json({
-        message: "Shipper not found",
-      });
-    }
-
-    if (!shipper.stripeAccountId) {
+    if (!shipper?.stripeAccountId) {
       return res.status(400).json({
-        message: "Please create Stripe account first",
+        message: "Create Stripe account first",
       });
     }
 
-    // Create onboarding link
     const accountLink = await stripe.accountLinks.create({
       account: shipper.stripeAccountId,
+
       refresh_url:
         "https://horse-shipt-frontend.vercel.app/shipper/dashboard?stripe=refresh",
+
       return_url:
         "https://horse-shipt-frontend.vercel.app/shipper/dashboard?stripe=success",
+
       type: "account_onboarding",
     });
 
-    res.status(200).json({
-      success: true,
-      message: "Redirect shipper to Stripe onboarding",
+    res.json({
       onboardingUrl: accountLink.url,
     });
   } catch (error) {
-    console.error("Stripe Onboarding Error:", error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    console.error(error.message);
+    res.status(500).json({ error: error.message });
   }
 };
+
 // ==========================================================
-// CHECK STRIPE ACCOUNT STATUS (Manual Check)
+// CHECK ACCOUNT STATUS
 // ==========================================================
 
 exports.checkStripeStatus = async (req, res) => {
   try {
     const shipper = await Shipper.findById(req.user.id);
 
-    if (!shipper || !shipper.stripeAccountId) {
+    if (!shipper?.stripeAccountId) {
       return res.status(400).json({
         message: "Stripe account not created",
       });
@@ -102,18 +99,16 @@ exports.checkStripeStatus = async (req, res) => {
 
     const account = await stripe.accounts.retrieve(shipper.stripeAccountId);
 
-    const verified = account.charges_enabled && account.payouts_enabled;
-
-    shipper.stripeVerified = verified;
     shipper.stripeChargesEnabled = account.charges_enabled;
     shipper.stripePayoutsEnabled = account.payouts_enabled;
     shipper.stripeOnboardingCompleted = account.details_submitted;
 
+    shipper.stripeVerified = account.charges_enabled && account.payouts_enabled;
+
     await shipper.save();
 
-    res.status(200).json({
-      success: true,
-      verified,
+    res.json({
+      verified: shipper.stripeVerified,
       chargesEnabled: account.charges_enabled,
       payoutsEnabled: account.payouts_enabled,
       onboardingCompleted: account.details_submitted,
@@ -124,25 +119,26 @@ exports.checkStripeStatus = async (req, res) => {
 };
 
 // ==========================================================
-// STRIPE WEBHOOK (VERY IMPORTANT)
+// WEBHOOK (VERY IMPORTANT — USE RAW BODY)
 // ==========================================================
 
 exports.stripeWebhook = async (req, res) => {
-  const sig = req.headers["stripe-signature"];
-
   let event;
 
   try {
+    const sig = req.headers["stripe-signature"];
+
     event = stripe.webhooks.constructEvent(
       req.body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
   } catch (err) {
+    console.error("Webhook Signature Error:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Handle account updates
+  // Account Update Event
   if (event.type === "account.updated") {
     const account = event.data.object;
 
