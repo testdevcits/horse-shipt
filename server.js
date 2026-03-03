@@ -62,22 +62,36 @@ const allowedOrigins = [
 // -------------------------
 // CORS Configuration
 // -------------------------
-app.use(
-  cors({
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true); // Postman / Server calls
+// ==========================
+// FORCE CORS HEADERS
+// ==========================
+app.use((req, res, next) => {
+  const allowedOrigins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://horse-shipt-frontend.vercel.app",
+    "https://admin-horse-shipt.vercel.app",
+  ];
 
-      if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+  const origin = req.headers.origin;
 
-      console.log("CORS Blocked Origin:", origin);
-      return callback(new Error("CORS policy: Origin not allowed"));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  })
-);
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+  }
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,PUT,DELETE,PATCH,OPTIONS"
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
 
 // -------------------------
 // Body Parsers
