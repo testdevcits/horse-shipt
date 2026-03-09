@@ -7,6 +7,17 @@ const Shipper = require("../../models/shipper/shipperModel");
 // CREATE STRIPE CONNECT ACCOUNT
 // ==========================================================
 
+// Utility function to get platform country
+const getPlatformCountry = async () => {
+  try {
+    const account = await stripe.accounts.retrieve(); // Retrieve platform account
+    return account.country || "US"; // Default to US if not set
+  } catch (err) {
+    console.error("Stripe Platform Account Error:", err);
+    return "US";
+  }
+};
+
 exports.createStripeAccount = async (req, res) => {
   try {
     const shipper = await Shipper.findById(req.user.id);
@@ -18,7 +29,7 @@ exports.createStripeAccount = async (req, res) => {
       });
     }
 
-    // prevent duplicate account
+    // Prevent duplicate account
     if (shipper.stripeAccountId) {
       return res.status(200).json({
         success: true,
@@ -27,12 +38,20 @@ exports.createStripeAccount = async (req, res) => {
       });
     }
 
+    // Determine the correct country for the connected account
+    const platformCountry = await getPlatformCountry();
+
+    // Only allow US/IN for now (can extend later)
+    const allowedCountries = ["US", "IN"];
+    const accountCountry = allowedCountries.includes(platformCountry)
+      ? platformCountry
+      : "US";
+
     const account = await stripe.accounts.create({
       type: "express",
-      country: "IN",
+      country: accountCountry,
       email: shipper.email,
       business_type: "individual",
-
       capabilities: {
         card_payments: { requested: true },
         transfers: { requested: true },
@@ -40,13 +59,13 @@ exports.createStripeAccount = async (req, res) => {
     });
 
     shipper.stripeAccountId = account.id;
-
     await shipper.save();
 
     res.status(200).json({
       success: true,
       message: "Stripe account created successfully",
       stripeAccountId: account.id,
+      accountCountry, // Optional: return the country used
     });
   } catch (error) {
     console.error("Stripe Account Creation Error:", error);
