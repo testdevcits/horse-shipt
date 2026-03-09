@@ -15,19 +15,20 @@ exports.createStripeAccount = async (req, res) => {
       return res.status(404).json({ message: "Shipper not found" });
     }
 
-    // Prevent duplicate account creation
+    // Prevent duplicate account
     if (shipper.stripeAccountId) {
       return res.status(200).json({
+        success: true,
         message: "Stripe account already exists",
         stripeAccountId: shipper.stripeAccountId,
       });
     }
 
-    // Marketplace Singapore requirement fix
     const account = await stripe.accounts.create({
       type: "express",
-      country: "SG",
+      country: "IN", // change if needed
       email: shipper.email,
+      business_type: "individual",
 
       capabilities: {
         card_payments: { requested: true },
@@ -43,7 +44,7 @@ exports.createStripeAccount = async (req, res) => {
       stripeAccountId: account.id,
     });
   } catch (error) {
-    console.error("Create Stripe Account Error:", error.message);
+    console.error("Stripe Account Creation Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -72,13 +73,16 @@ exports.createOnboardingLink = async (req, res) => {
         "https://horse-shipt-frontend.vercel.app/shipper/dashboard?stripe=success",
 
       type: "account_onboarding",
+
+      collect: "eventually_due",
     });
 
     res.json({
+      success: true,
       onboardingUrl: accountLink.url,
     });
   } catch (error) {
-    console.error(error.message);
+    console.error("Onboarding Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -103,17 +107,23 @@ exports.checkStripeStatus = async (req, res) => {
     shipper.stripePayoutsEnabled = account.payouts_enabled;
     shipper.stripeOnboardingCompleted = account.details_submitted;
 
-    shipper.stripeVerified = account.charges_enabled && account.payouts_enabled;
+    shipper.stripeVerified =
+      account.details_submitted &&
+      account.charges_enabled &&
+      account.payouts_enabled;
 
     await shipper.save();
 
     res.json({
+      success: true,
       verified: shipper.stripeVerified,
       chargesEnabled: account.charges_enabled,
       payoutsEnabled: account.payouts_enabled,
       onboardingCompleted: account.details_submitted,
+      requirements: account.requirements,
     });
   } catch (error) {
+    console.error("Stripe Status Error:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -138,7 +148,6 @@ exports.stripeWebhook = async (req, res) => {
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // Account Update Event
   if (event.type === "account.updated") {
     const account = event.data.object;
 
@@ -152,7 +161,9 @@ exports.stripeWebhook = async (req, res) => {
       shipper.stripeOnboardingCompleted = account.details_submitted;
 
       shipper.stripeVerified =
-        account.charges_enabled && account.payouts_enabled;
+        account.details_submitted &&
+        account.charges_enabled &&
+        account.payouts_enabled;
 
       await shipper.save();
     }
