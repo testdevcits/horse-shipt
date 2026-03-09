@@ -4,7 +4,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const Shipper = require("../../models/shipper/shipperModel");
 
 // ==========================================================
-// CREATE STRIPE CONNECT ACCOUNT (UPDATED)
+// CREATE STRIPE CONNECT ACCOUNT
 // ==========================================================
 
 exports.createStripeAccount = async (req, res) => {
@@ -12,10 +12,13 @@ exports.createStripeAccount = async (req, res) => {
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper) {
-      return res.status(404).json({ message: "Shipper not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
     }
 
-    // Prevent duplicate account
+    // prevent duplicate account
     if (shipper.stripeAccountId) {
       return res.status(200).json({
         success: true,
@@ -26,7 +29,7 @@ exports.createStripeAccount = async (req, res) => {
 
     const account = await stripe.accounts.create({
       type: "express",
-      country: "IN", // change if needed
+      country: "IN",
       email: shipper.email,
       business_type: "individual",
 
@@ -37,20 +40,26 @@ exports.createStripeAccount = async (req, res) => {
     });
 
     shipper.stripeAccountId = account.id;
+
     await shipper.save();
 
     res.status(200).json({
       success: true,
+      message: "Stripe account created successfully",
       stripeAccountId: account.id,
     });
   } catch (error) {
     console.error("Stripe Account Creation Error:", error);
-    res.status(500).json({ error: error.message });
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
 // ==========================================================
-// CREATE ONBOARDING LINK
+// CREATE ONBOARDING LINK (FOR FIRST TIME OR RE-VERIFICATION)
 // ==========================================================
 
 exports.createOnboardingLink = async (req, res) => {
@@ -59,7 +68,8 @@ exports.createOnboardingLink = async (req, res) => {
 
     if (!shipper?.stripeAccountId) {
       return res.status(400).json({
-        message: "Create Stripe account first",
+        success: false,
+        message: "Stripe account not created",
       });
     }
 
@@ -83,12 +93,16 @@ exports.createOnboardingLink = async (req, res) => {
     });
   } catch (error) {
     console.error("Onboarding Error:", error);
-    res.status(500).json({ error: error.message });
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
 // ==========================================================
-// CHECK ACCOUNT STATUS
+// CHECK STRIPE ACCOUNT STATUS
 // ==========================================================
 
 exports.checkStripeStatus = async (req, res) => {
@@ -97,12 +111,14 @@ exports.checkStripeStatus = async (req, res) => {
 
     if (!shipper?.stripeAccountId) {
       return res.status(400).json({
+        success: false,
         message: "Stripe account not created",
       });
     }
 
     const account = await stripe.accounts.retrieve(shipper.stripeAccountId);
 
+    // update DB
     shipper.stripeChargesEnabled = account.charges_enabled;
     shipper.stripePayoutsEnabled = account.payouts_enabled;
     shipper.stripeOnboardingCompleted = account.details_submitted;
@@ -114,22 +130,35 @@ exports.checkStripeStatus = async (req, res) => {
 
     await shipper.save();
 
+    // check if verification still required
+    const needsVerification = account.requirements?.currently_due?.length > 0;
+
     res.json({
       success: true,
+
       verified: shipper.stripeVerified,
+
       chargesEnabled: account.charges_enabled,
       payoutsEnabled: account.payouts_enabled,
+
       onboardingCompleted: account.details_submitted,
+
+      needsVerification,
+
       requirements: account.requirements,
     });
   } catch (error) {
     console.error("Stripe Status Error:", error);
-    res.status(500).json({ error: error.message });
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
 // ==========================================================
-// WEBHOOK (VERY IMPORTANT — USE RAW BODY)
+// STRIPE WEBHOOK
 // ==========================================================
 
 exports.stripeWebhook = async (req, res) => {
@@ -145,29 +174,39 @@ exports.stripeWebhook = async (req, res) => {
     );
   } catch (err) {
     console.error("Webhook Signature Error:", err.message);
+
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  if (event.type === "account.updated") {
-    const account = event.data.object;
+  try {
+    if (event.type === "account.updated") {
+      const account = event.data.object;
 
-    const shipper = await Shipper.findOne({
-      stripeAccountId: account.id,
-    });
+      const shipper = await Shipper.findOne({
+        stripeAccountId: account.id,
+      });
 
-    if (shipper) {
-      shipper.stripeChargesEnabled = account.charges_enabled;
-      shipper.stripePayoutsEnabled = account.payouts_enabled;
-      shipper.stripeOnboardingCompleted = account.details_submitted;
+      if (shipper) {
+        shipper.stripeChargesEnabled = account.charges_enabled;
+        shipper.stripePayoutsEnabled = account.payouts_enabled;
+        shipper.stripeOnboardingCompleted = account.details_submitted;
 
-      shipper.stripeVerified =
-        account.details_submitted &&
-        account.charges_enabled &&
-        account.payouts_enabled;
+        shipper.stripeVerified =
+          account.details_submitted &&
+          account.charges_enabled &&
+          account.payouts_enabled;
 
-      await shipper.save();
+        await shipper.save();
+      }
     }
-  }
 
-  res.json({ received: true });
+    res.json({ received: true });
+  } catch (error) {
+    console.error("Webhook Processing Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: "Webhook processing failed",
+    });
+  }
 };
