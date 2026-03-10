@@ -54,6 +54,7 @@ const {
   getQuotesByShipment,
   getQuoteById,
   acceptQuoteWithSignature,
+  createPaymentIntent,
 } = require("../../controllers/customer/customerQuoteController");
 
 const {
@@ -203,6 +204,12 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
+
+// ====================================================
+// PAYMENT (QUOTE PAYMENT)
+// ====================================================
+
+router.post("/quotes/:quoteId/pay", customerAuth, createPaymentIntent);
 
 // ====================================================
 // CHAT LIST (Customer Dashboard)

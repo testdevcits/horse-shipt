@@ -283,3 +283,52 @@ exports.getQuoteById = async (req, res) => {
     });
   }
 };
+
+exports.createPaymentIntent = async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const customerId = req.user._id;
+
+    const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found",
+      });
+    }
+
+    if (quote.shipment.customer.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(quote.totalPrice * 100),
+      currency: quote.currency || "usd",
+
+      metadata: {
+        quoteId: quote._id.toString(),
+      },
+    });
+
+    quote.stripePaymentIntentId = paymentIntent.id;
+    quote.paymentStatus = "pending";
+
+    await quote.save();
+
+    res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret,
+    });
+  } catch (error) {
+    console.log("createPaymentIntent error:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Payment intent creation failed",
+    });
+  }
+};

@@ -193,11 +193,13 @@ exports.stripeWebhook = async (req, res) => {
     );
   } catch (err) {
     console.error("Webhook Signature Error:", err.message);
-
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
   try {
+    /* =================================
+       SHIPPER CONNECT ACCOUNT UPDATE
+    ================================== */
     if (event.type === "account.updated") {
       const account = event.data.object;
 
@@ -216,6 +218,43 @@ exports.stripeWebhook = async (req, res) => {
           account.payouts_enabled;
 
         await shipper.save();
+
+        console.log("Shipper Stripe status updated:", shipper._id);
+      }
+    }
+
+    /* =================================
+       CUSTOMER PAYMENT SUCCESS
+    ================================== */
+    if (event.type === "payment_intent.succeeded") {
+      const paymentIntent = event.data.object;
+
+      const quoteId = paymentIntent.metadata?.quoteId;
+
+      if (quoteId) {
+        await ShipmentQuote.findByIdAndUpdate(quoteId, {
+          paymentStatus: "paid",
+          paymentCompletedAt: new Date(),
+        });
+
+        console.log("Payment success for quote:", quoteId);
+      }
+    }
+
+    /* =================================
+       PAYMENT FAILED
+    ================================== */
+    if (event.type === "payment_intent.payment_failed") {
+      const paymentIntent = event.data.object;
+
+      const quoteId = paymentIntent.metadata?.quoteId;
+
+      if (quoteId) {
+        await ShipmentQuote.findByIdAndUpdate(quoteId, {
+          paymentStatus: "failed",
+        });
+
+        console.log("Payment failed for quote:", quoteId);
       }
     }
 
