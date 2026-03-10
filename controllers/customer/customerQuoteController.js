@@ -7,6 +7,9 @@ const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 
+const Stripe = require("stripe");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
 /* =========================================================
    ACCEPT QUOTE (WITH PAYMENT + RECEIPT)
 ========================================================= */
