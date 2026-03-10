@@ -18,7 +18,6 @@ const quoteSchema = new mongoose.Schema(
     },
 
     // ================= CONTRACT ID =================
-    // Deterministic & reusable contract identifier
     contractId: {
       type: String,
       required: true,
@@ -53,6 +52,23 @@ const quoteSchema = new mongoose.Schema(
     paymentDue: {
       type: String,
       enum: ["pickup", "delivery"],
+    },
+
+    paymentStatus: {
+      type: String,
+      enum: ["pending", "paid"],
+      default: "pending",
+      index: true,
+    },
+
+    stripePaymentIntentId: {
+      type: String,
+      default: null,
+    },
+
+    paidAt: {
+      type: Date,
+      default: null,
     },
 
     // ================= TIMING =================

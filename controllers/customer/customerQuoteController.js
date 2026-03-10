@@ -1,13 +1,14 @@
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const PlatformSettings = require("../../models/admin/payment/platformSettings");
 
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 
 /* =========================================================
-   ACCEPT QUOTE (RE-GENERATE PDF WITH CUSTOMER SIGNATURE)
+   ACCEPT QUOTE (WITH PAYMENT + RECEIPT)
 ========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
   try {
@@ -65,7 +66,31 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       });
     }
 
-    /* ---------------- RE-GENERATE PDF ---------------- */
+    /* ---------------- PAYMENT VALIDATION ---------------- */
+    if (quote.paymentMethod === "card") {
+      if (quote.paymentStatus !== "paid") {
+        return res.status(400).json({
+          success: false,
+          message: "Payment must be completed before accepting quote",
+        });
+      }
+    }
+
+    /* ---------------- PLATFORM FEE CALCULATION ---------------- */
+    const settings = await PlatformSettings.findOne();
+
+    let platformFee = 0;
+    let shipperReceives = quote.totalPrice;
+
+    if (settings) {
+      const percentFee = (quote.totalPrice * settings.platformFeePercent) / 100;
+
+      platformFee = percentFee + settings.platformFeeFlat;
+
+      shipperReceives = quote.totalPrice - platformFee;
+    }
+
+    /* ---------------- GENERATE CONTRACT PDF ---------------- */
     const pdfBuffer = await generateContractPDF({
       shipment: quote.shipment,
       shipmentCode: quote.shipment.shipmentCode,
@@ -88,12 +113,12 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       customerSignature,
     });
 
-    /* ---------------- OVERWRITE SAME PDF ---------------- */
+    /* ---------------- UPLOAD PDF ---------------- */
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
           resource_type: "raw",
-          public_id: quote.contract.public_id, // SAME FILE
+          public_id: quote.contract.public_id,
           overwrite: true,
         },
         (err, result) => (err ? reject(err) : resolve(result))
@@ -102,12 +127,13 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
-    /* ---------------- UPDATE DB ---------------- */
+    /* ---------------- UPDATE QUOTE ---------------- */
     quote.customerSignature = customerSignature;
     quote.contract.url = uploadResult.secure_url;
     quote.contractAccepted = true;
     quote.contractAcceptedAt = new Date();
     quote.status = "accepted";
+
     await quote.save();
 
     /* ---------------- REJECT OTHER QUOTES ---------------- */
@@ -122,7 +148,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       assignedShipper: quote.shipper._id,
     });
 
-    /* ---------------- CUSTOMER QUOTE HISTORY ---------------- */
+    /* ---------------- SAVE HISTORY ---------------- */
     await CustomerQuote.create({
       shipmentId: quote.shipment._id,
       customerId,
@@ -132,13 +158,23 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       status: "accepted",
     });
 
+    /* ---------------- RECEIPT ---------------- */
+    const receipt = {
+      shipmentPrice: quote.totalPrice,
+      platformFee,
+      shipperReceives,
+      currency: quote.currency,
+    };
+
     return res.status(200).json({
       success: true,
       message: "Quote accepted & contract signed successfully",
+      receipt,
       quote,
     });
   } catch (error) {
     console.error("acceptQuoteWithSignature error:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to accept quote",
@@ -147,7 +183,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 };
 
 /* =========================================================
-   GET ALL QUOTES BY SHIPMENT ID (CUSTOMER)
+   GET ALL QUOTES BY SHIPMENT ID
 ========================================================= */
 exports.getQuotesByShipment = async (req, res) => {
   try {
@@ -189,6 +225,7 @@ exports.getQuotesByShipment = async (req, res) => {
     });
   } catch (error) {
     console.error("getQuotesByShipment error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch quotes",
@@ -197,7 +234,7 @@ exports.getQuotesByShipment = async (req, res) => {
 };
 
 /* =========================================================
-   GET SINGLE QUOTE DETAIL (CUSTOMER)
+   GET SINGLE QUOTE DETAIL
 ========================================================= */
 exports.getQuoteById = async (req, res) => {
   try {
@@ -239,6 +276,7 @@ exports.getQuoteById = async (req, res) => {
     });
   } catch (error) {
     console.error("getQuoteById error:", error);
+
     return res.status(500).json({
       success: false,
       message: "Failed to fetch quote details",
