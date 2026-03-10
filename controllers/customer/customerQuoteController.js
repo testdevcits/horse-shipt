@@ -71,25 +71,40 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     /* ---------------- PAYMENT VALIDATION ---------------- */
     if (quote.paymentMethod === "card") {
+      // Auto-update paymentStatus to "paid" if Stripe PaymentIntent exists
       if (quote.paymentStatus !== "paid") {
-        return res.status(400).json({
-          success: false,
-          message: "Payment must be completed before accepting quote",
-        });
+        if (quote.stripePaymentIntentId) {
+          // Optionally, you can fetch PaymentIntent from Stripe to confirm succeeded
+          const paymentIntent = await stripe.paymentIntents.retrieve(
+            quote.stripePaymentIntentId
+          );
+
+          if (paymentIntent.status === "succeeded") {
+            quote.paymentStatus = "paid";
+            await quote.save();
+          } else {
+            return res.status(400).json({
+              success: false,
+              message: "Payment must be completed before accepting quote",
+            });
+          }
+        } else {
+          return res.status(400).json({
+            success: false,
+            message: "Payment must be completed before accepting quote",
+          });
+        }
       }
     }
 
     /* ---------------- PLATFORM FEE CALCULATION ---------------- */
     const settings = await PlatformSettings.findOne();
-
     let platformFee = 0;
     let shipperReceives = quote.totalPrice;
 
     if (settings) {
       const percentFee = (quote.totalPrice * settings.platformFeePercent) / 100;
-
       platformFee = percentFee + settings.platformFeeFlat;
-
       shipperReceives = quote.totalPrice - platformFee;
     }
 
@@ -287,6 +302,9 @@ exports.getQuoteById = async (req, res) => {
   }
 };
 
+/* =========================================================
+   CREATE STRIPE PAYMENT INTENT
+========================================================= */
 exports.createPaymentIntent = async (req, res) => {
   try {
     const { quoteId } = req.params;
@@ -311,10 +329,7 @@ exports.createPaymentIntent = async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(quote.totalPrice * 100),
       currency: quote.currency || "usd",
-
-      metadata: {
-        quoteId: quote._id.toString(),
-      },
+      metadata: { quoteId: quote._id.toString() },
     });
 
     quote.stripePaymentIntentId = paymentIntent.id;
