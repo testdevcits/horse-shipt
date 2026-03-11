@@ -161,6 +161,8 @@ const adminBreedRoutes = require("./routes/admin/breed.routes");
 const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
 const adminVehicleRoutes = require("./routes/admin/adminVehicleRoutes");
 const adminPlatformSettingsRoutes = require("./routes/admin/Payments/admin.platformSettingsRoutes");
+const adminPaymentsRoutes = require("./routes/admin/Payments/adminPaymentsRoutes");
+const stripeAdminRoutes = require("./routes/admin/Payments/stripeAdminRoutes");
 
 // Public / App APIs
 app.use("/api/auth", authRoutes);
@@ -175,6 +177,8 @@ app.use("/api/admin/breeds", adminBreedRoutes);
 app.use("/api/admin/shippers", adminShipperRoutes);
 app.use("/api/admin/vehicles", adminVehicleRoutes);
 app.use("/api/admin/platform-settings", adminPlatformSettingsRoutes);
+app.use("/api/admin/payments", adminPaymentsRoutes);
+app.use("/api/admin/stripe", stripeAdminRoutes);
 
 // -------------------------
 // Health Check

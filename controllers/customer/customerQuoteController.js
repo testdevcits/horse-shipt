@@ -309,6 +309,7 @@ exports.createPaymentIntent = async (req, res) => {
   try {
     const { quoteId } = req.params;
     const customerId = req.user._id;
+    const customerEmail = req.user.email;
 
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
 
@@ -326,12 +327,24 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
+    /* ---------------- CREATE STRIPE PAYMENT INTENT ---------------- */
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(quote.totalPrice * 100),
       currency: quote.currency || "usd",
-      metadata: { quoteId: quote._id.toString() },
+
+      // customer email for receipt & dashboard visibility
+      receipt_email: customerEmail,
+
+      // metadata for tracking payment in admin panel
+      metadata: {
+        quoteId: quote._id.toString(),
+        shipmentId: quote.shipment._id.toString(),
+        customerId: customerId.toString(),
+        customerEmail: customerEmail,
+      },
     });
 
+    /* ---------------- SAVE PAYMENT INFO ---------------- */
     quote.stripePaymentIntentId = paymentIntent.id;
     quote.paymentStatus = "pending";
 
@@ -339,7 +352,9 @@ exports.createPaymentIntent = async (req, res) => {
 
     res.status(200).json({
       success: true,
+      message: "Payment intent created successfully",
       clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
     });
   } catch (error) {
     console.log("createPaymentIntent error:", error);
@@ -347,6 +362,7 @@ exports.createPaymentIntent = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Payment intent creation failed",
+      error: error.message,
     });
   }
 };
