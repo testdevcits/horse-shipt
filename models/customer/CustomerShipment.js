@@ -150,6 +150,27 @@ const shipmentSchema = new mongoose.Schema(
     // ---------------- Live Tracking ----------------
     currentLocation: { type: locationSchema, default: null },
     locationHistory: { type: [locationSchema], default: [] },
+
+    // ================= DELIVERY OTP =================
+    deliveryOtp: {
+      type: String,
+      default: null,
+    },
+
+    deliveryOtpExpires: {
+      type: Date,
+      default: null,
+    },
+
+    deliveryOtpVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );

@@ -71,6 +71,37 @@ const quoteSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ================= PAYOUT / PAYMENT RELEASE =================
+    stripeTransferId: {
+      type: String,
+      default: null,
+    },
+
+    payoutStatus: {
+      type: String,
+      enum: ["pending", "transferred"],
+      default: "pending",
+      index: true,
+    },
+
+    paymentReleasedAt: {
+      type: Date,
+      default: null,
+    },
+
+    // ================= WALLET / PLATFORM FEE =================
+    balanceInWallet: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    platformFee: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
     // ================= TIMING =================
     pickupTime: {
       type: String,

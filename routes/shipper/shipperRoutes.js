@@ -121,6 +121,13 @@ const {
   stripeWebhook,
 } = require("../../controllers/shipper/shipperStripeController");
 
+const {
+  markShipmentDelivered,
+  verifyDeliveryOtp,
+  shipperPayout,
+  getShipmentDeliveryStatus,
+} = require("../../controllers/shipper/deliveryController");
+
 // ====================================================
 // SHIPPER PROFILE ROUTES
 // ====================================================
@@ -311,6 +318,33 @@ router.post("/stripe/create-account", shipperAuth, createStripeAccount);
 router.post("/stripe/onboarding", shipperAuth, createOnboardingLink);
 router.get("/stripe/status", shipperAuth, checkStripeStatus);
 
+// ====================================================
+// SHIPPER Delivered ROUTES
+// ====================================================
+
+// mark shipment delivered → OTP sent
+router.post(
+  "/shipment/:shipmentId/mark-delivered",
+  shipperAuth,
+  markShipmentDelivered
+);
+
+// verify OTP → wallet credit
+router.post(
+  "/shipment/:shipmentId/verify-delivery-otp",
+  shipperAuth,
+  verifyDeliveryOtp
+);
+
+// shipper payout request
+router.post("/shipper/payout", shipperAuth, shipperPayout);
+
+// check shipment delivery status
+router.get(
+  "/shipment/:shipmentId/delivery-status",
+  shipperAuth,
+  getShipmentDeliveryStatus
+);
 // ====================================================
 // EXPORT
 // ====================================================
