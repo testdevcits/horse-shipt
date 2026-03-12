@@ -11,6 +11,7 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // =======================================================
 // MARK SHIPMENT DELIVERED → GENERATE OTP
 // =======================================================
+
 exports.markShipmentDelivered = async (req, res) => {
   try {
     const { shipmentId } = req.params;
@@ -25,11 +26,19 @@ exports.markShipmentDelivered = async (req, res) => {
 
     // 🔹 Add debug logs here
     console.log("=== DEBUG MARK DELIVERED ===");
-    console.log("req.user:", req.user); // should have id of logged-in shipper
-    console.log("shipment.shipper:", shipment.shipper); // should match req.user.id
+    console.log("req.user:", req.user); // logged-in shipper
+    console.log("shipment.shipper:", shipment.shipper); // assigned shipper
     console.log("============================");
 
-    if (shipment.shipper?.toString() !== req.user.id)
+    // If shipment has no shipper, assign current user
+    if (!shipment.shipper) {
+      shipment.shipper = req.user.id;
+      await shipment.save();
+      console.log(`Shipment ${shipmentId} assigned to shipper ${req.user.id}`);
+    }
+
+    // Authorization check
+    if (shipment.shipper.toString() !== req.user.id)
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
@@ -37,13 +46,13 @@ exports.markShipmentDelivered = async (req, res) => {
     // generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000);
     shipment.deliveryOtp = otp.toString();
-    shipment.deliveryOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
+    shipment.deliveryOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await shipment.save();
 
     // send OTP email
     const subject = "Shipment Delivery OTP";
     const message = `
-Hello,
+Hello ${shipment.customer.name || ""},
 
 Your shipment has arrived.
 
