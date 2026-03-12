@@ -23,6 +23,12 @@ exports.markShipmentDelivered = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Shipment not found" });
 
+    // 🔹 Add debug logs here
+    console.log("=== DEBUG MARK DELIVERED ===");
+    console.log("req.user:", req.user); // should have id of logged-in shipper
+    console.log("shipment.shipper:", shipment.shipper); // should match req.user.id
+    console.log("============================");
+
     if (shipment.shipper?.toString() !== req.user.id)
       return res
         .status(403)
