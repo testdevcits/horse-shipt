@@ -167,7 +167,7 @@ exports.verifyDeliveryOtp = async (req, res) => {
       });
     }
 
-    if (quote.payoutStatus === "paid") {
+    if (quote.payoutStatus === "transferred") {
       console.log("Payment already processed");
       return res.status(400).json({
         success: false,
@@ -176,41 +176,52 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     // ===================================================
-    // GET STRIPE PAYMENT DETAILS (OPTIONAL)
+    // GET STRIPE PAYMENT DETAILS
     // ===================================================
 
-    console.log("Fetching paymentIntent:", quote.stripePaymentIntentId);
+    let grossAmount = 0;
+    let stripeFee = 0;
+    let netAmount = 0;
+    let currency = "usd";
+    let paymentIntentId = null;
 
-    const paymentIntent = await stripe.paymentIntents.retrieve(
-      quote.stripePaymentIntentId
-    );
+    if (quote.stripePaymentIntentId) {
+      console.log("Fetching paymentIntent:", quote.stripePaymentIntentId);
 
-    const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        quote.stripePaymentIntentId
+      );
 
-    const balanceTx = await stripe.balanceTransactions.retrieve(
-      charge.balance_transaction
-    );
+      paymentIntentId = paymentIntent.id;
 
-    const grossAmount = balanceTx.amount;
-    const stripeFee = balanceTx.fee;
-    const netAmount = balanceTx.net;
+      const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
 
-    console.log("PAYMENT DETAILS:");
-    console.log("Gross:", grossAmount);
-    console.log("Stripe Fee:", stripeFee);
-    console.log("Net:", netAmount);
+      const balanceTx = await stripe.balanceTransactions.retrieve(
+        charge.balance_transaction
+      );
+
+      grossAmount = balanceTx.amount;
+      stripeFee = balanceTx.fee;
+      netAmount = balanceTx.net;
+      currency = balanceTx.currency;
+
+      console.log("PAYMENT DETAILS:");
+      console.log("Gross:", grossAmount);
+      console.log("Stripe Fee:", stripeFee);
+      console.log("Net:", netAmount);
+    }
 
     // ===================================================
-    // UPDATE QUOTE (NO MANUAL TRANSFER)
+    // UPDATE QUOTE
     // ===================================================
 
-    quote.payoutStatus = "paid";
+    quote.payoutStatus = "transferred";
+    quote.paymentReleasedAt = new Date();
 
-    quote.grossAmount = grossAmount / 100;
-    quote.stripeFee = stripeFee / 100;
-    quote.netAmount = netAmount / 100;
-
-    quote.payoutProcessedAt = new Date();
+    if (grossAmount) {
+      quote.platformFee = stripeFee / 100;
+      quote.balanceInWallet = netAmount / 100;
+    }
 
     await quote.save();
 
@@ -237,11 +248,11 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
       paymentDetails: {
         shipmentId: shipment._id,
-        paymentIntentId: paymentIntent.id,
-        grossAmount: grossAmount / 100,
-        stripeFee: stripeFee / 100,
-        netPaidToShipper: netAmount / 100,
-        currency: balanceTx.currency,
+        paymentIntentId: paymentIntentId,
+        grossAmount: grossAmount ? grossAmount / 100 : 0,
+        stripeFee: stripeFee ? stripeFee / 100 : 0,
+        netPaidToShipper: netAmount ? netAmount / 100 : 0,
+        currency: currency,
       },
     });
   } catch (error) {
