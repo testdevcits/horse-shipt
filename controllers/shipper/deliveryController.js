@@ -74,92 +74,81 @@ HorseShipt Team
 };
 
 // =======================================================
-// VERIFY DELIVERY OTP → CREDIT WALLET (UPDATED)
+// VERIFY DELIVERY OTP → DIRECT TRANSFER TO SHIPPER
 // =======================================================
 exports.verifyDeliveryOtp = async (req, res) => {
   try {
+    console.info("=== VERIFY DELIVERY OTP START ===");
+
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
-    console.log("=== VERIFY DELIVERY OTP START ===");
-    console.log("Shipment ID:", shipmentId);
-    console.log("OTP provided:", otp);
-    console.log("User ID:", req.user.id);
+    console.info("Shipment ID:", shipmentId);
+    console.info("OTP provided:", otp);
+    console.info("User ID:", req.user.id);
 
     const shipment = await CustomerShipment.findById(shipmentId).populate(
-      "shipper customer"
+      "shipper"
     );
-    if (!shipment) {
-      console.log("Shipment not found");
+    if (!shipment)
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
-    }
 
-    console.log("Shipment found:", shipment._id.toString());
+    console.info("Shipment found:", shipment._id);
 
     // Authorization
-    if (shipment.shipper._id.toString() !== req.user.id) {
-      console.log(
-        "Unauthorized user. Shipment shipper:",
-        shipment.shipper._id.toString()
-      );
+    if (shipment.shipper?._id.toString() !== req.user.id)
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
-    }
 
-    // OTP checks
-    if (shipment.deliveryOtp !== otp) {
-      console.log("OTP mismatch. Shipment OTP:", shipment.deliveryOtp);
+    // OTP check
+    if (shipment.deliveryOtp !== otp)
       return res.status(400).json({ success: false, message: "Invalid OTP" });
-    }
-    if (shipment.deliveryOtpExpires < new Date()) {
-      console.log("OTP expired. Expiry:", shipment.deliveryOtpExpires);
-      return res.status(400).json({ success: false, message: "OTP expired" });
-    }
-    if (shipment.deliveryOtpVerified) {
-      console.log("Delivery already verified");
-      return res
-        .status(200)
-        .json({ success: true, message: "Delivery already verified" });
-    }
 
-    console.log("OTP verification passed");
+    if (shipment.deliveryOtpExpires < new Date())
+      return res.status(400).json({ success: false, message: "OTP expired" });
+
+    if (shipment.deliveryOtpVerified)
+      return res.status(200).json({
+        success: true,
+        message: "Delivery already verified",
+      });
 
     // Find accepted quote
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
     });
-    if (!quote) {
-      console.log("Accepted quote not found");
+
+    if (!quote)
       return res
         .status(404)
         .json({ success: false, message: "Accepted quote not found" });
-    }
-    console.log("Accepted quote found:", quote._id.toString());
 
-    if (quote.paymentStatus !== "paid") {
-      console.log(
-        "Payment not completed. Current status:",
-        quote.paymentStatus
-      );
-      return res
-        .status(400)
-        .json({ success: false, message: "Payment not completed yet" });
-    }
+    console.info("Accepted quote found:", quote._id);
 
-    console.log("Payment confirmed");
+    // Ensure payment completed
+    if (quote.paymentStatus !== "paid")
+      return res.status(400).json({
+        success: false,
+        message:
+          "Payment not completed yet. Transfer will happen after payment success.",
+      });
+
+    console.info("Payment confirmed");
 
     // Mark shipment delivered
-    shipment.deliveryOtpVerified = true;
-    shipment.status = "delivered";
-    shipment.deliveredAt = new Date();
+    shipment.set({
+      deliveryOtpVerified: true,
+      status: "delivered",
+      deliveredAt: new Date(),
+    });
     await shipment.save();
-    console.log("Shipment marked as delivered:", shipment.status);
+    console.info("Shipment marked as delivered:", shipment.status);
 
-    // Calculate platform fee & shipper amount
+    // Calculate platform fee & shipper receives
     const settings = await PlatformSettings.findOne();
     let platformFee = 0;
     let shipperReceives = quote.totalPrice;
@@ -171,54 +160,53 @@ exports.verifyDeliveryOtp = async (req, res) => {
       shipperReceives = quote.totalPrice - platformFee;
     }
 
-    console.log(
+    console.info(
       `Calculated shipperReceives: ${shipperReceives}, platformFee: ${platformFee}`
     );
 
-    // DEBUG: Connected Account ID
-    console.log("Shipper stripeAccountId:", shipment.shipper.stripeAccountId);
+    // Check shipper stripe account
     if (!shipment.shipper.stripeAccountId) {
-      console.error("ERROR: Shipper does not have a connected Stripe account!");
+      console.error("Shipper stripeAccountId missing!");
       return res.status(400).json({
         success: false,
-        message: "Shipper connected Stripe account not found",
+        message: "Shipper stripe account not linked",
       });
     }
+    console.info("Shipper stripeAccountId:", shipment.shipper.stripeAccountId);
 
-    // Make Stripe payout immediately
-    console.log("Initiating Stripe payout...");
-    let payout;
+    // ---------------- DIRECT TRANSFER VIA STRIPE ----------------
     try {
-      payout = await stripe.payouts.create(
-        {
-          amount: Math.round(shipperReceives * 100), // in cents
-          currency: "usd",
-        },
-        { stripeAccount: shipment.shipper.stripeAccountId }
-      );
-      console.log("Stripe payout success. Payout ID:", payout.id);
+      console.info("Initiating Stripe transfer...");
+      const transfer = await stripe.transfers.create({
+        amount: Math.round(shipperReceives * 100), // cents
+        currency: quote.currency || "usd",
+        destination: shipment.shipper.stripeAccountId,
+      });
+      console.info("Transfer successful, ID:", transfer.id);
     } catch (stripeError) {
-      console.error("Stripe payout failed:", stripeError);
+      console.error("Stripe transfer failed:", stripeError);
       return res.status(500).json({
         success: false,
-        message: "Stripe payout failed",
+        message: "Stripe transfer failed",
         error: stripeError.message,
       });
     }
 
-    console.log(
-      `Delivery confirmed for shipment ${shipmentId}. Payout sent: ${shipperReceives} USD, fee: ${platformFee}`
-    );
+    // Update quote as credited
+    quote.balanceCredited = true;
+    quote.platformFee = platformFee;
+    await quote.save();
+
+    console.info("Quote updated with transfer info");
 
     res.json({
       success: true,
-      message: "Delivery confirmed & payout sent to shipper",
-      payoutId: payout.id,
+      message: "Delivery confirmed & amount transferred to shipper",
       shipperReceives,
       platformFee,
     });
   } catch (error) {
-    console.error("Verify Delivery OTP & Payout Error:", error);
+    console.error("Verify Delivery OTP Error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
