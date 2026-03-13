@@ -168,23 +168,15 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     if (quote.payoutStatus === "paid") {
-      console.log("Payment already released");
+      console.log("Payment already processed");
       return res.status(400).json({
         success: false,
-        message: "Payment already released",
-      });
-    }
-
-    if (!quote.shipper.stripeAccountId) {
-      console.log("Shipper Stripe account missing");
-      return res.status(400).json({
-        success: false,
-        message: "Shipper Stripe account not connected",
+        message: "Payment already processed",
       });
     }
 
     // ===================================================
-    // GET STRIPE PAYMENT
+    // GET STRIPE PAYMENT DETAILS (OPTIONAL)
     // ===================================================
 
     console.log("Fetching paymentIntent:", quote.stripePaymentIntentId);
@@ -209,35 +201,16 @@ exports.verifyDeliveryOtp = async (req, res) => {
     console.log("Net:", netAmount);
 
     // ===================================================
-    // TRANSFER PAYMENT
+    // UPDATE QUOTE (NO MANUAL TRANSFER)
     // ===================================================
 
-    console.log("Creating Stripe transfer...");
-
-    const transfer = await stripe.transfers.create({
-      amount: netAmount,
-      currency: balanceTx.currency,
-      destination: quote.shipper.stripeAccountId,
-
-      metadata: {
-        shipmentId: shipmentId,
-        quoteId: quote._id.toString(),
-        paymentIntentId: paymentIntent.id,
-      },
-    });
-
-    console.log("TRANSFER SUCCESS:", transfer.id);
-
-    // ===================================================
-    // UPDATE QUOTE
-    // ===================================================
-
-    quote.transferId = transfer.id;
     quote.payoutStatus = "paid";
 
     quote.grossAmount = grossAmount / 100;
     quote.stripeFee = stripeFee / 100;
     quote.netAmount = netAmount / 100;
+
+    quote.payoutProcessedAt = new Date();
 
     await quote.save();
 
@@ -260,11 +233,11 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Delivery verified & payment released",
+      message: "Delivery verified successfully",
 
       paymentDetails: {
         shipmentId: shipment._id,
-        transactionId: transfer.id,
+        paymentIntentId: paymentIntent.id,
         grossAmount: grossAmount / 100,
         stripeFee: stripeFee / 100,
         netPaidToShipper: netAmount / 100,
