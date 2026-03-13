@@ -311,7 +311,10 @@ exports.createPaymentIntent = async (req, res) => {
     const customerId = req.user._id;
     const customerEmail = req.user.email;
 
-    const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
+    /* ---------------- FIND QUOTE ---------------- */
+    const quote = await ShipmentQuote.findById(quoteId)
+      .populate("shipment")
+      .populate("shipper");
 
     if (!quote) {
       return res.status(404).json({
@@ -320,6 +323,7 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
+    /* ---------------- AUTH CHECK ---------------- */
     if (quote.shipment.customer.toString() !== customerId.toString()) {
       return res.status(403).json({
         success: false,
@@ -327,39 +331,51 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
-    /* ---------------- CREATE STRIPE PAYMENT INTENT ---------------- */
+    /* ---------------- PREVENT DOUBLE PAYMENT ---------------- */
+    if (quote.paymentStatus === "paid") {
+      return res.status(400).json({
+        success: false,
+        message: "Payment already completed for this quote",
+      });
+    }
+
+    /* ---------------- CREATE PAYMENT INTENT ---------------- */
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(quote.totalPrice * 100),
+      amount: Math.round(quote.totalPrice * 100), // cents
       currency: quote.currency || "usd",
 
-      // customer email for receipt & dashboard visibility
+      payment_method_types: ["card"],
+
       receipt_email: customerEmail,
 
-      // metadata for tracking payment in admin panel
       metadata: {
         quoteId: quote._id.toString(),
         shipmentId: quote.shipment._id.toString(),
+        shipperId: quote.shipper._id.toString(),
         customerId: customerId.toString(),
         customerEmail: customerEmail,
       },
     });
 
-    /* ---------------- SAVE PAYMENT INFO ---------------- */
+    /* ---------------- SAVE PAYMENT DATA ---------------- */
     quote.stripePaymentIntentId = paymentIntent.id;
     quote.paymentStatus = "pending";
 
     await quote.save();
 
-    res.status(200).json({
+    /* ---------------- RESPONSE ---------------- */
+    return res.status(200).json({
       success: true,
       message: "Payment intent created successfully",
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
+      amount: quote.totalPrice,
+      currency: quote.currency || "usd",
     });
   } catch (error) {
-    console.log("createPaymentIntent error:", error);
+    console.error("createPaymentIntent error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: "Payment intent creation failed",
       error: error.message,
