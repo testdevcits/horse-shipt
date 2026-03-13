@@ -4,6 +4,8 @@
 const sendDeliveryMail = require("../../utils/sendDeliveryMail");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const PlatformSettings = require("../../models/admin/payment/platformSettings");
+
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 // =======================================================
@@ -95,48 +97,33 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const { otp } = req.body;
 
     console.log("VERIFY DELIVERY OTP START");
-    console.log("Shipment:", shipmentId);
-    console.log("OTP:", otp);
-
-    // ============================================
-    // FIND SHIPMENT
-    // ============================================
 
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
-      return res.status(404).json({
-        success: false,
-        message: "Shipment not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
     }
 
     if (shipment.shipper?.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized action",
-      });
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized action" });
     }
 
     if (shipment.deliveryOtpVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Shipment already delivered",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Shipment already delivered" });
     }
 
     if (shipment.deliveryOtp !== otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      });
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: "OTP expired",
-      });
+      return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
     // ============================================
@@ -155,18 +142,12 @@ exports.verifyDeliveryOtp = async (req, res) => {
       });
     }
 
-    console.log("QUOTE FOUND:", quote._id);
-
     if (quote.paymentStatus !== "paid") {
       return res.status(400).json({
         success: false,
         message: "Payment not completed yet",
       });
     }
-
-    // ============================================
-    // DOUBLE PAYOUT PROTECTION
-    // ============================================
 
     if (quote.payoutStatus === "transferred") {
       return res.status(400).json({
@@ -189,21 +170,50 @@ exports.verifyDeliveryOtp = async (req, res) => {
       charge.balance_transaction
     );
 
-    const grossAmount = balanceTx.amount; // cents
-    const stripeFee = balanceTx.fee; // cents
-    const netAmount = balanceTx.net; // cents
+    const grossAmount = balanceTx.amount / 100;
+    const stripeFee = balanceTx.fee / 100;
 
-    console.log("PAYMENT DETAILS:");
     console.log("Gross:", grossAmount);
     console.log("Stripe Fee:", stripeFee);
-    console.log("Net:", netAmount);
 
     // ============================================
-    // STRIPE TRANSFER (PAYOUT TO SHIPPER)
+    // GET PLATFORM SETTINGS
+    // ============================================
+
+    const settings = await PlatformSettings.findOne();
+
+    const platformPercent = settings?.platformFeePercent || 0;
+    const platformFlat = settings?.platformFeeFlat || 0;
+
+    const platformFeePercentAmount = (grossAmount * platformPercent) / 100;
+
+    const platformFeeTotal = platformFeePercentAmount + platformFlat;
+
+    console.log("Platform Fee:", platformFeeTotal);
+
+    // ============================================
+    // FINAL SHIPPER PAYOUT
+    // ============================================
+
+    const shipperAmount = grossAmount - stripeFee - platformFeeTotal;
+
+    if (shipperAmount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payout calculation",
+      });
+    }
+
+    const payoutCents = Math.round(shipperAmount * 100);
+
+    console.log("Shipper Payout:", shipperAmount);
+
+    // ============================================
+    // STRIPE TRANSFER
     // ============================================
 
     const transfer = await stripe.transfers.create({
-      amount: netAmount,
+      amount: payoutCents,
       currency: balanceTx.currency,
       destination: quote.shipper.stripeAccountId,
       metadata: {
@@ -212,7 +222,7 @@ exports.verifyDeliveryOtp = async (req, res) => {
       },
     });
 
-    console.log("STRIPE TRANSFER SUCCESS:", transfer.id);
+    console.log("TRANSFER SUCCESS:", transfer.id);
 
     // ============================================
     // UPDATE QUOTE
@@ -222,13 +232,12 @@ exports.verifyDeliveryOtp = async (req, res) => {
     quote.payoutStatus = "transferred";
     quote.paymentReleasedAt = new Date();
 
-    quote.grossAmount = grossAmount / 100;
-    quote.stripeFee = stripeFee / 100;
-    quote.netAmount = netAmount / 100;
+    quote.grossAmount = grossAmount;
+    quote.stripeFee = stripeFee;
+    quote.platformFee = platformFeeTotal;
+    quote.netAmount = shipperAmount;
 
     await quote.save();
-
-    console.log("QUOTE UPDATED");
 
     // ============================================
     // UPDATE SHIPMENT
@@ -243,18 +252,15 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
-    console.log("SHIPMENT MARKED DELIVERED");
-
     return res.json({
       success: true,
-      message: "Delivery verified and payout sent to shipper",
+      message: "Delivery verified & payout sent",
 
       payoutDetails: {
-        shipmentId: shipment._id,
-        transferId: transfer.id,
-        grossAmount: grossAmount / 100,
-        stripeFee: stripeFee / 100,
-        netPaidToShipper: netAmount / 100,
+        grossAmount,
+        stripeFee,
+        platformFee: platformFeeTotal,
+        shipperReceived: shipperAmount,
         currency: balanceTx.currency,
       },
     });
