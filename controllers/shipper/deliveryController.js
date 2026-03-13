@@ -81,91 +81,144 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
-    const shipment = await CustomerShipment.findById(shipmentId);
-    if (!shipment)
+    console.log("=== VERIFY DELIVERY OTP START ===");
+    console.log("Shipment ID:", shipmentId);
+    console.log("OTP provided:", otp);
+    console.log("User ID:", req.user.id);
+
+    const shipment = await CustomerShipment.findById(shipmentId).populate(
+      "shipper customer"
+    );
+    if (!shipment) {
+      console.log("Shipment not found");
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
+    }
 
-    // Check if current shipper is authorized
-    if (shipment.shipper?.toString() !== req.user.id)
+    console.log("Shipment found:", shipment._id.toString());
+
+    // Authorization
+    if (shipment.shipper._id.toString() !== req.user.id) {
+      console.log(
+        "Unauthorized user. Shipment shipper:",
+        shipment.shipper._id.toString()
+      );
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
+    }
 
-    // Check OTP validity
-    if (shipment.deliveryOtp !== otp)
+    // OTP checks
+    if (shipment.deliveryOtp !== otp) {
+      console.log("OTP mismatch. Shipment OTP:", shipment.deliveryOtp);
       return res.status(400).json({ success: false, message: "Invalid OTP" });
-
-    if (shipment.deliveryOtpExpires < new Date())
+    }
+    if (shipment.deliveryOtpExpires < new Date()) {
+      console.log("OTP expired. Expiry:", shipment.deliveryOtpExpires);
       return res.status(400).json({ success: false, message: "OTP expired" });
+    }
+    if (shipment.deliveryOtpVerified) {
+      console.log("Delivery already verified");
+      return res
+        .status(200)
+        .json({ success: true, message: "Delivery already verified" });
+    }
 
-    // Check if already verified
-    if (shipment.deliveryOtpVerified)
-      return res.status(200).json({
-        success: true,
-        message: "Delivery already verified",
-      });
+    console.log("OTP verification passed");
 
     // Find accepted quote
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
     });
-
-    if (!quote)
+    if (!quote) {
+      console.log("Accepted quote not found");
       return res
         .status(404)
         .json({ success: false, message: "Accepted quote not found" });
+    }
+    console.log("Accepted quote found:", quote._id.toString());
 
-    // Ensure payment is completed before crediting wallet
-    if (quote.paymentStatus !== "paid")
-      return res.status(400).json({
-        success: false,
-        message:
-          "Payment not completed yet. Wallet credit will happen after payment success.",
-      });
+    if (quote.paymentStatus !== "paid") {
+      console.log(
+        "Payment not completed. Current status:",
+        quote.paymentStatus
+      );
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment not completed yet" });
+    }
 
-    // mark shipment delivered
-    shipment.set({
-      deliveryOtpVerified: true,
-      status: "delivered",
-      deliveredAt: new Date(),
-    });
+    console.log("Payment confirmed");
+
+    // Mark shipment delivered
+    shipment.deliveryOtpVerified = true;
+    shipment.status = "delivered";
+    shipment.deliveredAt = new Date();
     await shipment.save();
+    console.log("Shipment marked as delivered:", shipment.status);
 
-    // calculate platform fee & wallet credit
+    // Calculate platform fee & shipper amount
     const settings = await PlatformSettings.findOne();
     let platformFee = 0;
-    let walletAmount = quote.totalPrice;
+    let shipperReceives = quote.totalPrice;
 
     if (settings) {
       const percentFee = (quote.totalPrice * settings.platformFeePercent) / 100;
       const flatFee = settings.platformFeeFlat || 0;
       platformFee = percentFee + flatFee;
-      walletAmount = quote.totalPrice - platformFee;
-    }
-
-    // Only credit if not already credited
-    if (!quote.balanceCredited) {
-      quote.balanceInWallet = (quote.balanceInWallet || 0) + walletAmount;
-      quote.platformFee = platformFee;
-      quote.balanceCredited = true; // flag to prevent double credit
-      await quote.save();
+      shipperReceives = quote.totalPrice - platformFee;
     }
 
     console.log(
-      `Delivery confirmed for shipment ${shipmentId}. Wallet credited: ${walletAmount}, Platform fee: ${platformFee}`
+      `Calculated shipperReceives: ${shipperReceives}, platformFee: ${platformFee}`
+    );
+
+    // DEBUG: Connected Account ID
+    console.log("Shipper stripeAccountId:", shipment.shipper.stripeAccountId);
+    if (!shipment.shipper.stripeAccountId) {
+      console.error("ERROR: Shipper does not have a connected Stripe account!");
+      return res.status(400).json({
+        success: false,
+        message: "Shipper connected Stripe account not found",
+      });
+    }
+
+    // Make Stripe payout immediately
+    console.log("Initiating Stripe payout...");
+    let payout;
+    try {
+      payout = await stripe.payouts.create(
+        {
+          amount: Math.round(shipperReceives * 100), // in cents
+          currency: "usd",
+        },
+        { stripeAccount: shipment.shipper.stripeAccountId }
+      );
+      console.log("Stripe payout success. Payout ID:", payout.id);
+    } catch (stripeError) {
+      console.error("Stripe payout failed:", stripeError);
+      return res.status(500).json({
+        success: false,
+        message: "Stripe payout failed",
+        error: stripeError.message,
+      });
+    }
+
+    console.log(
+      `Delivery confirmed for shipment ${shipmentId}. Payout sent: ${shipperReceives} USD, fee: ${platformFee}`
     );
 
     res.json({
       success: true,
-      message: "Delivery confirmed & amount credited to wallet",
-      walletAmount,
+      message: "Delivery confirmed & payout sent to shipper",
+      payoutId: payout.id,
+      shipperReceives,
       platformFee,
     });
   } catch (error) {
-    console.error("Verify Delivery OTP Wallet Error:", error);
+    console.error("Verify Delivery OTP & Payout Error:", error);
     res.status(500).json({ success: false, error: error.message });
   }
 };
