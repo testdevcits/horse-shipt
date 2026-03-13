@@ -11,7 +11,6 @@ const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // =======================================================
 // MARK SHIPMENT DELIVERED → GENERATE OTP
 // =======================================================
-
 exports.markShipmentDelivered = async (req, res) => {
   try {
     const { shipmentId } = req.params;
@@ -24,13 +23,12 @@ exports.markShipmentDelivered = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Shipment not found" });
 
-    // 🔹 Add debug logs here
     console.log("=== DEBUG MARK DELIVERED ===");
-    console.log("req.user:", req.user); // logged-in shipper
-    console.log("shipment.shipper:", shipment.shipper); // assigned shipper
+    console.log("req.user:", req.user);
+    console.log("shipment.shipper:", shipment.shipper);
     console.log("============================");
 
-    // If shipment has no shipper, assign current user
+    // Assign shipper if not assigned
     if (!shipment.shipper) {
       shipment.shipper = req.user.id;
       await shipment.save();
@@ -43,13 +41,13 @@ exports.markShipmentDelivered = async (req, res) => {
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
 
-    // generate 6-digit OTP
+    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000);
     shipment.deliveryOtp = otp.toString();
     shipment.deliveryOtpExpires = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
     await shipment.save();
 
-    // send OTP email
+    // Send OTP email
     const subject = "Shipment Delivery OTP";
     const message = `
 Hello ${shipment.customer.name || ""},
@@ -65,7 +63,6 @@ This OTP will expire in 10 minutes.
 Thanks,
 HorseShipt Team
 `;
-
     await sendDeliveryMail(shipment.customer.email, subject, message);
     console.log(`Delivery OTP sent to ${shipment.customer.email}: ${otp}`);
 
@@ -77,7 +74,7 @@ HorseShipt Team
 };
 
 // =======================================================
-// VERIFY DELIVERY OTP → CREDIT WALLET
+// VERIFY DELIVERY OTP → CREDIT WALLET (UPDATED)
 // =======================================================
 exports.verifyDeliveryOtp = async (req, res) => {
   try {
@@ -90,25 +87,44 @@ exports.verifyDeliveryOtp = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Shipment not found" });
 
+    // Check if current shipper is authorized
     if (shipment.shipper?.toString() !== req.user.id)
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
 
+    // Check OTP validity
     if (shipment.deliveryOtp !== otp)
       return res.status(400).json({ success: false, message: "Invalid OTP" });
 
     if (shipment.deliveryOtpExpires < new Date())
       return res.status(400).json({ success: false, message: "OTP expired" });
 
+    // Check if already verified
+    if (shipment.deliveryOtpVerified)
+      return res.status(200).json({
+        success: true,
+        message: "Delivery already verified",
+      });
+
+    // Find accepted quote
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
     });
+
     if (!quote)
       return res
         .status(404)
         .json({ success: false, message: "Accepted quote not found" });
+
+    // Ensure payment is completed before crediting wallet
+    if (quote.paymentStatus !== "paid")
+      return res.status(400).json({
+        success: false,
+        message:
+          "Payment not completed yet. Wallet credit will happen after payment success.",
+      });
 
     // mark shipment delivered
     shipment.set({
@@ -130,10 +146,13 @@ exports.verifyDeliveryOtp = async (req, res) => {
       walletAmount = quote.totalPrice - platformFee;
     }
 
-    // credit to wallet
-    quote.balanceInWallet = (quote.balanceInWallet || 0) + walletAmount;
-    quote.platformFee = platformFee;
-    await quote.save();
+    // Only credit if not already credited
+    if (!quote.balanceCredited) {
+      quote.balanceInWallet = (quote.balanceInWallet || 0) + walletAmount;
+      quote.platformFee = platformFee;
+      quote.balanceCredited = true; // flag to prevent double credit
+      await quote.save();
+    }
 
     console.log(
       `Delivery confirmed for shipment ${shipmentId}. Wallet credited: ${walletAmount}, Platform fee: ${platformFee}`
@@ -171,16 +190,16 @@ exports.shipperPayout = async (req, res) => {
         .status(400)
         .json({ success: false, message: "No balance to payout" });
 
-    // create Stripe payout to shipper bank account
+    // Stripe payout
     const payout = await stripe.payouts.create(
       {
-        amount: Math.round(totalPayout * 100), // Stripe uses cents
+        amount: Math.round(totalPayout * 100),
         currency: "usd",
       },
       { stripeAccount: req.user.stripeAccountId }
     );
 
-    // reset wallet balances only after successful payout
+    // Reset wallet balances
     for (const quote of quotes) {
       quote.balanceInWallet = 0;
       await quote.save();
