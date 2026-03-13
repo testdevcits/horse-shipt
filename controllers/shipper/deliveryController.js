@@ -98,10 +98,13 @@ exports.verifyDeliveryOtp = async (req, res) => {
     console.log("Shipment:", shipmentId);
     console.log("OTP:", otp);
 
+    // ============================================
+    // FIND SHIPMENT
+    // ============================================
+
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
-      console.log("Shipment not found");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
@@ -109,7 +112,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     if (shipment.shipper?.toString() !== req.user.id) {
-      console.log("Unauthorized shipper");
       return res.status(403).json({
         success: false,
         message: "Unauthorized action",
@@ -117,7 +119,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     if (shipment.deliveryOtpVerified) {
-      console.log("Shipment already delivered");
       return res.status(400).json({
         success: false,
         message: "Shipment already delivered",
@@ -125,7 +126,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     if (shipment.deliveryOtp !== otp) {
-      console.log("Invalid OTP");
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
@@ -133,16 +133,15 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      console.log("OTP expired");
       return res.status(400).json({
         success: false,
         message: "OTP expired",
       });
     }
 
-    // ===================================================
+    // ============================================
     // FIND ACCEPTED QUOTE
-    // ===================================================
+    // ============================================
 
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
@@ -150,7 +149,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }).populate("shipper");
 
     if (!quote) {
-      console.log("Accepted quote not found");
       return res.status(404).json({
         success: false,
         message: "Accepted quote not found",
@@ -160,76 +158,81 @@ exports.verifyDeliveryOtp = async (req, res) => {
     console.log("QUOTE FOUND:", quote._id);
 
     if (quote.paymentStatus !== "paid") {
-      console.log("Payment not completed");
       return res.status(400).json({
         success: false,
         message: "Payment not completed yet",
       });
     }
 
+    // ============================================
+    // DOUBLE PAYOUT PROTECTION
+    // ============================================
+
     if (quote.payoutStatus === "transferred") {
-      console.log("Payment already processed");
       return res.status(400).json({
         success: false,
-        message: "Payment already processed",
+        message: "Payout already processed",
       });
     }
 
-    // ===================================================
+    // ============================================
     // GET STRIPE PAYMENT DETAILS
-    // ===================================================
+    // ============================================
 
-    let grossAmount = 0;
-    let stripeFee = 0;
-    let netAmount = 0;
-    let currency = "usd";
-    let paymentIntentId = null;
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      quote.stripePaymentIntentId
+    );
 
-    if (quote.stripePaymentIntentId) {
-      console.log("Fetching paymentIntent:", quote.stripePaymentIntentId);
+    const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
 
-      const paymentIntent = await stripe.paymentIntents.retrieve(
-        quote.stripePaymentIntentId
-      );
+    const balanceTx = await stripe.balanceTransactions.retrieve(
+      charge.balance_transaction
+    );
 
-      paymentIntentId = paymentIntent.id;
+    const grossAmount = balanceTx.amount; // cents
+    const stripeFee = balanceTx.fee; // cents
+    const netAmount = balanceTx.net; // cents
 
-      const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+    console.log("PAYMENT DETAILS:");
+    console.log("Gross:", grossAmount);
+    console.log("Stripe Fee:", stripeFee);
+    console.log("Net:", netAmount);
 
-      const balanceTx = await stripe.balanceTransactions.retrieve(
-        charge.balance_transaction
-      );
+    // ============================================
+    // STRIPE TRANSFER (PAYOUT TO SHIPPER)
+    // ============================================
 
-      grossAmount = balanceTx.amount;
-      stripeFee = balanceTx.fee;
-      netAmount = balanceTx.net;
-      currency = balanceTx.currency;
+    const transfer = await stripe.transfers.create({
+      amount: netAmount,
+      currency: balanceTx.currency,
+      destination: quote.shipper.stripeAccountId,
+      metadata: {
+        shipmentId: shipment._id.toString(),
+        quoteId: quote._id.toString(),
+      },
+    });
 
-      console.log("PAYMENT DETAILS:");
-      console.log("Gross:", grossAmount);
-      console.log("Stripe Fee:", stripeFee);
-      console.log("Net:", netAmount);
-    }
+    console.log("STRIPE TRANSFER SUCCESS:", transfer.id);
 
-    // ===================================================
+    // ============================================
     // UPDATE QUOTE
-    // ===================================================
+    // ============================================
 
+    quote.stripeTransferId = transfer.id;
     quote.payoutStatus = "transferred";
     quote.paymentReleasedAt = new Date();
 
-    if (grossAmount) {
-      quote.platformFee = stripeFee / 100;
-      quote.balanceInWallet = netAmount / 100;
-    }
+    quote.grossAmount = grossAmount / 100;
+    quote.stripeFee = stripeFee / 100;
+    quote.netAmount = netAmount / 100;
 
     await quote.save();
 
     console.log("QUOTE UPDATED");
 
-    // ===================================================
+    // ============================================
     // UPDATE SHIPMENT
-    // ===================================================
+    // ============================================
 
     shipment.status = "delivered";
     shipment.deliveredAt = new Date();
@@ -244,15 +247,15 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Delivery verified successfully",
+      message: "Delivery verified and payout sent to shipper",
 
-      paymentDetails: {
+      payoutDetails: {
         shipmentId: shipment._id,
-        paymentIntentId: paymentIntentId,
-        grossAmount: grossAmount ? grossAmount / 100 : 0,
-        stripeFee: stripeFee ? stripeFee / 100 : 0,
-        netPaidToShipper: netAmount ? netAmount / 100 : 0,
-        currency: currency,
+        transferId: transfer.id,
+        grossAmount: grossAmount / 100,
+        stripeFee: stripeFee / 100,
+        netPaidToShipper: netAmount / 100,
+        currency: balanceTx.currency,
       },
     });
   } catch (error) {
