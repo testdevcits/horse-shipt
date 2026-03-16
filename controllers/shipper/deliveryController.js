@@ -101,29 +101,38 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
     }
 
     if (shipment.shipper?.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized action" });
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized action",
+      });
     }
 
     if (shipment.deliveryOtpVerified) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Shipment already delivered" });
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already delivered",
+      });
     }
 
     if (shipment.deliveryOtp !== otp) {
-      return res.status(400).json({ success: false, message: "Invalid OTP" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      return res.status(400).json({ success: false, message: "OTP expired" });
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired",
+      });
     }
 
     // ============================================
@@ -170,10 +179,13 @@ exports.verifyDeliveryOtp = async (req, res) => {
       charge.balance_transaction
     );
 
-    const grossAmount = balanceTx.amount / 100;
+    // Correct Gross Amount
+    const grossAmount = paymentIntent.amount / 100;
+
+    // Stripe Fee
     const stripeFee = balanceTx.fee / 100;
 
-    console.log("Gross:", grossAmount);
+    console.log("Gross Amount:", grossAmount);
     console.log("Stripe Fee:", stripeFee);
 
     // ============================================
@@ -186,9 +198,9 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const platformFlat = settings?.platformFeeFlat || 0;
 
     const platformFeePercentAmount = (grossAmount * platformPercent) / 100;
-
     const platformFeeTotal = platformFeePercentAmount + platformFlat;
 
+    console.log("Platform Percent:", platformPercent);
     console.log("Platform Fee:", platformFeeTotal);
 
     // ============================================
@@ -216,6 +228,7 @@ exports.verifyDeliveryOtp = async (req, res) => {
       amount: payoutCents,
       currency: balanceTx.currency,
       destination: quote.shipper.stripeAccountId,
+      source_transaction: charge.id,
       metadata: {
         shipmentId: shipment._id.toString(),
         quoteId: quote._id.toString(),
@@ -255,7 +268,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     return res.json({
       success: true,
       message: "Delivery verified & payout sent",
-
       payoutDetails: {
         grossAmount,
         stripeFee,
@@ -354,5 +366,50 @@ exports.shipperPayout = async (req, res) => {
   } catch (error) {
     console.error("Shipper Payout Error:", error);
     res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.getShipperStripePayoutHistory = async (req, res) => {
+  try {
+    // Stripe account check
+    if (!req.user.stripeAccountId) {
+      return res.status(400).json({
+        success: false,
+        message: "Stripe account not connected",
+      });
+    }
+
+    // Get payouts from Stripe connected account
+    const payouts = await stripe.payouts.list(
+      {
+        limit: 20,
+      },
+      {
+        stripeAccount: req.user.stripeAccountId,
+      }
+    );
+
+    const payoutHistory = payouts.data.map((p) => ({
+      payoutId: p.id,
+      amount: p.amount / 100,
+      currency: p.currency,
+      status: p.status,
+      method: p.method,
+      arrivalDate: new Date(p.arrival_date * 1000),
+      createdAt: new Date(p.created * 1000),
+    }));
+
+    res.json({
+      success: true,
+      totalPayouts: payoutHistory.length,
+      payouts: payoutHistory,
+    });
+  } catch (error) {
+    console.error("STRIPE PAYOUT HISTORY ERROR:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
