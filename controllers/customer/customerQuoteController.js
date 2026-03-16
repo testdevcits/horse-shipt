@@ -71,10 +71,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     /* ---------------- PAYMENT VALIDATION ---------------- */
     if (quote.paymentMethod === "card") {
-      // Auto-update paymentStatus to "paid" if Stripe PaymentIntent exists
       if (quote.paymentStatus !== "paid") {
         if (quote.stripePaymentIntentId) {
-          // Optionally, you can fetch PaymentIntent from Stripe to confirm succeeded
           const paymentIntent = await stripe.paymentIntents.retrieve(
             quote.stripePaymentIntentId
           );
@@ -95,17 +93,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
           });
         }
       }
-    }
-
-    /* ---------------- PLATFORM FEE CALCULATION ---------------- */
-    const settings = await PlatformSettings.findOne();
-    let platformFee = 0;
-    let shipperReceives = quote.totalPrice;
-
-    if (settings) {
-      const percentFee = (quote.totalPrice * settings.platformFeePercent) / 100;
-      platformFee = percentFee + settings.platformFeeFlat;
-      shipperReceives = quote.totalPrice - platformFee;
     }
 
     /* ---------------- GENERATE CONTRACT PDF ---------------- */
@@ -179,9 +166,10 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     /* ---------------- RECEIPT ---------------- */
     const receipt = {
       shipmentPrice: quote.totalPrice,
-      platformFee,
-      shipperReceives,
+      platformFee: 0,
+      shipperReceives: quote.totalPrice,
       currency: quote.currency,
+      note: "Full payment received. Platform fee will be deducted during payout.",
     };
 
     return res.status(200).json({
