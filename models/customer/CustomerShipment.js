@@ -151,7 +151,7 @@ const shipmentSchema = new mongoose.Schema(
     currentLocation: { type: locationSchema, default: null },
     locationHistory: { type: [locationSchema], default: [] },
 
-    // ================= DELIVERY OTP =================
+    // ---------------- DELIVERY OTP ----------------
     deliveryOtp: {
       type: String,
       default: null,
@@ -176,11 +176,11 @@ const shipmentSchema = new mongoose.Schema(
 );
 
 // ---------------- INDEXES ----------------
-shipmentSchema.index(
-  { shipper: 1, pickupDate: 1 },
-  { unique: true, partialFilterExpression: { shipper: { $type: "objectId" } } }
-);
 
+// Fast search for shipper shipments
+shipmentSchema.index({ shipper: 1, pickupDate: 1 });
+
+// For marketplace filtering
 shipmentSchema.index({ publish: 1, status: 1 });
 
 // ---------------- PRE-SAVE HOOK ----------------
