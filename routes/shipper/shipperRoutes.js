@@ -126,6 +126,7 @@ const {
   verifyDeliveryOtp,
   shipperPayout,
   getShipmentDeliveryStatus,
+  getShipperStripePayoutHistory,
 } = require("../../controllers/shipper/deliveryController");
 
 // ====================================================
@@ -336,6 +337,11 @@ router.post(
   verifyDeliveryOtp
 );
 
+router.get(
+  "/shipper/payout-history",
+  shipperAuth,
+  getShipperStripePayoutHistory
+);
 // shipper payout request
 router.post("/shipper/payout", shipperAuth, shipperPayout);
 
