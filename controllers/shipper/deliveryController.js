@@ -378,10 +378,14 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
       });
     }
 
-    // Fetch transfers made to this shipper account
+    const limit = parseInt(req.query.limit) || 10;
+    const startingAfter = req.query.starting_after || null;
+
+    // Fetch transfers to this shipper account
     const transfers = await stripe.transfers.list({
       destination: req.user.stripeAccountId,
-      limit: 20,
+      limit: limit,
+      ...(startingAfter && { starting_after: startingAfter }),
     });
 
     const payoutHistory = transfers.data.map((t) => ({
@@ -389,7 +393,7 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
       amount: t.amount / 100,
       currency: t.currency,
       status: "paid",
-      method: "stripe_transfer",
+      method: "platform_payout",
       arrivalDate: new Date(t.created * 1000),
       createdAt: new Date(t.created * 1000),
     }));
@@ -397,10 +401,14 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
     res.json({
       success: true,
       totalTransactions: payoutHistory.length,
+      hasMore: transfers.has_more,
+      nextCursor: transfers.data.length
+        ? transfers.data[transfers.data.length - 1].id
+        : null,
       transactions: payoutHistory,
     });
   } catch (error) {
-    console.error("STRIPE TRANSFER ERROR:", error);
+    console.error("PAYOUT HISTORY ERROR:", error);
 
     res.status(500).json({
       success: false,
