@@ -99,40 +99,30 @@ exports.verifyDeliveryOtp = async (req, res) => {
     console.log("VERIFY DELIVERY OTP START");
 
     const shipment = await CustomerShipment.findById(shipmentId);
-
     if (!shipment) {
-      return res.status(404).json({
-        success: false,
-        message: "Shipment not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
     }
 
     if (shipment.shipper?.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized action",
-      });
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized action" });
     }
 
     if (shipment.deliveryOtpVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Shipment already delivered",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Shipment already delivered" });
     }
 
     if (shipment.deliveryOtp !== otp) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      });
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      return res.status(400).json({
-        success: false,
-        message: "OTP expired",
-      });
+      return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
     // ============================================
@@ -143,26 +133,22 @@ exports.verifyDeliveryOtp = async (req, res) => {
       shipment: shipmentId,
       status: "accepted",
     }).populate("shipper");
-
     if (!quote) {
-      return res.status(404).json({
-        success: false,
-        message: "Accepted quote not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Accepted quote not found" });
     }
 
     if (quote.paymentStatus !== "paid") {
-      return res.status(400).json({
-        success: false,
-        message: "Payment not completed yet",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment not completed yet" });
     }
 
     if (quote.payoutStatus === "transferred") {
-      return res.status(400).json({
-        success: false,
-        message: "Payout already processed",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Payout already processed" });
     }
 
     // ============================================
@@ -172,60 +158,56 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const paymentIntent = await stripe.paymentIntents.retrieve(
       quote.stripePaymentIntentId
     );
-
     const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
-
     const balanceTx = await stripe.balanceTransactions.retrieve(
       charge.balance_transaction
     );
 
-    // Correct Gross Amount
-    const grossAmount = paymentIntent.amount / 100;
+    const grossCents = paymentIntent.amount; // in cents
+    const stripeFeeCents = balanceTx.fee; // in cents
+    const netAfterStripeCents = grossCents - stripeFeeCents;
 
-    // Stripe Fee
-    const stripeFee = balanceTx.fee / 100;
-
-    console.log("Gross Amount:", grossAmount);
-    console.log("Stripe Fee:", stripeFee);
+    console.log("Gross Amount (cents):", grossCents);
+    console.log("Stripe Fee (cents):", stripeFeeCents);
+    console.log("Net after Stripe (cents):", netAfterStripeCents);
 
     // ============================================
     // GET PLATFORM SETTINGS
     // ============================================
 
     const settings = await PlatformSettings.findOne();
-
     const platformPercent = settings?.platformFeePercent || 0;
     const platformFlat = settings?.platformFeeFlat || 0;
 
-    const platformFeePercentAmount = (grossAmount * platformPercent) / 100;
-    const platformFeeTotal = platformFeePercentAmount + platformFlat;
+    // Platform fee in cents, rounded to nearest cent
+    const platformFeePercentCents = Math.round(
+      netAfterStripeCents * (platformPercent / 100)
+    );
+    const platformFeeFlatCents = Math.round(platformFlat * 100);
+    const platformFeeTotalCents =
+      platformFeePercentCents + platformFeeFlatCents;
 
-    console.log("Platform Percent:", platformPercent);
-    console.log("Platform Fee:", platformFeeTotal);
+    console.log("Platform Fee (cents):", platformFeeTotalCents);
 
     // ============================================
     // FINAL SHIPPER PAYOUT
     // ============================================
 
-    const shipperAmount = grossAmount - stripeFee - platformFeeTotal;
-
-    if (shipperAmount <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payout calculation",
-      });
+    const shipperCents = netAfterStripeCents - platformFeeTotalCents;
+    if (shipperCents <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid payout calculation" });
     }
 
-    const payoutCents = Math.round(shipperAmount * 100);
-
-    console.log("Shipper Payout:", shipperAmount);
+    console.log("Shipper Payout (cents):", shipperCents);
 
     // ============================================
     // STRIPE TRANSFER
     // ============================================
 
     const transfer = await stripe.transfers.create({
-      amount: payoutCents,
+      amount: shipperCents,
       currency: balanceTx.currency,
       destination: quote.shipper.stripeAccountId,
       source_transaction: charge.id,
@@ -245,10 +227,10 @@ exports.verifyDeliveryOtp = async (req, res) => {
     quote.payoutStatus = "transferred";
     quote.paymentReleasedAt = new Date();
 
-    quote.grossAmount = grossAmount;
-    quote.stripeFee = stripeFee;
-    quote.platformFee = platformFeeTotal;
-    quote.netAmount = shipperAmount;
+    quote.grossAmount = grossCents / 100;
+    quote.stripeFee = stripeFeeCents / 100;
+    quote.platformFee = platformFeeTotalCents / 100;
+    quote.netAmount = shipperCents / 100;
 
     await quote.save();
 
@@ -258,7 +240,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     shipment.status = "delivered";
     shipment.deliveredAt = new Date();
-
     shipment.deliveryOtpVerified = true;
     shipment.deliveryOtp = null;
     shipment.deliveryOtpExpires = null;
@@ -269,20 +250,16 @@ exports.verifyDeliveryOtp = async (req, res) => {
       success: true,
       message: "Delivery verified & payout sent",
       payoutDetails: {
-        grossAmount,
-        stripeFee,
-        platformFee: platformFeeTotal,
-        shipperReceived: shipperAmount,
+        grossAmount: grossCents / 100,
+        stripeFee: stripeFeeCents / 100,
+        platformFee: platformFeeTotalCents / 100,
+        shipperReceived: shipperCents / 100,
         currency: balanceTx.currency,
       },
     });
   } catch (error) {
     console.error("VERIFY DELIVERY ERROR:", error);
-
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 };
 

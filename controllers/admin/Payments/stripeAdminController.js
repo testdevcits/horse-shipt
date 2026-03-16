@@ -1,8 +1,13 @@
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
+const PlatformSettings = require("../../../models/admin/payment/platformSettings");
 
 /* =====================================================
    GET STRIPE BALANCE
+   - Show total pending & available
+   - Gross / net after Stripe
+   - Platform fee is NOT deducted yet (only for payout)
 ===================================================== */
 exports.getStripeBalance = async (req, res) => {
   try {
@@ -34,6 +39,7 @@ exports.getStripeBalance = async (req, res) => {
 
 /* =====================================================
    GET STRIPE TRANSACTIONS WITH FILTER (today/week/month)
+   - Show platform fee & net shipper receives
 ===================================================== */
 exports.getStripeTransactions = async (req, res) => {
   try {
@@ -52,6 +58,7 @@ exports.getStripeTransactions = async (req, res) => {
       startDate.setMonth(now.getMonth() - 1);
     }
 
+    // Fetch raw Stripe transactions
     const transactions = await stripe.balanceTransactions.list({
       limit: 50,
       created: startDate
@@ -59,24 +66,54 @@ exports.getStripeTransactions = async (req, res) => {
         : undefined,
     });
 
-    const formatted = transactions.data.map((txn) => ({
-      id: txn.id,
-      amount: txn.amount / 100,
-      fee: txn.fee / 100,
-      net: txn.net / 100,
-      currency: txn.currency,
-      type: txn.type,
-      status: txn.status,
-      created: new Date(txn.created * 1000),
-    }));
+    // Get platform settings
+    const settings = await PlatformSettings.findOne();
+    const platformPercent = settings?.platformFeePercent || 0;
+    const platformFlat = settings?.platformFeeFlat || 0;
+
+    // Map transactions with platform fee & net for shipper
+    const formatted = await Promise.all(
+      transactions.data.map(async (txn) => {
+        let platformFee = 0;
+
+        // Try to match txn with our ShipmentQuote if metadata exists
+        if (txn.metadata?.quoteId) {
+          const quote = await ShipmentQuote.findById(txn.metadata.quoteId);
+          if (quote && quote.paymentStatus === "paid") {
+            const netAfterStripe = txn.net; // in cents
+            const platformFeePercentCents = Math.round(
+              netAfterStripe * (platformPercent / 100)
+            );
+            const platformFeeFlatCents = Math.round(platformFlat * 100);
+            platformFee =
+              (platformFeePercentCents + platformFeeFlatCents) / 100;
+          }
+        }
+
+        return {
+          id: txn.id,
+          amount: txn.amount / 100,
+          fee: txn.fee / 100,
+          net: txn.net / 100,
+          currency: txn.currency,
+          type: txn.type,
+          status: txn.status,
+          created: new Date(txn.created * 1000),
+          platformFee,
+          shipperReceives: txn.net / 100 - platformFee,
+        };
+      })
+    );
 
     const totalAmount = formatted.reduce((sum, t) => sum + t.amount, 0);
+    const totalNet = formatted.reduce((sum, t) => sum + t.shipperReceives, 0);
 
     res.status(200).json({
       success: true,
       filter: range || "all",
       totalTransactions: formatted.length,
       totalAmount,
+      totalNet,
       data: formatted,
     });
   } catch (error) {
