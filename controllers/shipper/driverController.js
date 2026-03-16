@@ -66,24 +66,37 @@ exports.assignVehiclesToDriver = async (req, res) => {
       _id: driverId,
       shipper: req.shipper._id,
     });
-    if (!driver)
+
+    if (!driver) {
       return res
         .status(404)
         .json({ success: false, message: "Driver not found" });
+    }
 
-    vehicleIds.forEach((vid) => {
+    // Ensure vehicleIds is always an array
+    const vehiclesArray = Array.isArray(vehicleIds) ? vehicleIds : [vehicleIds];
+
+    vehiclesArray.forEach((vid) => {
       if (!driver.assignedVehicles.includes(vid)) {
         driver.assignedVehicles.push(vid);
       }
     });
 
     await driver.save();
+
     const populatedDriver = await driver.populate("assignedVehicles");
 
-    res.json({ success: true, driver: populatedDriver });
+    res.json({
+      success: true,
+      driver: populatedDriver,
+    });
   } catch (error) {
     console.error("[ASSIGN VEHICLES] Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
