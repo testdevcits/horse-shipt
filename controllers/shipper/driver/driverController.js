@@ -109,6 +109,80 @@ exports.getDriverDashboard = async (req, res) => {
 };
 
 // ====================================================
+// GET ASSIGNED SHIPMENTS FOR DRIVER (WITH CUSTOMER & COORDS)
+// ====================================================
+exports.getDriverAssignedShipments = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
+
+    // Fetch all ShipmentQuotes assigned to this driver, not delivered/cancelled
+    const assignedQuotes = await ShipmentQuote.find({
+      assignedDriver: driverId,
+      status: { $nin: ["delivered", "cancelled"] },
+    })
+      .populate({
+        path: "shipment",
+        populate: { path: "customer", select: "name phone email" },
+      })
+      .populate("vehicle", "vehicleName vehicleType")
+      .lean();
+
+    if (!assignedQuotes || assignedQuotes.length === 0) {
+      return res.json({
+        success: true,
+        driverId,
+        assignedShipments: [],
+        message: "No assigned shipments found",
+      });
+    }
+
+    // Format response
+    const shipments = assignedQuotes.map((quote) => {
+      const shipment = quote.shipment;
+      return {
+        quoteId: quote._id,
+        shipmentId: shipment._id,
+        shipmentCode: shipment.shipmentCode,
+        status: quote.status,
+        pickupAddress: shipment.pickupLocation,
+        pickupCoords: shipment.pickupCoords || {},
+        deliveryAddress: shipment.deliveryLocation,
+        deliveryCoords: shipment.deliveryCoords || {},
+        pickupTime: quote.pickupTime || shipment.pickupDate,
+        estimatedArrivalTime:
+          quote.estimatedArrivalTime || shipment.deliveryDate,
+        transportType: quote.transportType || shipment.transportType,
+        stallsRequired: quote.stallsRequired || shipment.numberOfHorses,
+        notes: quote.notes || shipment.additionalInfo,
+        vehicle: quote.vehicle
+          ? {
+              vehicleId: quote.vehicle._id,
+              vehicleName: quote.vehicle.vehicleName,
+              vehicleType: quote.vehicle.vehicleType,
+            }
+          : null,
+        customer: shipment.customer
+          ? {
+              customerId: shipment.customer._id,
+              name: shipment.customer.name,
+              phone: shipment.customer.phone,
+              email: shipment.customer.email,
+            }
+          : null,
+      };
+    });
+
+    res.json({
+      success: true,
+      driverId,
+      assignedShipments: shipments,
+    });
+  } catch (error) {
+    console.error("[GET ASSIGNED SHIPMENTS]", error);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+// ====================================================
 // ACCEPT SHIPMENT (SELF ASSIGN)
 // ====================================================
 exports.acceptShipment = async (req, res) => {

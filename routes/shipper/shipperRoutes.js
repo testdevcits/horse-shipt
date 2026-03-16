@@ -93,6 +93,7 @@ const {
   getDriverDashboard,
   updateDriverProfileImage,
   deleteDriverProfileImage,
+  getDriverAssignedShipments,
 } = require("../../controllers/shipper/driver/driverController");
 
 // -------- Contracts --------
@@ -275,6 +276,11 @@ router.put(
 );
 
 router.delete("/driver/profile-image", driverAuth, deleteDriverProfileImage);
+router.get(
+  "/driver/assigned-shipments",
+  driverAuth,
+  getDriverAssignedShipments
+);
 
 // ====================================================
 // SHIPPER CONTRACT ROUTES
