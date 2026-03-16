@@ -371,7 +371,7 @@ exports.shipperPayout = async (req, res) => {
 
 exports.getShipperStripePayoutHistory = async (req, res) => {
   try {
-    // Stripe account check
+    // Check Stripe account
     if (!req.user.stripeAccountId) {
       return res.status(400).json({
         success: false,
@@ -379,18 +379,34 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
       });
     }
 
-    // Get payouts from Stripe connected account
-    const payouts = await stripe.payouts.list(
-      {
-        limit: 20,
-      },
-      {
-        stripeAccount: req.user.stripeAccountId,
-      }
+    const stripeAccount = req.user.stripeAccountId;
+
+    // ===============================
+    // GET TRANSFERS (Platform → Shipper)
+    // ===============================
+    const transfers = await stripe.transfers.list(
+      { limit: 20 },
+      { stripeAccount }
     );
 
+    const transferHistory = transfers.data.map((t) => ({
+      id: t.id,
+      type: "transfer",
+      amount: t.amount / 100,
+      currency: t.currency,
+      status: "succeeded",
+      description: t.description || "Shipment Payment",
+      createdAt: new Date(t.created * 1000),
+    }));
+
+    // ===============================
+    // GET PAYOUTS (Shipper → Bank)
+    // ===============================
+    const payouts = await stripe.payouts.list({ limit: 20 }, { stripeAccount });
+
     const payoutHistory = payouts.data.map((p) => ({
-      payoutId: p.id,
+      id: p.id,
+      type: "payout",
       amount: p.amount / 100,
       currency: p.currency,
       status: p.status,
@@ -399,16 +415,24 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
       createdAt: new Date(p.created * 1000),
     }));
 
+    // ===============================
+    // COMBINE BOTH
+    // ===============================
+    const history = [...transferHistory, ...payoutHistory].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+
     res.json({
       success: true,
-      totalPayouts: payoutHistory.length,
-      payouts: payoutHistory,
+      totalTransactions: history.length,
+      transactions: history,
     });
   } catch (error) {
-    console.error("STRIPE PAYOUT HISTORY ERROR:", error);
+    console.error("STRIPE HISTORY ERROR:", error);
 
     res.status(500).json({
       success: false,
+      message: "Failed to fetch Stripe history",
       error: error.message,
     });
   }
