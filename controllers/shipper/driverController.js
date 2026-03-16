@@ -60,7 +60,8 @@ exports.getMyDrivers = async (req, res) => {
 // ====================================================
 exports.assignVehiclesToDriver = async (req, res) => {
   try {
-    const { driverId, vehicleIds } = req.body;
+    const { driverId } = req.body;
+    let { vehicleIds } = req.body;
 
     const driver = await Driver.findOne({
       _id: driverId,
@@ -73,10 +74,17 @@ exports.assignVehiclesToDriver = async (req, res) => {
         .json({ success: false, message: "Driver not found" });
     }
 
-    // Ensure vehicleIds is always an array
-    const vehiclesArray = Array.isArray(vehicleIds) ? vehicleIds : [vehicleIds];
+    // Fix nested object issue
+    if (vehicleIds?.vehicleIds) {
+      vehicleIds = vehicleIds.vehicleIds;
+    }
 
-    vehiclesArray.forEach((vid) => {
+    // Ensure array
+    if (!Array.isArray(vehicleIds)) {
+      vehicleIds = [vehicleIds];
+    }
+
+    vehicleIds.forEach((vid) => {
       if (!driver.assignedVehicles.includes(vid)) {
         driver.assignedVehicles.push(vid);
       }
