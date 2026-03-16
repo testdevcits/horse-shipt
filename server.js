@@ -163,6 +163,8 @@ const adminVehicleRoutes = require("./routes/admin/adminVehicleRoutes");
 const adminPlatformSettingsRoutes = require("./routes/admin/Payments/admin.platformSettingsRoutes");
 const adminPaymentsRoutes = require("./routes/admin/Payments/adminPaymentsRoutes");
 const stripeAdminRoutes = require("./routes/admin/Payments/stripeAdminRoutes");
+const privacyPolicyRoutes = require("./routes/admin/privacyPolicy.routes");
+const termsConditionRoutes = require("./routes/admin/termsCondition.routes");
 
 // Public / App APIs
 app.use("/api/auth", authRoutes);
@@ -179,6 +181,8 @@ app.use("/api/admin/vehicles", adminVehicleRoutes);
 app.use("/api/admin/platform-settings", adminPlatformSettingsRoutes);
 app.use("/api/admin/payments", adminPaymentsRoutes);
 app.use("/api/admin/stripe", stripeAdminRoutes);
+app.use("/api/admin/privacy-policy", privacyPolicyRoutes);
+app.use("/api/admin/terms-condition", termsConditionRoutes);
 
 // -------------------------
 // Health Check
