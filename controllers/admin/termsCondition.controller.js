@@ -5,31 +5,38 @@ const TermsCondition = require("../../models/admin/TermsCondition");
 // =====================================
 const createTermsCondition = async (req, res) => {
   try {
-    let { content } = req.body;
+    const { title, content } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: "Content is required" });
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Title is required",
+      });
     }
 
-    // Sirf ek hi active Terms rakhenge
-    const existing = await TermsCondition.findOne({ isActive: true });
-    if (existing) {
-      return res
-        .status(400)
-        .json({ message: "Terms & Conditions already exists" });
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Content is required",
+      });
     }
 
     const terms = await TermsCondition.create({
+      title: title.trim(),
       content: content.trim(),
     });
 
     return res.status(201).json({
+      success: true,
       message: "Terms & Conditions created successfully",
       data: terms,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("CREATE ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while creating Terms & Conditions",
+    });
   }
 };
 
@@ -39,6 +46,7 @@ const createTermsCondition = async (req, res) => {
 const getTermsConditions = async (req, res) => {
   try {
     let { page = 1, limit = 10, showInactive = false } = req.query;
+
     page = parseInt(page);
     limit = parseInt(limit);
 
@@ -53,6 +61,7 @@ const getTermsConditions = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      message: "Terms & Conditions fetched successfully",
       count: terms.length,
       total,
       page,
@@ -60,29 +69,41 @@ const getTermsConditions = async (req, res) => {
       data: terms,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("GET ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching Terms & Conditions",
+    });
   }
 };
 
 // =====================================
-// GET SINGLE ACTIVE TERMS (Public)
+// GET ACTIVE TERMS (Public - LIST)
 // =====================================
 const getActiveTermsCondition = async (req, res) => {
   try {
-    const terms = await TermsCondition.findOne({ isActive: true });
+    const terms = await TermsCondition.find({ isActive: true }).sort({
+      createdAt: 1,
+    });
 
-    if (!terms) {
-      return res.status(404).json({ message: "Terms & Conditions not found" });
+    if (!terms || terms.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Terms & Conditions not found",
+      });
     }
 
     return res.status(200).json({
       success: true,
-      data: terms,
+      message: "Terms & Conditions fetched successfully",
+      data: terms, // 👈 list return
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("ACTIVE FETCH ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching Terms & Conditions",
+    });
   }
 };
 
@@ -91,23 +112,33 @@ const getActiveTermsCondition = async (req, res) => {
 // =====================================
 const updateTermsCondition = async (req, res) => {
   try {
-    const { content } = req.body;
+    const { title, content } = req.body;
 
     const terms = await TermsCondition.findById(req.params.id);
+
     if (!terms) {
-      return res.status(404).json({ message: "Terms & Conditions not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Terms & Conditions not found",
+      });
     }
 
-    terms.content = content || terms.content;
+    if (title) terms.title = title.trim();
+    if (content) terms.content = content.trim();
+
     await terms.save();
 
     return res.status(200).json({
+      success: true,
       message: "Terms & Conditions updated successfully",
       data: terms,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("UPDATE ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating Terms & Conditions",
+    });
   }
 };
 
@@ -117,19 +148,27 @@ const updateTermsCondition = async (req, res) => {
 const deleteTermsCondition = async (req, res) => {
   try {
     const terms = await TermsCondition.findById(req.params.id);
+
     if (!terms) {
-      return res.status(404).json({ message: "Terms & Conditions not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Terms & Conditions not found",
+      });
     }
 
     terms.isActive = false;
     await terms.save();
 
-    return res
-      .status(200)
-      .json({ message: "Terms & Conditions deactivated successfully" });
+    return res.status(200).json({
+      success: true,
+      message: "Terms & Conditions deleted successfully",
+    });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("DELETE ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while deleting Terms & Conditions",
+    });
   }
 };
 
@@ -139,29 +178,39 @@ const deleteTermsCondition = async (req, res) => {
 const updateTermsConditionStatus = async (req, res) => {
   try {
     const { isActive } = req.body;
+
     if (typeof isActive !== "boolean") {
-      return res
-        .status(400)
-        .json({ message: "isActive must be true or false" });
+      return res.status(400).json({
+        success: false,
+        message: "isActive must be true or false",
+      });
     }
 
     const terms = await TermsCondition.findById(req.params.id);
+
     if (!terms) {
-      return res.status(404).json({ message: "Terms & Conditions not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Terms & Conditions not found",
+      });
     }
 
     terms.isActive = isActive;
     await terms.save();
 
     return res.status(200).json({
+      success: true,
       message: `Terms & Conditions ${
         isActive ? "activated" : "deactivated"
       } successfully`,
       data: terms,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("STATUS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating status",
+    });
   }
 };
 

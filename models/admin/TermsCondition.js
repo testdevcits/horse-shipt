@@ -4,17 +4,18 @@ const TermsConditionSchema = new mongoose.Schema(
   {
     title: {
       type: String,
-      required: true,
+      trim: true,
       default: "Terms & Conditions",
     },
     content: {
       type: String,
-      required: true,
+      trim: true,
       default: "TBD",
     },
     isActive: {
       type: Boolean,
       default: true,
+      index: true,
     },
   },
   { timestamps: true }
