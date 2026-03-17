@@ -83,27 +83,29 @@ const getPrivacyPolicies = async (req, res) => {
 // =====================================
 const getActivePrivacyPolicy = async (req, res) => {
   try {
+    // Find all active policies, latest first
     const policies = await PrivacyPolicy.find({ isActive: true }).sort({
-      createdAt: 1,
+      createdAt: -1,
     });
 
     if (!policies || policies.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Privacy Policy not found",
+        message: "No active Privacy Policies found",
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Privacy Policy fetched successfully",
+      message: "Active Privacy Policies fetched successfully",
+      count: policies.length,
       data: policies,
     });
   } catch (error) {
     console.error("ACTIVE FETCH ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching policy",
+      message: "Server error while fetching active policies",
     });
   }
 };
