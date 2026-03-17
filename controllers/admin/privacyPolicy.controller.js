@@ -5,29 +5,38 @@ const PrivacyPolicy = require("../../models/admin/PrivacyPolicy");
 // =====================================
 const createPrivacyPolicy = async (req, res) => {
   try {
-    let { content } = req.body;
+    const { title, content } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({ message: "Content is required" });
+    if (!title || !title.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Title is required",
+      });
     }
 
-    // Sirf ek hi active Privacy Policy rakhenge
-    const existing = await PrivacyPolicy.findOne({ isActive: true });
-    if (existing) {
-      return res.status(400).json({ message: "Privacy Policy already exists" });
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Content is required",
+      });
     }
 
     const policy = await PrivacyPolicy.create({
+      title: title.trim(),
       content: content.trim(),
     });
 
     return res.status(201).json({
+      success: true,
       message: "Privacy Policy created successfully",
       data: policy,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("CREATE ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while creating Privacy Policy",
+    });
   }
 };
 
@@ -37,6 +46,7 @@ const createPrivacyPolicy = async (req, res) => {
 const getPrivacyPolicies = async (req, res) => {
   try {
     let { page = 1, limit = 10, showInactive = false } = req.query;
+
     page = parseInt(page);
     limit = parseInt(limit);
 
@@ -51,6 +61,7 @@ const getPrivacyPolicies = async (req, res) => {
 
     return res.status(200).json({
       success: true,
+      message: "Privacy Policies fetched successfully",
       count: policies.length,
       total,
       page,
@@ -58,8 +69,11 @@ const getPrivacyPolicies = async (req, res) => {
       data: policies,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("GET ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching policies",
+    });
   }
 };
 
@@ -68,19 +82,28 @@ const getPrivacyPolicies = async (req, res) => {
 // =====================================
 const getActivePrivacyPolicy = async (req, res) => {
   try {
-    const policy = await PrivacyPolicy.findOne({ isActive: true });
+    const policies = await PrivacyPolicy.find({ isActive: true }).sort({
+      createdAt: 1,
+    });
 
-    if (!policy) {
-      return res.status(404).json({ message: "Privacy Policy not found" });
+    if (!policies || policies.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Privacy Policy not found",
+      });
     }
 
     return res.status(200).json({
       success: true,
-      data: policy,
+      message: "Privacy Policy fetched successfully",
+      data: policies, // 👈 ab list return hogi
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("ACTIVE FETCH ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while fetching policy",
+    });
   }
 };
 
@@ -89,23 +112,33 @@ const getActivePrivacyPolicy = async (req, res) => {
 // =====================================
 const updatePrivacyPolicy = async (req, res) => {
   try {
-    const { content } = req.body;
+    const { title, content } = req.body;
 
     const policy = await PrivacyPolicy.findById(req.params.id);
+
     if (!policy) {
-      return res.status(404).json({ message: "Privacy Policy not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Privacy Policy not found",
+      });
     }
 
-    policy.content = content || policy.content;
+    if (title) policy.title = title.trim();
+    if (content) policy.content = content.trim();
+
     await policy.save();
 
     return res.status(200).json({
+      success: true,
       message: "Privacy Policy updated successfully",
       data: policy,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("UPDATE ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating policy",
+    });
   }
 };
 
@@ -115,19 +148,27 @@ const updatePrivacyPolicy = async (req, res) => {
 const deletePrivacyPolicy = async (req, res) => {
   try {
     const policy = await PrivacyPolicy.findById(req.params.id);
+
     if (!policy) {
-      return res.status(404).json({ message: "Privacy Policy not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Privacy Policy not found",
+      });
     }
 
     policy.isActive = false;
     await policy.save();
 
-    return res
-      .status(200)
-      .json({ message: "Privacy Policy deactivated successfully" });
+    return res.status(200).json({
+      success: true,
+      message: "Privacy Policy deleted successfully",
+    });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("DELETE ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while deleting policy",
+    });
   }
 };
 
@@ -137,29 +178,39 @@ const deletePrivacyPolicy = async (req, res) => {
 const updatePrivacyPolicyStatus = async (req, res) => {
   try {
     const { isActive } = req.body;
+
     if (typeof isActive !== "boolean") {
-      return res
-        .status(400)
-        .json({ message: "isActive must be true or false" });
+      return res.status(400).json({
+        success: false,
+        message: "isActive must be true or false",
+      });
     }
 
     const policy = await PrivacyPolicy.findById(req.params.id);
+
     if (!policy) {
-      return res.status(404).json({ message: "Privacy Policy not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Privacy Policy not found",
+      });
     }
 
     policy.isActive = isActive;
     await policy.save();
 
     return res.status(200).json({
+      success: true,
       message: `Privacy Policy ${
         isActive ? "activated" : "deactivated"
       } successfully`,
       data: policy,
     });
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    console.error("STATUS ERROR:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while updating status",
+    });
   }
 };
 
