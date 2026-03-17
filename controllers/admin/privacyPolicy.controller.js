@@ -45,17 +45,18 @@ const createPrivacyPolicy = async (req, res) => {
 // =====================================
 const getPrivacyPolicies = async (req, res) => {
   try {
-    let { page = 1, limit = 10, showInactive = false } = req.query;
+    let { page = 1, limit = 10 } = req.query;
 
     page = parseInt(page);
     limit = parseInt(limit);
 
-    const filter = showInactive === "true" ? {} : { isActive: true };
+    // No filter → get ALL policies
+    const filter = {};
 
     const total = await PrivacyPolicy.countDocuments(filter);
 
     const policies = await PrivacyPolicy.find(filter)
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1 }) // latest first
       .skip((page - 1) * limit)
       .limit(limit);
 
@@ -96,7 +97,7 @@ const getActivePrivacyPolicy = async (req, res) => {
     return res.status(200).json({
       success: true,
       message: "Privacy Policy fetched successfully",
-      data: policies, // 👈 ab list return hogi
+      data: policies,
     });
   } catch (error) {
     console.error("ACTIVE FETCH ERROR:", error);
@@ -147,7 +148,7 @@ const updatePrivacyPolicy = async (req, res) => {
 // =====================================
 const deletePrivacyPolicy = async (req, res) => {
   try {
-    const policy = await PrivacyPolicy.findById(req.params.id);
+    const policy = await PrivacyPolicy.findByIdAndDelete(req.params.id);
 
     if (!policy) {
       return res.status(404).json({
@@ -156,12 +157,9 @@ const deletePrivacyPolicy = async (req, res) => {
       });
     }
 
-    policy.isActive = false;
-    await policy.save();
-
     return res.status(200).json({
       success: true,
-      message: "Privacy Policy deleted successfully",
+      message: "Privacy Policy permanently deleted successfully",
     });
   } catch (error) {
     console.error("DELETE ERROR:", error);
