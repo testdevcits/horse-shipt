@@ -427,16 +427,17 @@ exports.getTopRatedShippers = async (req, res) => {
   try {
     // Aggregate reviews by shipperId and calculate average rating
     const topShippers = await Review.aggregate([
-      { $match: { reviewStatus: "approved", isHidden: false } }, // only approved reviews
+      { $match: { reviewStatus: "approved", isHidden: false } },
       {
         $group: {
           _id: "$shipperId",
           averageRating: { $avg: "$rating" },
           totalReviews: { $sum: 1 },
+          latestReview: { $last: "$reviewText" }, // get latest review text
         },
       },
-      { $sort: { averageRating: -1, totalReviews: -1 } }, // highest rating first
-      { $limit: 10 }, // top 10
+      { $sort: { averageRating: -1, totalReviews: -1 } },
+      { $limit: 10 },
     ]);
 
     // Populate shipper info
@@ -451,11 +452,11 @@ exports.getTopRatedShippers = async (req, res) => {
       );
 
       return {
-        id: s._id, // for navigation
+        id: s._id,
         name: shipperInfo?.name || "Unknown",
         profileImage: shipperInfo?.profileImage?.url || "/default-avatar.png",
         rating: Number(s.averageRating.toFixed(1)),
-        reviewText: `${s.totalReviews} Reviews`,
+        reviewText: s.latestReview || `${s.totalReviews} Reviews`, // show latest review if available
         region: shipperInfo?.region || "Unknown",
         googleReviewLink: shipperInfo?.googleReviewLink || null,
       };
