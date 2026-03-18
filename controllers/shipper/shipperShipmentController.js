@@ -67,8 +67,12 @@ function toRad(value) {
   return (value * Math.PI) / 180;
 }
 
+function toRad(value) {
+  return (value * Math.PI) / 180;
+}
+
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371; // Radius of Earth in KM
+  const R = 6371; // KM
 
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
@@ -82,26 +86,62 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 
-  return R * c; // distance in KM
+  return R * c;
 }
 
 exports.getAvailableShipments = async (req, res) => {
   try {
-    const { pickupDistance, dropoffDistance, stallSize, minHorses } = req.query;
+    const { pickupDistance, dropoffDistance, stallSize, minHorses, lat, lng } =
+      req.query;
 
-    // Cache key = query params ke combination se
-    const cacheKey = `shipments_${pickupDistance || "0"}_${
-      dropoffDistance || "0"
-    }_${stallSize || "all"}_${minHorses || "0"}`;
+    /* ===============================
+       GET SHIPPER LOCATION
+    =================================*/
+    let shipperLocation = null;
 
-    // Check if cache exists
+    if (lat && lng) {
+      shipperLocation = {
+        lat: Number(lat),
+        lng: Number(lng),
+      };
+    } else {
+      const shipper = await Shipper.findById(req.user.id);
+
+      if (shipper?.currentLocation) {
+        shipperLocation = {
+          lat: shipper.currentLocation.latitude,
+          lng: shipper.currentLocation.longitude,
+        };
+      }
+    }
+
+    console.log("Shipper Location:", shipperLocation);
+
+    /* ===============================
+       CACHE KEY
+    =================================*/
+    const cleanQuery = {
+      pickupDistance: pickupDistance || "",
+      dropoffDistance: dropoffDistance || "",
+      stallSize: stallSize || "",
+      minHorses: minHorses || "",
+      lat: lat || "",
+      lng: lng || "",
+    };
+
+    const cacheKey = "shipments_" + JSON.stringify(cleanQuery);
+
     const cachedData = cache.get(cacheKey);
     if (cachedData) {
-      console.log("Returning cached shipments");
+      console.log("CACHE HIT");
       return res.status(200).json({ success: true, shipments: cachedData });
     }
 
-    // If no cache, fetch from DB (existing logic)
+    console.log("CACHE MISS");
+
+    /* ===============================
+       FETCH DATA
+    =================================*/
     const assignedShipments = await ShipperShipment.find({}, "shipment");
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
@@ -129,13 +169,14 @@ exports.getAvailableShipments = async (req, res) => {
       )
       .sort({ publishedAt: -1 });
 
-    // Add distance
+    /* ===============================
+       ADD ESTIMATED DISTANCE
+    =================================*/
     let shipmentsWithDistance = shipments.map((shipment) => {
       const pickup = shipment.pickupCoords;
       const delivery = shipment.deliveryCoords;
 
       let distanceKm = 0;
-      let distanceMiles = 0;
 
       if (pickup && delivery) {
         distanceKm = calculateDistance(
@@ -144,51 +185,58 @@ exports.getAvailableShipments = async (req, res) => {
           delivery.latitude,
           delivery.longitude
         );
-        distanceMiles = distanceKm * 0.621371;
       }
 
       return {
         ...shipment.toObject(),
         estimatedDistance: {
           km: Number(distanceKm.toFixed(2)),
-          miles: Number(distanceMiles.toFixed(2)),
+          miles: Number((distanceKm * 0.621371).toFixed(2)),
         },
       };
     });
 
-    // Apply filters (pickup/dropoff/stallSize/minHorses)
+    /* ===============================
+       APPLY FILTERS (🔥 FIXED)
+    =================================*/
     shipmentsWithDistance = shipmentsWithDistance.filter((shipment) => {
       let pickupOk = true,
         dropoffOk = true,
         stallOk = true,
         horsesOk = true;
 
-      if (pickupDistance && req.shipperLocation) {
+      // ✅ Pickup Distance Filter
+      if (pickupDistance && shipperLocation) {
         const dist = calculateDistance(
-          req.shipperLocation.lat,
-          req.shipperLocation.lng,
+          shipperLocation.lat,
+          shipperLocation.lng,
           shipment.pickupCoords.latitude,
           shipment.pickupCoords.longitude
         );
+
         pickupOk = dist <= Number(pickupDistance);
       }
 
-      if (dropoffDistance && req.shipperLocation) {
+      // ✅ Dropoff Distance Filter
+      if (dropoffDistance && shipperLocation) {
         const dist = calculateDistance(
-          req.shipperLocation.lat,
-          req.shipperLocation.lng,
+          shipperLocation.lat,
+          shipperLocation.lng,
           shipment.deliveryCoords.latitude,
           shipment.deliveryCoords.longitude
         );
+
         dropoffOk = dist <= Number(dropoffDistance);
       }
 
+      // ✅ Stall Size
       if (stallSize) {
         stallOk = shipment.horses.some(
           (h) => h.requestedStallSize === stallSize
         );
       }
 
+      // ✅ Number of Horses
       if (minHorses) {
         horsesOk = shipment.numberOfHorses >= Number(minHorses);
       }
@@ -196,13 +244,21 @@ exports.getAvailableShipments = async (req, res) => {
       return pickupOk && dropoffOk && stallOk && horsesOk;
     });
 
-    // Store filtered result in cache
+    /* ===============================
+       SAVE CACHE
+    =================================*/
     cache.set(cacheKey, shipmentsWithDistance);
 
-    res.status(200).json({ success: true, shipments: shipmentsWithDistance });
+    res.status(200).json({
+      success: true,
+      shipments: shipmentsWithDistance,
+    });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
 
