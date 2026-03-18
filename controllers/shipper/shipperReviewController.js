@@ -444,17 +444,20 @@ exports.getTopRatedShippers = async (req, res) => {
       _id: { $in: topShippers.map((s) => s._id) },
     });
 
-    // Map ratings with shipper info
+    // Map ratings with shipper info into ShipperReviewCard format
     const result = topShippers.map((s) => {
       const shipperInfo = populatedShippers.find(
         (sh) => sh._id.toString() === s._id.toString()
       );
+
       return {
-        shipperId: s._id,
+        id: s._id, // for navigation
         name: shipperInfo?.name || "Unknown",
+        profileImage: shipperInfo?.profileImage?.url || "/default-avatar.png",
+        rating: Number(s.averageRating.toFixed(1)),
+        reviewText: `${s.totalReviews} Reviews`,
+        region: shipperInfo?.region || "Unknown",
         googleReviewLink: shipperInfo?.googleReviewLink || null,
-        averageRating: s.averageRating.toFixed(1),
-        totalReviews: s.totalReviews,
       };
     });
 
