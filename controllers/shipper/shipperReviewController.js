@@ -421,3 +421,46 @@ exports.getMyReviews = async (req, res) => {
     });
   }
 };
+
+// GET /shippers/top-rated
+exports.getTopRatedShippers = async (req, res) => {
+  try {
+    // Aggregate reviews by shipperId and calculate average rating
+    const topShippers = await Review.aggregate([
+      { $match: { reviewStatus: "approved", isHidden: false } }, // only approved reviews
+      {
+        $group: {
+          _id: "$shipperId",
+          averageRating: { $avg: "$rating" },
+          totalReviews: { $sum: 1 },
+        },
+      },
+      { $sort: { averageRating: -1, totalReviews: -1 } }, // highest rating first
+      { $limit: 10 }, // top 10
+    ]);
+
+    // Populate shipper info
+    const populatedShippers = await Shipper.find({
+      _id: { $in: topShippers.map((s) => s._id) },
+    });
+
+    // Map ratings with shipper info
+    const result = topShippers.map((s) => {
+      const shipperInfo = populatedShippers.find(
+        (sh) => sh._id.toString() === s._id.toString()
+      );
+      return {
+        shipperId: s._id,
+        name: shipperInfo?.name || "Unknown",
+        googleReviewLink: shipperInfo?.googleReviewLink || null,
+        averageRating: s.averageRating.toFixed(1),
+        totalReviews: s.totalReviews,
+      };
+    });
+
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    console.error("Error fetching top rated shippers:", error);
+    res.status(500).json({ success: false, message: "Server error" });
+  }
+};

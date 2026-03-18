@@ -86,6 +86,7 @@ const {
   deleteMyReview,
   getMyReviews,
   getReviewsByShipper,
+  getTopRatedShippers,
 } = require("../../controllers/shipper/shipperReviewController");
 // ====================================================
 // PAYMENT ROUTES
@@ -264,6 +265,8 @@ router.delete("/reviews/:reviewId", customerAuth, deleteMyReview);
 router.get("/reviews", customerAuth, getMyReviews);
 
 router.get("/shipper/:shipperId", getReviewsByShipper);
+// ======= NEW: Top Rated Shippers =======
+router.get("/shippers/top-rated", getTopRatedShippers);
 // ====================================================
 // EXPORT ROUTER
 // ====================================================
