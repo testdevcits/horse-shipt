@@ -1,4 +1,8 @@
 const mongoose = require("mongoose");
+
+// --------------------------- imports ---------------------------
+const NodeCache = require("node-cache");
+const cache = new NodeCache({ stdTTL: 600 }); // TTL = 10 min
 const ShipperShipment = require("../../models/shipper/ShipperShipment");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
@@ -83,16 +87,24 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 exports.getAvailableShipments = async (req, res) => {
   try {
-    console.log("Fetching all available shipments for shippers...");
-
-    // Optional filter params from query
     const { pickupDistance, dropoffDistance, stallSize, minHorses } = req.query;
 
-    // Get all shipment IDs already assigned
+    // Cache key = query params ke combination se
+    const cacheKey = `shipments_${pickupDistance || "0"}_${
+      dropoffDistance || "0"
+    }_${stallSize || "all"}_${minHorses || "0"}`;
+
+    // Check if cache exists
+    const cachedData = cache.get(cacheKey);
+    if (cachedData) {
+      console.log("Returning cached shipments");
+      return res.status(200).json({ success: true, shipments: cachedData });
+    }
+
+    // If no cache, fetch from DB (existing logic)
     const assignedShipments = await ShipperShipment.find({}, "shipment");
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
-    // Fetch shipments not assigned
     let shipments = await CustomerShipment.find({
       publish: true,
       status: { $in: ["pending", "open_for_offers"] },
@@ -117,7 +129,7 @@ exports.getAvailableShipments = async (req, res) => {
       )
       .sort({ publishedAt: -1 });
 
-    // Add estimated distance to each shipment
+    // Add distance
     let shipmentsWithDistance = shipments.map((shipment) => {
       const pickup = shipment.pickupCoords;
       const delivery = shipment.deliveryCoords;
@@ -132,7 +144,6 @@ exports.getAvailableShipments = async (req, res) => {
           delivery.latitude,
           delivery.longitude
         );
-
         distanceMiles = distanceKm * 0.621371;
       }
 
@@ -145,14 +156,13 @@ exports.getAvailableShipments = async (req, res) => {
       };
     });
 
-    // ------------------ Apply Filters ------------------
+    // Apply filters (pickup/dropoff/stallSize/minHorses)
     shipmentsWithDistance = shipmentsWithDistance.filter((shipment) => {
       let pickupOk = true,
         dropoffOk = true,
         stallOk = true,
         horsesOk = true;
 
-      // Pickup distance filter (shipper location required)
       if (pickupDistance && req.shipperLocation) {
         const dist = calculateDistance(
           req.shipperLocation.lat,
@@ -163,7 +173,6 @@ exports.getAvailableShipments = async (req, res) => {
         pickupOk = dist <= Number(pickupDistance);
       }
 
-      // Dropoff distance filter
       if (dropoffDistance && req.shipperLocation) {
         const dist = calculateDistance(
           req.shipperLocation.lat,
@@ -174,14 +183,12 @@ exports.getAvailableShipments = async (req, res) => {
         dropoffOk = dist <= Number(dropoffDistance);
       }
 
-      // Stall size filter
       if (stallSize) {
         stallOk = shipment.horses.some(
           (h) => h.requestedStallSize === stallSize
         );
       }
 
-      //  Number of horses filter
       if (minHorses) {
         horsesOk = shipment.numberOfHorses >= Number(minHorses);
       }
@@ -189,17 +196,13 @@ exports.getAvailableShipments = async (req, res) => {
       return pickupOk && dropoffOk && stallOk && horsesOk;
     });
 
-    // Return filtered shipments
-    res.status(200).json({
-      success: true,
-      shipments: shipmentsWithDistance,
-    });
+    // Store filtered result in cache
+    cache.set(cacheKey, shipmentsWithDistance);
+
+    res.status(200).json({ success: true, shipments: shipmentsWithDistance });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
