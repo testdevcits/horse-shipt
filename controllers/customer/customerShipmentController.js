@@ -230,26 +230,15 @@ exports.createShipment = async (req, res) => {
 // ============================================================
 exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   try {
+    // console.log(`[GET SHIPMENTS] User ID: ${req.user._id}`);
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-
-      // only upcoming
-      status: {
-        $in: ["open_for_offers", "accepted", "in_transit"],
-      },
-    }).sort({ pickupDate: 1 }); // upcoming = nearest first
-
-    res.status(200).json({
-      success: true,
-      count: shipments.length,
-      shipments,
-    });
+    }).sort({ createdAt: -1 });
+    // console.log(`[GET SHIPMENTS] Found ${shipments.length} shipments`);
+    res.status(200).json({ success: true, shipments });
   } catch (err) {
-    console.error("[GET UPCOMING SHIPMENTS ERROR]", err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
-    });
+    console.error("[GET SHIPMENTS ERROR]", err);
+    res.status(500).json({ success: false, message: "Server Error" });
   }
 };
 
