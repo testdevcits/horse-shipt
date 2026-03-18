@@ -228,17 +228,28 @@ exports.createShipment = async (req, res) => {
 // ============================================================
 // ================= GET SHIPMENTS BY CUSTOMER =================
 // ============================================================
-exports.getShipmentsByCustomer = async (req, res) => {
+exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   try {
-    // console.log(`[GET SHIPMENTS] User ID: ${req.user._id}`);
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-    }).sort({ createdAt: -1 });
-    // console.log(`[GET SHIPMENTS] Found ${shipments.length} shipments`);
-    res.status(200).json({ success: true, shipments });
+
+      // only upcoming
+      status: {
+        $in: ["open_for_offers", "accepted", "in_transit"],
+      },
+    }).sort({ pickupDate: 1 }); // upcoming = nearest first
+
+    res.status(200).json({
+      success: true,
+      count: shipments.length,
+      shipments,
+    });
   } catch (err) {
-    console.error("[GET SHIPMENTS ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    console.error("[GET UPCOMING SHIPMENTS ERROR]", err);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
 
@@ -265,6 +276,29 @@ exports.getShipmentById = async (req, res) => {
   }
 };
 
+exports.getCompletedShipmentsByCustomer = async (req, res) => {
+  try {
+    const shipments = await CustomerShipment.find({
+      customer: req.user._id,
+      status: "delivered",
+    })
+      .sort({ deliveredAt: -1 })
+      .populate("shipper", "name email phone")
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      count: shipments.length,
+      shipments,
+    });
+  } catch (err) {
+    console.error("[GET COMPLETED SHIPMENTS ERROR]", err);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
 // GET /api/shipments/:id
 
 exports.getSingleShipmentForMap = async (req, res) => {
