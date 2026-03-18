@@ -286,10 +286,44 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
       .populate("shipper", "name email phone")
       .lean();
 
+    const shipmentIds = shipments.map((s) => s._id);
+
+    const contracts = await Contract.find({
+      shipment: { $in: shipmentIds },
+    }).lean();
+
+    const contractMap = {};
+    contracts.forEach((c) => {
+      contractMap[c.shipment.toString()] = c;
+    });
+
+    const finalShipments = shipments.map((s) => {
+      const contract = contractMap[s._id.toString()] || null;
+
+      return {
+        ...s,
+        contract,
+
+        totalPrice: contract?.totalPrice || null,
+        paymentStatus: contract?.paymentStatus || "pending",
+        payoutStatus: contract?.payoutStatus || "pending",
+        transportType: contract?.transportType || null,
+        pickupTime: contract?.pickupTime || null,
+        estimatedArrivalTime: contract?.estimatedArrivalTime || null,
+
+        // signatures
+        shipperSignature: contract?.shipperSignature || null,
+        customerSignature: contract?.customerSignature || null,
+
+        // contract file
+        contractFile: contract?.contract?.url || null,
+      };
+    });
+
     res.status(200).json({
       success: true,
-      count: shipments.length,
-      shipments,
+      count: finalShipments.length,
+      shipments: finalShipments,
     });
   } catch (err) {
     console.error("[GET COMPLETED SHIPMENTS ERROR]", err);
@@ -299,6 +333,7 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
     });
   }
 };
+
 // GET /api/shipments/:id
 
 exports.getSingleShipmentForMap = async (req, res) => {
