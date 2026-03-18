@@ -101,7 +101,6 @@ exports.createShipment = async (req, res) => {
       publish,
     } = req.body;
 
-    // ✅ NEW: Coordinates Parsing
     const pickupLat = parseFloat(req.body.pickupLat);
     const pickupLng = parseFloat(req.body.pickupLng);
     const deliveryLat = parseFloat(req.body.deliveryLat);
@@ -176,7 +175,6 @@ exports.createShipment = async (req, res) => {
       horses.push(horseObj);
     }
 
-    // ✅ UPDATED Shipment Creation
     const shipment = new CustomerShipment({
       customer: customerId,
 
@@ -267,6 +265,7 @@ exports.getShipmentById = async (req, res) => {
 
 exports.getCompletedShipmentsByCustomer = async (req, res) => {
   try {
+    // fetch completed shipments
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
       status: "delivered",
@@ -275,28 +274,21 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
       .populate("shipper", "name email phone")
       .lean();
 
-    const shipmentIds = shipments.map((s) => s._id);
-
-    const contractMap = {};
-    contracts.forEach((c) => {
-      contractMap[c.shipment.toString()] = c;
-    });
-
+    // map shipments directly without contract
     const finalShipments = shipments.map((s) => {
       return {
         ...s,
-        contract,
+        // optional fields you can keep or remove
+        totalPrice: s.totalPrice || null,
+        paymentStatus: s.paymentStatus || "pending",
+        payoutStatus: s.payoutStatus || "pending",
+        transportType: s.transportType || null,
+        pickupTime: s.pickupTime || null,
+        estimatedArrivalTime: s.estimatedArrivalTime || null,
 
-        totalPrice: contract?.totalPrice || null,
-        paymentStatus: contract?.paymentStatus || "pending",
-        payoutStatus: contract?.payoutStatus || "pending",
-        transportType: contract?.transportType || null,
-        pickupTime: contract?.pickupTime || null,
-        estimatedArrivalTime: contract?.estimatedArrivalTime || null,
-
-        // signatures
-        shipperSignature: contract?.shipperSignature || null,
-        customerSignature: contract?.customerSignature || null,
+        // signatures if they exist on shipment itself
+        shipperSignature: s.shipperSignature || null,
+        customerSignature: s.customerSignature || null,
       };
     });
 
