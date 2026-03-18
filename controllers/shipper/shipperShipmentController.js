@@ -197,7 +197,7 @@ exports.getAvailableShipments = async (req, res) => {
     });
 
     /* ===============================
-       APPLY FILTERS (🔥 FIXED)
+       APPLY FILTERS ( FIXED)
     =================================*/
     shipmentsWithDistance = shipmentsWithDistance.filter((shipment) => {
       let pickupOk = true,
@@ -205,7 +205,7 @@ exports.getAvailableShipments = async (req, res) => {
         stallOk = true,
         horsesOk = true;
 
-      // ✅ Pickup Distance Filter
+      //  Pickup Distance Filter
       if (pickupDistance && shipperLocation) {
         const dist = calculateDistance(
           shipperLocation.lat,
@@ -217,7 +217,7 @@ exports.getAvailableShipments = async (req, res) => {
         pickupOk = dist <= Number(pickupDistance);
       }
 
-      // ✅ Dropoff Distance Filter
+      //  Dropoff Distance Filter
       if (dropoffDistance && shipperLocation) {
         const dist = calculateDistance(
           shipperLocation.lat,
@@ -229,14 +229,14 @@ exports.getAvailableShipments = async (req, res) => {
         dropoffOk = dist <= Number(dropoffDistance);
       }
 
-      // ✅ Stall Size
+      //  Stall Size
       if (stallSize) {
         stallOk = shipment.horses.some(
           (h) => h.requestedStallSize === stallSize
         );
       }
 
-      // ✅ Number of Horses
+      //  Number of Horses
       if (minHorses) {
         horsesOk = shipment.numberOfHorses >= Number(minHorses);
       }
