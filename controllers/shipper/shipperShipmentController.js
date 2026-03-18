@@ -85,12 +85,15 @@ exports.getAvailableShipments = async (req, res) => {
   try {
     console.log("Fetching all available shipments for shippers...");
 
+    // Optional filter params from query
+    const { pickupDistance, dropoffDistance, stallSize, minHorses } = req.query;
+
     // Get all shipment IDs already assigned
     const assignedShipments = await ShipperShipment.find({}, "shipment");
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
     // Fetch shipments not assigned
-    const shipments = await CustomerShipment.find({
+    let shipments = await CustomerShipment.find({
       publish: true,
       status: { $in: ["pending", "open_for_offers"] },
       _id: { $nin: assignedIds },
@@ -115,7 +118,7 @@ exports.getAvailableShipments = async (req, res) => {
       .sort({ publishedAt: -1 });
 
     // Add estimated distance to each shipment
-    const shipmentsWithDistance = shipments.map((shipment) => {
+    let shipmentsWithDistance = shipments.map((shipment) => {
       const pickup = shipment.pickupCoords;
       const delivery = shipment.deliveryCoords;
 
@@ -142,6 +145,51 @@ exports.getAvailableShipments = async (req, res) => {
       };
     });
 
+    // ------------------ Apply Filters ------------------
+    shipmentsWithDistance = shipmentsWithDistance.filter((shipment) => {
+      let pickupOk = true,
+        dropoffOk = true,
+        stallOk = true,
+        horsesOk = true;
+
+      // Pickup distance filter (shipper location required)
+      if (pickupDistance && req.shipperLocation) {
+        const dist = calculateDistance(
+          req.shipperLocation.lat,
+          req.shipperLocation.lng,
+          shipment.pickupCoords.latitude,
+          shipment.pickupCoords.longitude
+        );
+        pickupOk = dist <= Number(pickupDistance);
+      }
+
+      // Dropoff distance filter
+      if (dropoffDistance && req.shipperLocation) {
+        const dist = calculateDistance(
+          req.shipperLocation.lat,
+          req.shipperLocation.lng,
+          shipment.deliveryCoords.latitude,
+          shipment.deliveryCoords.longitude
+        );
+        dropoffOk = dist <= Number(dropoffDistance);
+      }
+
+      // Stall size filter
+      if (stallSize) {
+        stallOk = shipment.horses.some(
+          (h) => h.requestedStallSize === stallSize
+        );
+      }
+
+      //  Number of horses filter
+      if (minHorses) {
+        horsesOk = shipment.numberOfHorses >= Number(minHorses);
+      }
+
+      return pickupOk && dropoffOk && stallOk && horsesOk;
+    });
+
+    // Return filtered shipments
     res.status(200).json({
       success: true,
       shipments: shipmentsWithDistance,
