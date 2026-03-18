@@ -62,7 +62,16 @@ CUSTOMER → Add Manual Review
 exports.addReview = async (req, res) => {
   try {
     const customerId = req.user.id;
-    const { shipperId, customerName, reviewText, rating } = req.body;
+    const customerName = req.user.name;
+
+    const { shipperId, reviewText, rating, shipmentId } = req.body;
+
+    if (!rating) {
+      return res.status(400).json({
+        success: false,
+        message: "Rating is required",
+      });
+    }
 
     if (!validateRating(rating)) {
       return res.status(400).json({
@@ -79,9 +88,8 @@ exports.addReview = async (req, res) => {
       });
     }
 
-    // Prevent duplicate review
     const existingReview = await Review.findOne({
-      shipperId,
+      shipmentId,
       customerId,
     });
 
@@ -94,9 +102,10 @@ exports.addReview = async (req, res) => {
 
     await Review.create({
       shipperId,
+      shipmentId,
       customerId,
       customerName,
-      reviewText,
+      reviewText: reviewText?.trim(),
       rating,
       source: "manual",
       reviewStatus: "approved",
@@ -109,6 +118,15 @@ exports.addReview = async (req, res) => {
       message: REVIEW_MESSAGES.REVIEW_ADDED,
     });
   } catch (error) {
+    console.error(error);
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Duplicate review not allowed",
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: REVIEW_MESSAGES.SERVER_ERROR,

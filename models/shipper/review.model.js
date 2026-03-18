@@ -9,6 +9,13 @@ const reviewSchema = new mongoose.Schema(
       index: true,
     },
 
+    shipmentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Shipment",
+      required: true,
+      index: true,
+    },
+
     customerId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Customer",
@@ -58,7 +65,6 @@ const reviewSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Prevent Duplicate Review Per Customer Per Shipper
-reviewSchema.index({ shipperId: 1, customerId: 1 }, { unique: true });
+reviewSchema.index({ shipmentId: 1, customerId: 1 }, { unique: true });
 
 module.exports = mongoose.model("ShipperReview", reviewSchema);

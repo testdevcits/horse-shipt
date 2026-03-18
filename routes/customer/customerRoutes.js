@@ -123,16 +123,16 @@ router.post(
   customerAuth,
   upload.any(), // temp storage for Cloudinary
   (req, res, next) => {
-    console.log("=== Shipment Create Debug ===");
-    console.log("User ID:", req.user._id);
-    console.log("Body:", req.body);
-    console.log(
-      "Files received:",
-      req.files.map((f) => ({
-        fieldname: f.fieldname,
-        originalname: f.originalname,
-      }))
-    );
+    // console.log("=== Shipment Create Debug ===");
+    // console.log("User ID:", req.user._id);
+    // console.log("Body:", req.body);
+    // console.log(
+    //   "Files received:",
+    //   req.files.map((f) => ({
+    //     fieldname: f.fieldname,
+    //     originalname: f.originalname,
+    //   }))
+    // );
     next();
   },
   createShipment
