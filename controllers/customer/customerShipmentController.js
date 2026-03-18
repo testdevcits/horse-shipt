@@ -277,18 +277,12 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
 
     const shipmentIds = shipments.map((s) => s._id);
 
-    const contracts = await Contract.find({
-      shipment: { $in: shipmentIds },
-    }).lean();
-
     const contractMap = {};
     contracts.forEach((c) => {
       contractMap[c.shipment.toString()] = c;
     });
 
     const finalShipments = shipments.map((s) => {
-      const contract = contractMap[s._id.toString()] || null;
-
       return {
         ...s,
         contract,
@@ -303,9 +297,6 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
         // signatures
         shipperSignature: contract?.shipperSignature || null,
         customerSignature: contract?.customerSignature || null,
-
-        // contract file
-        contractFile: contract?.contract?.url || null,
       };
     });
 
