@@ -105,7 +105,7 @@ exports.getAvailableShipments = async (req, res) => {
         lng: Number(lng),
       };
     } else {
-      const shipper = await Shipper.findById(req.user.id);
+      const shipper = await ShipperShipment.findById(req.user.id);
 
       if (shipper?.currentLocation) {
         shipperLocation = {
