@@ -487,7 +487,7 @@ exports.getShipperProfileDetail = async (req, res) => {
     }
 
     // -------------------------
-    // 2. Get Reviews Data
+    // 2. Get Reviews Stats
     // -------------------------
     const reviewStats = await Review.aggregate([
       {
@@ -511,8 +511,19 @@ exports.getShipperProfileDetail = async (req, res) => {
       totalReviews: 0,
     };
 
+    // Get Reviews List
     // -------------------------
-    // 3. Shipment Stats
+    const reviews = await Review.find({
+      shipperId: shipper._id,
+      reviewStatus: "approved",
+      isHidden: false,
+    })
+      .sort({ createdAt: -1 })
+      .select("customerName rating reviewText createdAt source") // clean data
+      .lean();
+
+    // -------------------------
+    // 4. Shipment Stats
     // -------------------------
     const shipmentStats = await ShipmentQuote.aggregate([
       {
@@ -531,29 +542,25 @@ exports.getShipperProfileDetail = async (req, res) => {
 
     const stats = shipmentStats[0] || {
       totalAccepted: 0,
-      totalEarnings: 0,
     };
 
     // -------------------------
-    // 4. Response
+    // 5. Final Response
     // -------------------------
     const response = {
       id: shipper._id,
       name: shipper.name,
       profileImage: shipper.profileImage?.url || "/default-avatar.png",
       bannerImage: shipper.bannerImage?.url || null,
-
       rating: Number((ratingData.avgRating || 0).toFixed(1)),
       totalReviews: ratingData.totalReviews,
-
       region: shipper.region || "Unknown",
       email: shipper.email,
       googleReviewLink: shipper.googleReviewLink,
-
       completedShipments: stats.totalAccepted,
-
       isActive: shipper.isActive,
       createdAt: shipper.createdAt,
+      reviews: reviews || [],
     };
 
     res.status(200).json({
