@@ -468,3 +468,104 @@ exports.getTopRatedShippers = async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+exports.getShipperProfileDetail = async (req, res) => {
+  try {
+    const { shipperId } = req.params;
+
+    // -------------------------
+    // 1. Get Shipper Info
+    // -------------------------
+    const shipper = await Shipper.findById(shipperId);
+
+    if (!shipper) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
+    }
+
+    // -------------------------
+    // 2. Get Reviews Data
+    // -------------------------
+    const reviewStats = await Review.aggregate([
+      {
+        $match: {
+          shipperId: shipper._id,
+          reviewStatus: "approved",
+          isHidden: false,
+        },
+      },
+      {
+        $group: {
+          _id: "$shipperId",
+          avgRating: { $avg: "$rating" },
+          totalReviews: { $sum: 1 },
+        },
+      },
+    ]);
+
+    const ratingData = reviewStats[0] || {
+      avgRating: 0,
+      totalReviews: 0,
+    };
+
+    // -------------------------
+    // 3. Shipment Stats
+    // -------------------------
+    const shipmentStats = await ShipmentQuote.aggregate([
+      {
+        $match: {
+          shipper: shipper._id,
+          status: "accepted",
+        },
+      },
+      {
+        $group: {
+          _id: "$shipper",
+          totalAccepted: { $sum: 1 },
+          totalEarnings: { $sum: "$totalPrice" },
+        },
+      },
+    ]);
+
+    const stats = shipmentStats[0] || {
+      totalAccepted: 0,
+      totalEarnings: 0,
+    };
+
+    // -------------------------
+    // 4. Response
+    // -------------------------
+    const response = {
+      id: shipper._id,
+      name: shipper.name,
+      profileImage: shipper.profileImage?.url || "/default-avatar.png",
+      bannerImage: shipper.bannerImage?.url || null,
+
+      rating: Number((ratingData.avgRating || 0).toFixed(1)),
+      totalReviews: ratingData.totalReviews,
+
+      region: shipper.region || "Unknown",
+      email: shipper.email,
+      googleReviewLink: shipper.googleReviewLink,
+
+      completedShipments: stats.totalAccepted,
+      totalEarnings: stats.totalEarnings,
+
+      isActive: shipper.isActive,
+      createdAt: shipper.createdAt,
+    };
+
+    res.status(200).json({
+      success: true,
+      data: response,
+    });
+  } catch (error) {
+    console.error("Error fetching shipper details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};

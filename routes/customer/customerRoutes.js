@@ -87,6 +87,7 @@ const {
   getMyReviews,
   getReviewsByShipper,
   getTopRatedShippers,
+  getShipperProfileDetail,
 } = require("../../controllers/shipper/shipperReviewController");
 // ====================================================
 // PAYMENT ROUTES
@@ -267,6 +268,8 @@ router.get("/reviews", customerAuth, getMyReviews);
 router.get("/shipper/:shipperId", getReviewsByShipper);
 // ======= NEW: Top Rated Shippers =======
 router.get("/shippers/top-rated", getTopRatedShippers);
+
+router.get("/shipper-profile/:shipperId", getShipperProfileDetail);
 // ====================================================
 // EXPORT ROUTER
 // ====================================================
