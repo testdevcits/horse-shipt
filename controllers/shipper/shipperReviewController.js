@@ -4,6 +4,7 @@ const Review = require("../../models/shipper/review.model");
 const Shipper = require("../../models/shipper/shipperModel");
 
 const { REVIEW_MESSAGES } = require("../../utils/response/reviewResponse");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 
 /*
 =====================================================
