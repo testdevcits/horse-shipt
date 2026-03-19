@@ -525,7 +525,6 @@ exports.getShipperProfileDetail = async (req, res) => {
         $group: {
           _id: "$shipper",
           totalAccepted: { $sum: 1 },
-          totalEarnings: { $sum: "$totalPrice" },
         },
       },
     ]);
@@ -552,7 +551,6 @@ exports.getShipperProfileDetail = async (req, res) => {
       googleReviewLink: shipper.googleReviewLink,
 
       completedShipments: stats.totalAccepted,
-      totalEarnings: stats.totalEarnings,
 
       isActive: shipper.isActive,
       createdAt: shipper.createdAt,
