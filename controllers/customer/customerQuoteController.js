@@ -376,18 +376,30 @@ exports.cancelQuote = async (req, res) => {
     const { quoteId } = req.params;
     const customerId = req.user._id;
 
+    console.log("Cancel Quote API called");
+    console.log("QuoteId:", quoteId, "CustomerId:", customerId);
+
     /* ---------------- FIND QUOTE ---------------- */
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
 
     if (!quote) {
+      console.log("Quote not found");
       return res.status(404).json({
         success: false,
         message: "Quote not found",
       });
     }
 
+    console.log("Quote found:", {
+      totalPrice: quote.totalPrice,
+      status: quote.status,
+      isCancelled: quote.isCancelled,
+      paymentIntentId: quote.stripePaymentIntentId,
+    });
+
     /* ---------------- AUTH CHECK ---------------- */
     if (quote.shipment.customer.toString() !== customerId.toString()) {
+      console.log("Unauthorized access");
       return res.status(403).json({
         success: false,
         message: "Unauthorized",
@@ -396,6 +408,7 @@ exports.cancelQuote = async (req, res) => {
 
     /* ---------------- ALREADY CANCELLED ---------------- */
     if (quote.isCancelled) {
+      console.log("⚠️ Already cancelled");
       return res.status(400).json({
         success: false,
         message: "Quote already cancelled",
@@ -405,7 +418,8 @@ exports.cancelQuote = async (req, res) => {
     const now = new Date();
 
     /* ---------------- CANCELLATION WINDOW CHECK ---------------- */
-    if (now > quote.cancellationLastDate) {
+    if (quote.cancellationLastDate && now > quote.cancellationLastDate) {
+      console.log("Cancellation window expired:", quote.cancellationLastDate);
       return res.status(400).json({
         success: false,
         message:
@@ -413,44 +427,104 @@ exports.cancelQuote = async (req, res) => {
       });
     }
 
-    /* ---------------- REFUND CALCULATION ---------------- */
-    const fee = (quote.totalPrice * 2.9) / 100 + 0.3;
-    const refundAmount = quote.totalPrice - fee;
+    /* ---------------- GET PLATFORM SETTINGS ---------------- */
+    let settings = await PlatformSettings.findOne();
 
-    let refundStatus = "pending";
+    if (!settings) {
+      console.log("No settings found, using default");
+      settings = {
+        platformFeePercent: 5,
+        platformFeeFlat: 0,
+      };
+    }
+
+    console.log("⚙️ Platform Settings:", settings);
+
+    /* ---------------- CALCULATE PLATFORM FEE ---------------- */
+    const percentFee = (quote.totalPrice * settings.platformFeePercent) / 100;
+
+    const flatFee = settings.platformFeeFlat || 0;
+
+    const platformFee = percentFee + flatFee;
+
+    const refundAmount = Math.max(quote.totalPrice - platformFee, 0);
+
+    console.log("Fee Calculation:", {
+      totalPrice: quote.totalPrice,
+      percentFee,
+      flatFee,
+      platformFee,
+      refundAmount,
+    });
+
+    let refundStatus = "not_required";
 
     /* ---------------- STRIPE HANDLING ---------------- */
     if (quote.stripePaymentIntentId) {
       try {
-        await stripe.paymentIntents.cancel(quote.stripePaymentIntentId);
-        refundStatus = "processed";
-      } catch (err) {
-        try {
-          await stripe.refunds.create({
-            payment_intent: quote.stripePaymentIntentId,
-          });
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          quote.stripePaymentIntentId
+        );
+
+        console.log("Stripe PaymentIntent:", {
+          id: paymentIntent.id,
+          status: paymentIntent.status,
+        });
+
+        /* -------- HOLD -------- */
+        if (paymentIntent.status === "requires_capture") {
+          console.log("Payment on HOLD → canceling intent");
+
+          await stripe.paymentIntents.cancel(paymentIntent.id);
+
           refundStatus = "processed";
-        } catch (refundErr) {
-          console.error("Refund failed:", refundErr);
-          refundStatus = "failed";
+        } else if (paymentIntent.status === "succeeded") {
+
+        /* -------- CAPTURED -------- */
+          console.log("Payment CAPTURED → issuing refund");
+
+          await stripe.refunds.create({
+            payment_intent: paymentIntent.id,
+            amount: Math.round(refundAmount * 100),
+          });
+
+          refundStatus = "processed";
+        } else if (paymentIntent.status === "requires_payment_method") {
+
+        /* -------- NOT PAID -------- */
+          console.log("Payment not completed → no refund");
+          refundStatus = "not_required";
+        } else {
+          console.log("⚠️ Unknown payment status:", paymentIntent.status);
+          refundStatus = "pending";
         }
+      } catch (err) {
+        console.error("Stripe error:", err.message);
+        refundStatus = "failed";
       }
+    } else {
+      console.log("No PaymentIntent found → no refund");
     }
 
     /* ---------------- UPDATE QUOTE ---------------- */
     quote.isCancelled = true;
     quote.cancelledAt = now;
     quote.refundAmount = refundAmount;
+    quote.platformFee = platformFee;
     quote.refundStatus = refundStatus;
-    quote.status = "rejected"; // optional but recommended
+    quote.status = "rejected";
 
     await quote.save();
+
+    console.log("Quote updated successfully");
 
     /* ---------------- RESPONSE ---------------- */
     return res.status(200).json({
       success: true,
       message: "Quote cancelled successfully",
       data: {
+        totalAmount: quote.totalPrice,
+        platformFee,
         refundAmount,
         refundStatus,
       },
