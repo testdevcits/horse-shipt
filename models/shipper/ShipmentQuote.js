@@ -176,6 +176,46 @@ const quoteSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ================= CANCELLATION =================
+    cancellationWindowDays: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+
+    cancellationLastDate: {
+      type: Date,
+      required: true,
+    },
+
+    isCancelled: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    cancelledAt: {
+      type: Date,
+      default: null,
+    },
+
+    cancelReason: {
+      type: String,
+      default: "",
+    },
+
+    refundAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    refundStatus: {
+      type: String,
+      enum: ["pending", "processed", "failed"],
+      default: "pending",
+    },
+
     // ================= META =================
     isActive: {
       type: Boolean,

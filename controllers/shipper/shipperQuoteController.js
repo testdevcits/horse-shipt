@@ -12,6 +12,7 @@ const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
+
     const {
       shipment,
       vehicle,
@@ -26,6 +27,7 @@ exports.addQuote = async (req, res) => {
       stallsRequired,
       notes,
       shipperSignature,
+      cancellationWindowDays, // ✅ NEW
     } = req.body;
 
     // ----------------- VALIDATION -----------------
@@ -38,11 +40,13 @@ exports.addQuote = async (req, res) => {
       !estimatedArrivalTime ||
       !transportType ||
       !stallsRequired ||
-      !shipperSignature
+      !shipperSignature ||
+      cancellationWindowDays === undefined // ✅ NEW
     ) {
       return res.status(400).json({
         success: false,
-        message: "All required fields and shipper signature must be provided",
+        message:
+          "All required fields including cancellation window must be provided",
       });
     }
 
@@ -50,32 +54,47 @@ exports.addQuote = async (req, res) => {
     const shipmentExists = await CustomerShipment.findById(shipment).populate(
       "customer"
     );
-    if (!shipmentExists)
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
+
+    if (!shipmentExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
 
     // ----------------- FETCH VEHICLE -----------------
     const vehicleExists = await ShipperVehicle.findOne({
       _id: vehicle,
       shipper: shipperId,
     });
-    if (!vehicleExists)
+
+    if (!vehicleExists) {
       return res.status(404).json({
         success: false,
         message: "Vehicle not found or does not belong to you",
       });
+    }
 
     // ----------------- PREVENT DUPLICATE QUOTE -----------------
     const alreadyQuoted = await ShipmentQuote.findOne({
       shipment,
       shipper: shipperId,
     });
-    if (alreadyQuoted)
+
+    if (alreadyQuoted) {
       return res.status(400).json({
         success: false,
         message: "You have already sent a quote for this shipment",
       });
+    }
+
+    // ================= CANCELLATION DATE CALCULATION =================
+    const bookingDate = new Date();
+
+    const cancellationLastDate = new Date(
+      bookingDate.getTime() +
+        Number(cancellationWindowDays) * 24 * 60 * 60 * 1000
+    );
 
     // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
@@ -95,6 +114,7 @@ exports.addQuote = async (req, res) => {
         transportType,
         stallsRequired,
         notes,
+        cancellationWindowDays, // optional include in PDF
       },
       shipperSignature,
     });
@@ -102,8 +122,9 @@ exports.addQuote = async (req, res) => {
     // ----------------- GENERATE CONTRACT ID -----------------
     const contractId = new mongoose.Types.ObjectId();
 
-    // ----------------- UPLOAD PDF TO CLOUDINARY (separate folder) -----------------
+    // ----------------- UPLOAD PDF TO CLOUDINARY -----------------
     const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
+
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -113,6 +134,7 @@ exports.addQuote = async (req, res) => {
         },
         (err, result) => (err ? reject(err) : resolve(result))
       );
+
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
@@ -131,45 +153,59 @@ exports.addQuote = async (req, res) => {
       transportType,
       stallsRequired,
       notes,
+
       status: "pending",
       termsAccepted: false,
+
       contractId,
       contract: {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
       },
+
       shipperSignature,
       customerSignature: null,
       contractAccepted: false,
       contractAcceptedAt: null,
+
+      cancellationWindowDays,
+      cancellationLastDate,
     });
 
     // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
-    if (!shipperSettings)
+
+    if (!shipperSettings) {
       shipperSettings = await ShipperSettings.create({ shipperId });
+    }
 
     const canEmail = shipperSettings?.notifications?.quote?.email ?? true;
     const canSMS = shipperSettings?.notifications?.quote?.sms ?? true;
 
-    if (canEmail)
+    if (canEmail) {
       await sendQuoteEmail(
         shipperId,
         "Quote Sent Successfully",
         `Your quote for shipment ${shipment} has been sent successfully.`
       );
-    if (canSMS)
+    }
+
+    if (canSMS) {
       await sendQuoteSms(
         shipperId,
         `Quote sent successfully for shipment ${shipment}.`
       );
+    }
 
     // ----------------- RESPONSE -----------------
-    return res
-      .status(201)
-      .json({ success: true, message: "Quote sent successfully", quote });
+    return res.status(201).json({
+      success: true,
+      message: "Quote sent successfully",
+      quote,
+    });
   } catch (err) {
     console.error("[ADD QUOTE ERROR]:", err);
+
     return res.status(500).json({
       success: false,
       message: "Failed to send quote",

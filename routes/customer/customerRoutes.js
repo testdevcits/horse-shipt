@@ -56,6 +56,7 @@ const {
   getQuoteById,
   acceptQuoteWithSignature,
   createPaymentIntent,
+  cancelQuote,
 } = require("../../controllers/customer/customerQuoteController");
 
 const {
@@ -220,6 +221,8 @@ router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
 // ====================================================
 
 router.post("/quotes/:quoteId/pay", customerAuth, createPaymentIntent);
+
+router.post("/quotes/:quoteId/cancel", customerAuth, cancelQuote);
 
 // ====================================================
 // CHAT LIST (Customer Dashboard)

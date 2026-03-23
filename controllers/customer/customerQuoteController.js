@@ -319,6 +319,14 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
+    /* ---------------- PREVENT CANCELLED ---------------- */
+    if (quote.isCancelled) {
+      return res.status(400).json({
+        success: false,
+        message: "This quote is already cancelled",
+      });
+    }
+
     /* ---------------- PREVENT DOUBLE PAYMENT ---------------- */
     if (quote.paymentStatus === "paid") {
       return res.status(400).json({
@@ -327,21 +335,54 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
+    /* ---------------- REUSE EXISTING INTENT (OPTIONAL BUT GOOD) ---------------- */
+    if (quote.stripePaymentIntentId) {
+      return res.status(200).json({
+        success: true,
+        message: "Payment intent already created",
+        clientSecret: null, // optional: fetch from Stripe if needed
+        paymentIntentId: quote.stripePaymentIntentId,
+        amount: quote.totalPrice,
+        currency: quote.currency || "usd",
+      });
+    }
+
     /* ---------------- CREATE PAYMENT INTENT ---------------- */
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(quote.totalPrice * 100), // cents
+      amount: Math.round(quote.totalPrice * 100),
       currency: quote.currency || "usd",
 
       payment_method_types: ["card"],
 
       receipt_email: customerEmail,
 
+      capture_method: "manual",
+
+      description: `Shipment Payment - Quote ${quote._id}`,
+
       metadata: {
         quoteId: quote._id.toString(),
         shipmentId: quote.shipment._id.toString(),
         shipperId: quote.shipper._id.toString(),
         customerId: customerId.toString(),
+
         customerEmail: customerEmail,
+        customerName: req.user.name || "",
+        customerPhone: req.user.phone || "",
+
+        shipmentCode: quote.shipment.shipmentCode || "",
+        pickupLocation: quote.shipment.pickupLocation || "",
+        dropLocation: quote.shipment.dropLocation || "",
+
+        shipperName: quote.shipper.name || "",
+        shipperEmail: quote.shipper.email || "",
+        shipperPhone: quote.shipper.phone || "",
+
+        totalAmount: quote.totalPrice.toString(),
+        currency: quote.currency || "usd",
+        paymentType: "shipment",
+
+        createdAt: new Date().toISOString(),
       },
     });
 
@@ -366,6 +407,101 @@ exports.createPaymentIntent = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Payment intent creation failed",
+      error: error.message,
+    });
+  }
+};
+
+exports.cancelQuote = async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const customerId = req.user._id;
+
+    /* ---------------- FIND QUOTE ---------------- */
+    const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found",
+      });
+    }
+
+    /* ---------------- AUTH CHECK ---------------- */
+    if (quote.shipment.customer.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    /* ---------------- ALREADY CANCELLED ---------------- */
+    if (quote.isCancelled) {
+      return res.status(400).json({
+        success: false,
+        message: "Quote already cancelled",
+      });
+    }
+
+    const now = new Date();
+
+    /* ---------------- CANCELLATION WINDOW CHECK ---------------- */
+    if (now > quote.cancellationLastDate) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Cancellations are no longer available for this trip per the Shipper's policy.",
+      });
+    }
+
+    /* ---------------- REFUND CALCULATION ---------------- */
+    const fee = (quote.totalPrice * 2.9) / 100 + 0.3;
+    const refundAmount = quote.totalPrice - fee;
+
+    let refundStatus = "pending";
+
+    /* ---------------- STRIPE HANDLING ---------------- */
+    if (quote.stripePaymentIntentId) {
+      try {
+        await stripe.paymentIntents.cancel(quote.stripePaymentIntentId);
+        refundStatus = "processed";
+      } catch (err) {
+        try {
+          await stripe.refunds.create({
+            payment_intent: quote.stripePaymentIntentId,
+          });
+          refundStatus = "processed";
+        } catch (refundErr) {
+          console.error("Refund failed:", refundErr);
+          refundStatus = "failed";
+        }
+      }
+    }
+
+    /* ---------------- UPDATE QUOTE ---------------- */
+    quote.isCancelled = true;
+    quote.cancelledAt = now;
+    quote.refundAmount = refundAmount;
+    quote.refundStatus = refundStatus;
+    quote.status = "rejected"; // optional but recommended
+
+    await quote.save();
+
+    /* ---------------- RESPONSE ---------------- */
+    return res.status(200).json({
+      success: true,
+      message: "Quote cancelled successfully",
+      data: {
+        refundAmount,
+        refundStatus,
+      },
+    });
+  } catch (error) {
+    console.error("cancelQuote error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Cancellation failed",
       error: error.message,
     });
   }
