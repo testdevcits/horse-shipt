@@ -120,6 +120,10 @@ const {
   createOnboardingLink,
   checkStripeStatus,
   stripeWebhook,
+  createStripeCustomer,
+  createSetupIntent,
+  savePaymentMethod,
+  getPaymentStatus,
 } = require("../../controllers/shipper/shipperStripeController");
 
 const {
@@ -357,6 +361,11 @@ router.get(
   shipperAuth,
   getShipmentDeliveryStatus
 );
+
+router.post("/create-customer", shipperAuth, createStripeCustomer);
+router.post("/setup-intent", shipperAuth, createSetupIntent);
+router.post("/save-payment-method", shipperAuth, savePaymentMethod);
+router.get("/status", shipperAuth, getPaymentStatus);
 // ====================================================
 // EXPORT
 // ====================================================

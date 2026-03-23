@@ -328,3 +328,166 @@ exports.stripeWebhook = async (req, res) => {
     });
   }
 };
+
+// ==========================================================
+// CREATE STRIPE CUSTOMER (FOR SHIPPER CARD STORAGE)
+// ==========================================================
+exports.createStripeCustomer = async (req, res) => {
+  try {
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
+    }
+
+    // Already exists
+    if (shipper.stripeCustomerId) {
+      return res.json({
+        success: true,
+        message: "Customer already exists",
+        stripeCustomerId: shipper.stripeCustomerId,
+      });
+    }
+
+    const customer = await stripe.customers.create({
+      email: shipper.email,
+      name: shipper.name,
+      metadata: {
+        shipperId: shipper._id.toString(),
+      },
+    });
+
+    shipper.stripeCustomerId = customer.id;
+    await shipper.save();
+
+    console.log("Stripe customer created:", customer.id);
+
+    res.json({
+      success: true,
+      stripeCustomerId: customer.id,
+    });
+  } catch (error) {
+    console.error("Create Customer Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================================
+// CREATE SETUP INTENT (ADD CARD)
+// ==========================================================
+exports.createSetupIntent = async (req, res) => {
+  try {
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper || !shipper.stripeCustomerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Stripe customer not found",
+      });
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: shipper.stripeCustomerId,
+      payment_method_types: ["card"],
+    });
+
+    console.log("SetupIntent created:", setupIntent.id);
+
+    res.json({
+      success: true,
+      clientSecret: setupIntent.client_secret,
+    });
+  } catch (error) {
+    console.error("SetupIntent Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================================
+// SAVE PAYMENT METHOD
+// ==========================================================
+exports.savePaymentMethod = async (req, res) => {
+  try {
+    const { paymentMethodId } = req.body;
+
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper || !shipper.stripeCustomerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Stripe customer not found",
+      });
+    }
+
+    // Attach payment method to customer
+    await stripe.paymentMethods.attach(paymentMethodId, {
+      customer: shipper.stripeCustomerId,
+    });
+
+    // Set as default
+    await stripe.customers.update(shipper.stripeCustomerId, {
+      invoice_settings: {
+        default_payment_method: paymentMethodId,
+      },
+    });
+
+    // Get card details
+    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+    shipper.paymentMethodId = paymentMethodId;
+    shipper.cardLast4 = paymentMethod.card.last4;
+    shipper.cardBrand = paymentMethod.card.brand;
+    shipper.cardExpMonth = paymentMethod.card.exp_month;
+    shipper.cardExpYear = paymentMethod.card.exp_year;
+
+    await shipper.save();
+
+    console.log("Payment method saved:", paymentMethodId);
+
+    res.json({
+      success: true,
+      message: "Card saved successfully",
+    });
+  } catch (error) {
+    console.error("Save Payment Method Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+// ==========================================================
+// CHECK PAYMENT STATUS
+// ==========================================================
+exports.getPaymentStatus = async (req, res) => {
+  try {
+    const shipper = await Shipper.findById(req.user.id);
+
+    res.json({
+      success: true,
+      hasCard: !!shipper.paymentMethodId,
+      cardLast4: shipper.cardLast4 || null,
+      cardBrand: shipper.cardBrand || null,
+    });
+  } catch (error) {
+    console.error("Payment Status Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};

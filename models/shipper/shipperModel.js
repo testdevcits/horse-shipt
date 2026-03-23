@@ -88,6 +88,59 @@ const shipperSchema = new mongoose.Schema(
     stripePayoutsEnabled: {
       type: Boolean,
       default: false,
+    }, // ================================
+    // STRIPE CUSTOMER (FOR CARD)
+    // ================================
+    stripeCustomerId: {
+      type: String,
+      default: null,
+    },
+
+    paymentMethodId: {
+      type: String,
+      default: null,
+    },
+
+    cardLast4: {
+      type: String,
+      default: null,
+    },
+
+    cardBrand: {
+      type: String,
+      default: null,
+    },
+
+    cardExpMonth: {
+      type: Number,
+      default: null,
+    },
+
+    cardExpYear: {
+      type: Number,
+      default: null,
+    },
+
+    // ================================
+    // ACCOUNT STATUS (GREY-OUT MODE)
+    // ================================
+    accountStatus: {
+      type: String,
+      enum: ["ACTIVE", "RESTRICTED"],
+      default: "ACTIVE",
+    },
+
+    // ================================
+    // PAYMENT FAILURE TRACKING
+    // ================================
+    lastPaymentFailure: {
+      type: Date,
+      default: null,
+    },
+
+    paymentFailureReason: {
+      type: String,
+      default: null,
     },
     // Login History
     loginHistory: [loginHistorySchema],
