@@ -319,14 +319,6 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
-    /* ---------------- PREVENT CANCELLED ---------------- */
-    if (quote.isCancelled) {
-      return res.status(400).json({
-        success: false,
-        message: "This quote is already cancelled",
-      });
-    }
-
     /* ---------------- PREVENT DOUBLE PAYMENT ---------------- */
     if (quote.paymentStatus === "paid") {
       return res.status(400).json({
@@ -335,54 +327,21 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
-    /* ---------------- REUSE EXISTING INTENT (OPTIONAL BUT GOOD) ---------------- */
-    if (quote.stripePaymentIntentId) {
-      return res.status(200).json({
-        success: true,
-        message: "Payment intent already created",
-        clientSecret: null, // optional: fetch from Stripe if needed
-        paymentIntentId: quote.stripePaymentIntentId,
-        amount: quote.totalPrice,
-        currency: quote.currency || "usd",
-      });
-    }
-
     /* ---------------- CREATE PAYMENT INTENT ---------------- */
     const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(quote.totalPrice * 100),
+      amount: Math.round(quote.totalPrice * 100), // cents
       currency: quote.currency || "usd",
 
       payment_method_types: ["card"],
 
       receipt_email: customerEmail,
 
-      capture_method: "manual",
-
-      description: `Shipment Payment - Quote ${quote._id}`,
-
       metadata: {
         quoteId: quote._id.toString(),
         shipmentId: quote.shipment._id.toString(),
         shipperId: quote.shipper._id.toString(),
         customerId: customerId.toString(),
-
         customerEmail: customerEmail,
-        customerName: req.user.name || "",
-        customerPhone: req.user.phone || "",
-
-        shipmentCode: quote.shipment.shipmentCode || "",
-        pickupLocation: quote.shipment.pickupLocation || "",
-        dropLocation: quote.shipment.dropLocation || "",
-
-        shipperName: quote.shipper.name || "",
-        shipperEmail: quote.shipper.email || "",
-        shipperPhone: quote.shipper.phone || "",
-
-        totalAmount: quote.totalPrice.toString(),
-        currency: quote.currency || "usd",
-        paymentType: "shipment",
-
-        createdAt: new Date().toISOString(),
       },
     });
 
@@ -416,7 +375,6 @@ exports.cancelQuote = async (req, res) => {
   try {
     const { quoteId } = req.params;
     const customerId = req.user._id;
-    const { reason } = req.body;
 
     /* ---------------- FIND QUOTE ---------------- */
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
@@ -447,7 +405,7 @@ exports.cancelQuote = async (req, res) => {
     const now = new Date();
 
     /* ---------------- CANCELLATION WINDOW CHECK ---------------- */
-    if (quote.cancellationLastDate && now > quote.cancellationLastDate) {
+    if (now > quote.cancellationLastDate) {
       return res.status(400).json({
         success: false,
         message:
@@ -455,56 +413,36 @@ exports.cancelQuote = async (req, res) => {
       });
     }
 
-    /* ---------------- STRIPE LOGIC ---------------- */
-    let refundAmount = 0;
-    let refundStatus = "not_required";
+    /* ---------------- REFUND CALCULATION ---------------- */
+    const fee = (quote.totalPrice * 2.9) / 100 + 0.3;
+    const refundAmount = quote.totalPrice - fee;
 
+    let refundStatus = "pending";
+
+    /* ---------------- STRIPE HANDLING ---------------- */
     if (quote.stripePaymentIntentId) {
       try {
-        const paymentIntent = await stripe.paymentIntents.retrieve(
-          quote.stripePaymentIntentId
-        );
-
-        /* ---------------- CASE 1: NOT PAID ---------------- */
-        if (paymentIntent.status === "requires_payment_method") {
-          // Payment not completed
-          refundStatus = "not_required";
-        } else if (paymentIntent.status === "requires_capture") {
-          /* ---------------- CASE 2: HOLD (AUTHORIZED) ---------------- */
-          await stripe.paymentIntents.cancel(paymentIntent.id);
-
-          refundAmount = quote.totalPrice; // full release
-          refundStatus = "processed";
-        } else if (paymentIntent.status === "succeeded") {
-          /* ---------------- CASE 3: PAYMENT CAPTURED ---------------- */
-          // Stripe fee calculation
-          const fee = (quote.totalPrice * 2.9) / 100 + 0.3;
-
-          refundAmount = quote.totalPrice - fee;
-
-          await stripe.refunds.create({
-            payment_intent: paymentIntent.id,
-            amount: Math.round(refundAmount * 100), // cents
-          });
-
-          refundStatus = "processed";
-        } else {
-          /* ---------------- OTHER STATES ---------------- */
-          refundStatus = "pending";
-        }
+        await stripe.paymentIntents.cancel(quote.stripePaymentIntentId);
+        refundStatus = "processed";
       } catch (err) {
-        console.error("Stripe error:", err);
-        refundStatus = "failed";
+        try {
+          await stripe.refunds.create({
+            payment_intent: quote.stripePaymentIntentId,
+          });
+          refundStatus = "processed";
+        } catch (refundErr) {
+          console.error("Refund failed:", refundErr);
+          refundStatus = "failed";
+        }
       }
     }
 
     /* ---------------- UPDATE QUOTE ---------------- */
     quote.isCancelled = true;
     quote.cancelledAt = now;
-    quote.cancelReason = reason || "";
     quote.refundAmount = refundAmount;
     quote.refundStatus = refundStatus;
-    quote.status = "rejected";
+    quote.status = "rejected"; // optional but recommended
 
     await quote.save();
 
