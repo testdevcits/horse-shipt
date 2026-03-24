@@ -369,11 +369,10 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
     const link = `${process.env.FRONTEND_URL}/invite/${token}`;
 
     const html = `
-    <div style="font-family: Arial, sans-serif; background:#777; padding:20px;">
+    <div style="font-family: Arial, sans-serif; padding:20px;">
       <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
         <!-- Logo Section -->
         <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
-          <img src="${logoUrl}" alt="Horsehipt Logo" style="max-height:60px; margin-bottom:15px;" />
           <h2>Shipment Invitation</h2>
         </div>
         <div style="padding:20px;">
@@ -407,9 +406,7 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
           <p style="font-size:12px; color:#777;">
             Link expires in 24 hours. To track more shipments, please sign up.
             <br/>
-            <a href="${
-              process.env.FRONTEND_URL
-            }/signup?email=${email}">Sign Up</a>
+            <a href="${process.env.FRONTEND_URL}/signup">Sign Up</a>
           </p>
         </div>
 
