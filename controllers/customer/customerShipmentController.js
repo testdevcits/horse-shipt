@@ -366,16 +366,18 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
     const link = `${process.env.FRONTEND_URL}/signup?email=${email}&shipment=${shipment._id}`;
 
     const html = `
-    <div style="font-family: Arial, sans-serif; background:#f4f6f8; padding:20px;">
+    <div style="font-family: Arial, sans-serif; background:#BF9B53; padding:20px;">
       <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
         
+        <!-- Logo Section -->
         <div style="background:#0d6efd; color:#fff; padding:20px; text-align:center;">
+          <img src="${logoUrl}" alt="Horsehipt Logo" style="max-height:60px; margin-bottom:15px;" />
           <h2>Shipment Invitation</h2>
         </div>
-
+    
         <div style="padding:20px;">
           <p><strong>${customerName}</strong> has invited you to track a shipment.</p>
-
+    
           <h3>Shipment Details</h3>
           <table style="width:100%; border-collapse:collapse;">
             <tr>
@@ -399,19 +401,19 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
               <td>${new Date(shipment.deliveryDate).toLocaleDateString()}</td>
             </tr>
           </table>
-
+    
           <div style="text-align:center; margin:25px 0;">
             <a href="${link}" 
                style="background:#28a745; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
               View Shipment
             </a>
           </div>
-
+    
           <p style="font-size:12px; color:#777;">
             If you don’t have an account, you will be asked to sign up first.
           </p>
         </div>
-
+    
         <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
           © ${new Date().getFullYear()} Horsehipt
         </div>
