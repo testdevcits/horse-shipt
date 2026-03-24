@@ -361,6 +361,7 @@ exports.getSingleShipmentForMap = async (req, res) => {
 // ===================== PUBLISH SHIPMENT =====================
 // ============================================================
 const logoUrl = `${process.env.BACKEND_URL}/assets/logo.png`;
+const FRONTEND_URL = process.env.FRONTEND_URL;
 // ---------------- EMAIL FUNCTION ----------------
 const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
   try {
