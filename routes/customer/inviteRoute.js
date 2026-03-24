@@ -11,16 +11,13 @@ router.get("/invite/:token", async (req, res) => {
 
     const shipment = await CustomerShipment.findOne({
       inviteToken: token,
-      inviteTokenExpiry: { $gt: new Date() }, // token not expired
-    }).select("-recipientUser -__v"); // optional: exclude sensitive fields
+      inviteTokenExpiry: { $gt: new Date() },
+    }).select("-recipientUser -__v");
 
     if (!shipment)
-      return res
-        .status(404)
-        .json({
-          message:
-            "Link invalid or expired. Please sign up to access shipment.",
-        });
+      return res.status(404).json({
+        message: "Link invalid or expired. Please sign up to access shipment.",
+      });
 
     res.json({ shipment });
   } catch (err) {
