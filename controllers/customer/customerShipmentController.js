@@ -5,6 +5,7 @@ const cloudinary = require("../../utils/cloudinary");
 const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const webpush = require("web-push");
 const mongoose = require("mongoose");
+const crypto = require("crypto");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, type = "photo") => {
@@ -363,57 +364,55 @@ exports.getSingleShipmentForMap = async (req, res) => {
 // ---------------- EMAIL FUNCTION ----------------
 const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
   try {
-    const link = `${process.env.FRONTEND_URL}/signup?email=${email}&shipment=${shipment._id}`;
+    // Use temporary token instead of direct signup link
+    const token = shipment.inviteToken; // generated at publish time
+    const link = `${process.env.FRONTEND_URL}/invite/${token}`;
 
     const html = `
     <div style="font-family: Arial, sans-serif; background:#BF9B53; padding:20px;">
       <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
-        
         <!-- Logo Section -->
         <div style="background:#0d6efd; color:#fff; padding:20px; text-align:center;">
           <img src="${logoUrl}" alt="Horsehipt Logo" style="max-height:60px; margin-bottom:15px;" />
           <h2>Shipment Invitation</h2>
         </div>
-    
         <div style="padding:20px;">
           <p><strong>${customerName}</strong> has invited you to track a shipment.</p>
-    
           <h3>Shipment Details</h3>
           <table style="width:100%; border-collapse:collapse;">
-            <tr>
-              <td><strong>Shipment Code</strong></td>
-              <td>${shipment.shipmentCode || "N/A"}</td>
-            </tr>
-            <tr>
-              <td><strong>Pickup</strong></td>
-              <td>${shipment.pickupLocation}</td>
-            </tr>
-            <tr>
-              <td><strong>Delivery</strong></td>
-              <td>${shipment.deliveryLocation}</td>
-            </tr>
-            <tr>
-              <td><strong>Pickup Date</strong></td>
-              <td>${new Date(shipment.pickupDate).toLocaleDateString()}</td>
-            </tr>
-            <tr>
-              <td><strong>Delivery Date</strong></td>
-              <td>${new Date(shipment.deliveryDate).toLocaleDateString()}</td>
-            </tr>
+            <tr><td><strong>Shipment Code</strong></td><td>${
+              shipment.shipmentCode || "N/A"
+            }</td></tr>
+            <tr><td><strong>Pickup</strong></td><td>${
+              shipment.pickupLocation
+            }</td></tr>
+            <tr><td><strong>Delivery</strong></td><td>${
+              shipment.deliveryLocation
+            }</td></tr>
+            <tr><td><strong>Pickup Date</strong></td><td>${new Date(
+              shipment.pickupDate
+            ).toLocaleDateString()}</td></tr>
+            <tr><td><strong>Delivery Date</strong></td><td>${new Date(
+              shipment.deliveryDate
+            ).toLocaleDateString()}</td></tr>
           </table>
-    
+
           <div style="text-align:center; margin:25px 0;">
             <a href="${link}" 
                style="background:#28a745; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
               View Shipment
             </a>
           </div>
-    
+
           <p style="font-size:12px; color:#777;">
-            If you don’t have an account, you will be asked to sign up first.
+            Link expires in 24 hours. To track more shipments, please sign up.
+            <br/>
+            <a href="${
+              process.env.FRONTEND_URL
+            }/signup?email=${email}">Sign Up</a>
           </p>
         </div>
-    
+
         <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
           © ${new Date().getFullYear()} Horsehipt
         </div>
@@ -447,15 +446,12 @@ exports.publishShipment = async (req, res) => {
       customer: req.user._id,
     });
 
-    if (!shipment) {
+    if (!shipment)
       return res.status(404).json({ message: "Shipment not found" });
-    }
-
-    if (shipment.publish) {
+    if (shipment.publish)
       return res.status(400).json({ message: "Shipment already published" });
-    }
 
-    // Publish shipment
+    // ---------------- PUBLISH SHIPMENT ----------------
     shipment.publish = true;
     shipment.status = "open_for_offers";
     shipment.publishedAt = new Date();
@@ -463,27 +459,27 @@ exports.publishShipment = async (req, res) => {
     // ---------------- RECIPIENT LOGIC ----------------
     if (shipment.recipientEmail) {
       const normalizedEmail = shipment.recipientEmail.toLowerCase().trim();
-
       console.log("Processing recipient:", normalizedEmail);
 
-      // Check if user already exists
-      const existingUser = await Customer.findOne({
-        email: normalizedEmail,
-      });
+      // generate a unique token for this shipment + recipient
+      const token = crypto.randomBytes(20).toString("hex"); // 40 chars
+      shipment.inviteToken = token;
+      shipment.inviteTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
+      // check if user exists
+      const existingUser = await Customer.findOne({ email: normalizedEmail });
       if (existingUser) {
         shipment.recipientUser = existingUser._id;
         console.log("Existing recipient linked");
       }
 
-      // Send email only once
+      // send email only once
       if (!shipment.recipientInviteSent) {
         await sendRecipientInviteEmail({
           email: normalizedEmail,
           shipment,
           customerName: req.user.name || "Customer",
         });
-
         shipment.recipientInviteSent = true;
       }
     }
