@@ -442,3 +442,97 @@ exports.getAcceptedQuoteByShipment = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
+// ================= DELETE QUOTE =================
+exports.deleteQuote = async (req, res) => {
+  try {
+    const shipperId = req.user._id;
+    const { quoteId } = req.params;
+
+    console.log("[DELETE QUOTE] Start", { shipperId, quoteId });
+
+    // ---------------- VALIDATION ----------------
+    if (!quoteId) {
+      return res.status(400).json({
+        success: false,
+        message: "Quote ID is required",
+      });
+    }
+
+    // ---------------- FETCH QUOTE ----------------
+    const quote = await ShipmentQuote.findById(quoteId);
+
+    if (!quote) {
+      console.log("[DELETE QUOTE] Quote not found:", quoteId);
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found",
+      });
+    }
+
+    // ---------------- AUTH CHECK ----------------
+    if (quote.shipper.toString() !== shipperId.toString()) {
+      console.log("[DELETE QUOTE] Unauthorized access", {
+        quoteOwner: quote.shipper,
+        shipperId,
+      });
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    // ---------------- BUSINESS RULES ----------------
+
+    // Cannot delete accepted quote
+    if (quote.status === "accepted") {
+      console.log("[DELETE QUOTE] Attempt to delete accepted quote");
+      return res.status(400).json({
+        success: false,
+        message: "Accepted quote cannot be deleted",
+      });
+    }
+
+    // Cannot delete cancelled quote (optional)
+    if (quote.status === "cancelled") {
+      console.log("[DELETE QUOTE] Attempt to delete cancelled quote");
+      return res.status(400).json({
+        success: false,
+        message: "Cancelled quote cannot be deleted",
+      });
+    }
+
+    // ---------------- DELETE CONTRACT FILE (Cloudinary) ----------------
+    if (quote.contract?.public_id) {
+      try {
+        await cloudinary.uploader.destroy(quote.contract.public_id, {
+          resource_type: "raw",
+        });
+        console.log("[DELETE QUOTE] Contract file deleted from cloudinary");
+      } catch (err) {
+        console.error(
+          "[DELETE QUOTE] Failed to delete contract file:",
+          err.message
+        );
+      }
+    }
+
+    // ---------------- DELETE QUOTE ----------------
+    await ShipmentQuote.findByIdAndDelete(quoteId);
+
+    console.log("[DELETE QUOTE] Success", quoteId);
+
+    // ---------------- RESPONSE ----------------
+    return res.status(200).json({
+      success: true,
+      message: "Quote deleted successfully",
+    });
+  } catch (error) {
+    console.error("[DELETE QUOTE ERROR]:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Server error while deleting quote",
+      error: error.message,
+    });
+  }
+};
