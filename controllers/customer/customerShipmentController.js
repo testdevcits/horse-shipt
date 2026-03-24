@@ -364,14 +364,12 @@ const logoUrl = `${process.env.BACKEND_URL}/assets/logo.png`;
 // ---------------- EMAIL FUNCTION ----------------
 const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
   try {
-    // Use temporary token instead of direct signup link
-    const token = shipment.inviteToken; // generated at publish time
-    const link = `${process.env.FRONTEND_URL}/invite/${token}`;
+    const token = shipment.inviteToken;
+    const link = `${FRONTEND_URL}/invite/${token}`;
 
     const html = `
     <div style="font-family: Arial, sans-serif; padding:20px;">
       <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
-        <!-- Logo Section -->
         <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
           <h2>Shipment Invitation</h2>
         </div>
@@ -397,8 +395,7 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
           </table>
 
           <div style="text-align:center; margin:25px 0;">
-            <a href="${link}" 
-               style="background:#BF9B53; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
+            <a href="${link}" style="background:#BF9B53; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
               View Shipment
             </a>
           </div>
@@ -406,10 +403,9 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
           <p style="font-size:12px; color:#777;">
             Link expires in 24 hours. To track more shipments, please sign up.
             <br/>
-            <a href="${process.env.FRONTEND_URL}/signup">Sign Up</a>
+            <a href="${FRONTEND_URL}/signup">Sign Up</a>
           </p>
         </div>
-
         <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
           © ${new Date().getFullYear()} Horsehipt
         </div>
@@ -422,7 +418,6 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
       subject: `Shipment Invite from ${customerName}`,
       html,
     });
-
     console.log("Recipient email sent:", email);
   } catch (err) {
     console.error("Email send error:", err);
@@ -434,9 +429,8 @@ exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
+    if (!mongoose.Types.ObjectId.isValid(shipmentId))
       return res.status(400).json({ message: "Invalid shipment ID" });
-    }
 
     const shipment = await CustomerShipment.findOne({
       _id: shipmentId,
@@ -458,19 +452,19 @@ exports.publishShipment = async (req, res) => {
       const normalizedEmail = shipment.recipientEmail.toLowerCase().trim();
       console.log("Processing recipient:", normalizedEmail);
 
-      // generate a unique token for this shipment + recipient
+      // generate unique invite token
       const token = crypto.randomBytes(20).toString("hex"); // 40 chars
       shipment.inviteToken = token;
-      shipment.inviteTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+      shipment.inviteTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
 
-      // check if user exists
+      // link recipient to existing user if present
       const existingUser = await Customer.findOne({ email: normalizedEmail });
       if (existingUser) {
         shipment.recipientUser = existingUser._id;
         console.log("Existing recipient linked");
       }
 
-      // send email only once
+      // send invite email once
       if (!shipment.recipientInviteSent) {
         await sendRecipientInviteEmail({
           email: normalizedEmail,
@@ -482,6 +476,7 @@ exports.publishShipment = async (req, res) => {
     }
 
     await shipment.save();
+    console.log("Shipment published successfully:", shipment._id);
 
     res.json({
       success: true,
