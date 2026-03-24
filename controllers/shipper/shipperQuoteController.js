@@ -219,6 +219,32 @@ exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
 
+    console.log("=====================================");
+    console.log("[ADD QUOTE] Start", { shipperId });
+
+    // ----------------- CHECK SHIPPER STATUS -----------------
+    const shipper = await Shipper.findById(shipperId);
+
+    if (!shipper) {
+      console.log("[ERROR] Shipper not found:", shipperId);
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
+    }
+
+    console.log("[SHIPPER STATUS]", shipper.accountStatus);
+
+    if (shipper.accountStatus === "RESTRICTED") {
+      console.log("[BLOCKED] Restricted shipper tried to send quote");
+
+      return res.status(403).json({
+        success: false,
+        message:
+          "Your account is restricted due to payment failure. Please update your card to continue.",
+      });
+    }
+
     const {
       shipment,
       vehicle,
@@ -247,8 +273,10 @@ exports.addQuote = async (req, res) => {
       !transportType ||
       !stallsRequired ||
       !shipperSignature ||
-      cancellationWindowDays === undefined // ✅ NEW
+      cancellationWindowDays === undefined
     ) {
+      console.log("[ERROR] Missing required fields");
+
       return res.status(400).json({
         success: false,
         message:
@@ -262,11 +290,14 @@ exports.addQuote = async (req, res) => {
     );
 
     if (!shipmentExists) {
+      console.log("[ERROR] Shipment not found:", shipment);
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
+
+    console.log("[SHIPMENT FOUND]", shipmentExists._id);
 
     // ----------------- FETCH VEHICLE -----------------
     const vehicleExists = await ShipperVehicle.findOne({
@@ -275,6 +306,7 @@ exports.addQuote = async (req, res) => {
     });
 
     if (!vehicleExists) {
+      console.log("[ERROR] Vehicle not found:", vehicle);
       return res.status(404).json({
         success: false,
         message: "Vehicle not found or does not belong to you",
@@ -288,19 +320,26 @@ exports.addQuote = async (req, res) => {
     });
 
     if (alreadyQuoted) {
+      console.log("[ERROR] Duplicate quote attempt");
+
       return res.status(400).json({
         success: false,
         message: "You have already sent a quote for this shipment",
       });
     }
 
-    // ================= CANCELLATION DATE CALCULATION =================
+    // ================= CANCELLATION DATE =================
     const bookingDate = new Date();
 
     const cancellationLastDate = new Date(
       bookingDate.getTime() +
         Number(cancellationWindowDays) * 24 * 60 * 60 * 1000
     );
+
+    console.log("[CANCELLATION WINDOW]", {
+      days: cancellationWindowDays,
+      lastDate: cancellationLastDate,
+    });
 
     // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
@@ -320,15 +359,14 @@ exports.addQuote = async (req, res) => {
         transportType,
         stallsRequired,
         notes,
-        cancellationWindowDays, // optional include in PDF
+        cancellationWindowDays,
       },
       shipperSignature,
     });
 
-    // ----------------- GENERATE CONTRACT ID -----------------
-    const contractId = new mongoose.Types.ObjectId();
+    console.log("[PDF GENERATED]");
 
-    // ----------------- UPLOAD PDF TO CLOUDINARY -----------------
+    // ----------------- UPLOAD PDF -----------------
     const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
 
     const uploadResult = await new Promise((resolve, reject) => {
@@ -343,6 +381,8 @@ exports.addQuote = async (req, res) => {
 
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
+
+    console.log("[PDF UPLOADED]", uploadResult.secure_url);
 
     // ----------------- CREATE QUOTE -----------------
     const quote = await ShipmentQuote.create({
@@ -363,7 +403,7 @@ exports.addQuote = async (req, res) => {
       status: "pending",
       termsAccepted: false,
 
-      contractId,
+      contractId: new mongoose.Types.ObjectId(),
       contract: {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
@@ -377,6 +417,8 @@ exports.addQuote = async (req, res) => {
       cancellationWindowDays,
       cancellationLastDate,
     });
+
+    console.log("[QUOTE CREATED]", quote._id);
 
     // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
@@ -403,7 +445,10 @@ exports.addQuote = async (req, res) => {
       );
     }
 
-    // ----------------- RESPONSE -----------------
+    console.log("[NOTIFICATIONS SENT]");
+
+    console.log("=====================================");
+
     return res.status(201).json({
       success: true,
       message: "Quote sent successfully",
