@@ -1,6 +1,7 @@
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 const cloudinary = require("../../utils/cloudinary");
+const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const webpush = require("web-push");
 const mongoose = require("mongoose");
 
@@ -99,6 +100,7 @@ exports.createShipment = async (req, res) => {
       deliveryDate,
       additionalInfo,
       publish,
+      recipientEmail,
     } = req.body;
 
     const pickupLat = parseFloat(req.body.pickupLat);
@@ -175,6 +177,17 @@ exports.createShipment = async (req, res) => {
       horses.push(horseObj);
     }
 
+    const normalizedEmail = recipientEmail
+      ? recipientEmail.toLowerCase().trim()
+      : null;
+
+    let recipientUser = null;
+    if (normalizedEmail) {
+      recipientUser = await Customer.findOne({
+        email: normalizedEmail,
+      });
+    }
+
     const shipment = new CustomerShipment({
       customer: customerId,
 
@@ -200,7 +213,10 @@ exports.createShipment = async (req, res) => {
       publish: publish === "true" || publish === true,
       status: "pending",
 
-      // Optional: set initial current location
+      recipientEmail: normalizedEmail,
+      recipientUser: recipientUser ? recipientUser._id : null,
+
+      // Optional: initial location
       currentLocation: {
         latitude: pickupLat,
         longitude: pickupLng,
@@ -342,31 +358,140 @@ exports.getSingleShipmentForMap = async (req, res) => {
 // ============================================================
 // ===================== PUBLISH SHIPMENT =====================
 // ============================================================
+
+// ---------------- EMAIL FUNCTION ----------------
+const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
+  try {
+    const link = `${process.env.FRONTEND_URL}/signup?email=${email}&shipment=${shipment._id}`;
+
+    const html = `
+    <div style="font-family: Arial, sans-serif; background:#f4f6f8; padding:20px;">
+      <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
+        
+        <div style="background:#0d6efd; color:#fff; padding:20px; text-align:center;">
+          <h2>Shipment Invitation</h2>
+        </div>
+
+        <div style="padding:20px;">
+          <p><strong>${customerName}</strong> has invited you to track a shipment.</p>
+
+          <h3>Shipment Details</h3>
+          <table style="width:100%; border-collapse:collapse;">
+            <tr>
+              <td><strong>Shipment Code</strong></td>
+              <td>${shipment.shipmentCode || "N/A"}</td>
+            </tr>
+            <tr>
+              <td><strong>Pickup</strong></td>
+              <td>${shipment.pickupLocation}</td>
+            </tr>
+            <tr>
+              <td><strong>Delivery</strong></td>
+              <td>${shipment.deliveryLocation}</td>
+            </tr>
+            <tr>
+              <td><strong>Pickup Date</strong></td>
+              <td>${new Date(shipment.pickupDate).toLocaleDateString()}</td>
+            </tr>
+            <tr>
+              <td><strong>Delivery Date</strong></td>
+              <td>${new Date(shipment.deliveryDate).toLocaleDateString()}</td>
+            </tr>
+          </table>
+
+          <div style="text-align:center; margin:25px 0;">
+            <a href="${link}" 
+               style="background:#28a745; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
+              View Shipment
+            </a>
+          </div>
+
+          <p style="font-size:12px; color:#777;">
+            If you don’t have an account, you will be asked to sign up first.
+          </p>
+        </div>
+
+        <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
+          © ${new Date().getFullYear()} Horsehipt
+        </div>
+      </div>
+    </div>
+    `;
+
+    await sendEmail({
+      to: email,
+      subject: `Shipment Invite from ${customerName}`,
+      html,
+    });
+
+    console.log("Recipient email sent:", email);
+  } catch (err) {
+    console.error("Email send error:", err);
+  }
+};
+
+// ---------------- PUBLISH SHIPMENT ----------------
 exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-    // console.log(`[PUBLISH SHIPMENT] Shipment ID: ${shipmentId}`);
 
-    if (!mongoose.Types.ObjectId.isValid(shipmentId))
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
       return res.status(400).json({ message: "Invalid shipment ID" });
+    }
 
     const shipment = await CustomerShipment.findOne({
       _id: shipmentId,
       customer: req.user._id,
     });
-    if (!shipment)
-      return res.status(404).json({ message: "Shipment not found" });
 
+    if (!shipment) {
+      return res.status(404).json({ message: "Shipment not found" });
+    }
+
+    if (shipment.publish) {
+      return res.status(400).json({ message: "Shipment already published" });
+    }
+
+    // Publish shipment
     shipment.publish = true;
     shipment.status = "open_for_offers";
     shipment.publishedAt = new Date();
 
+    // ---------------- RECIPIENT LOGIC ----------------
+    if (shipment.recipientEmail) {
+      const normalizedEmail = shipment.recipientEmail.toLowerCase().trim();
+
+      console.log("Processing recipient:", normalizedEmail);
+
+      // Check if user already exists
+      const existingUser = await Customer.findOne({
+        email: normalizedEmail,
+      });
+
+      if (existingUser) {
+        shipment.recipientUser = existingUser._id;
+        console.log("Existing recipient linked");
+      }
+
+      // Send email only once
+      if (!shipment.recipientInviteSent) {
+        await sendRecipientInviteEmail({
+          email: normalizedEmail,
+          shipment,
+          customerName: req.user.name || "Customer",
+        });
+
+        shipment.recipientInviteSent = true;
+      }
+    }
+
     await shipment.save();
-    // console.log(
-    //   "[PUBLISH SHIPMENT] Shipment published:",
-    //   shipment.shipmentCode
-    // );
-    res.json({ success: true, shipment });
+
+    res.json({
+      success: true,
+      message: "Shipment published successfully",
+      shipment,
+    });
   } catch (err) {
     console.error("[PUBLISH SHIPMENT ERROR]", err);
     res.status(500).json({ message: "Server error" });

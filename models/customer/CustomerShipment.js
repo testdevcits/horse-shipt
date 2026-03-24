@@ -171,6 +171,23 @@ const shipmentSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    // ---------------- Recipient Invite ----------------
+    recipientEmail: {
+      type: String,
+      default: null,
+    },
+
+    recipientUser: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Customer",
+      default: null,
+    },
+
+    recipientInviteSent: {
+      type: Boolean,
+      default: false,
+    },
   },
   { timestamps: true }
 );
