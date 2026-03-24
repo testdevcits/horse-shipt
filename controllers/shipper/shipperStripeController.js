@@ -430,12 +430,17 @@ exports.savePaymentMethod = async (req, res) => {
       });
     }
 
-    // Attach payment method to customer
+    console.log("[CARD UPDATE] Start", {
+      shipperId: shipper._id,
+      paymentMethodId,
+    });
+
+    // Attach payment method
     await stripe.paymentMethods.attach(paymentMethodId, {
       customer: shipper.stripeCustomerId,
     });
 
-    // Set as default
+    // Set default
     await stripe.customers.update(shipper.stripeCustomerId, {
       invoice_settings: {
         default_payment_method: paymentMethodId,
@@ -445,22 +450,35 @@ exports.savePaymentMethod = async (req, res) => {
     // Get card details
     const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
 
+    // Save card info
     shipper.paymentMethodId = paymentMethodId;
     shipper.cardLast4 = paymentMethod.card.last4;
     shipper.cardBrand = paymentMethod.card.brand;
     shipper.cardExpMonth = paymentMethod.card.exp_month;
     shipper.cardExpYear = paymentMethod.card.exp_year;
 
+    if (shipper.accountStatus === "RESTRICTED") {
+      console.log("[ACCOUNT] Removing restriction after card update");
+
+      shipper.accountStatus = "ACTIVE";
+      shipper.lastPaymentFailure = null;
+      shipper.paymentFailureReason = null;
+    }
+
     await shipper.save();
 
-    console.log("Payment method saved:", paymentMethodId);
+    console.log(
+      "[SUCCESS] Card saved & account status:",
+      shipper.accountStatus
+    );
 
     res.json({
       success: true,
-      message: "Card saved successfully",
+      message:
+        "Card saved successfully. Account activated if previously restricted.",
     });
   } catch (error) {
-    console.error("Save Payment Method Error:", error);
+    console.error("[SAVE PAYMENT ERROR]", error);
 
     res.status(500).json({
       success: false,
