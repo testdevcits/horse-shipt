@@ -24,116 +24,77 @@ exports.shipperCancelQuote = async (req, res) => {
     console.log("======================================");
     console.log("[SHIPPER CANCEL] Start", { shipperId, quoteId });
 
-    // ---------------------- Fetch Quote ----------------------
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
 
     if (!quote) {
-      console.log("[ERROR] Quote not found");
-      return res.status(404).json({
-        success: false,
-        message: "Quote not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Quote not found" });
     }
 
-    console.log("[QUOTE]", {
-      status: quote.status,
-      paymentStatus: quote.paymentStatus,
-      totalPrice: quote.totalPrice,
-    });
-
     if (quote.status !== "accepted") {
-      console.log("[ERROR] Quote not accepted:", quote.status);
       return res.status(400).json({
         success: false,
         message: "Cannot cancel. Quote not accepted",
       });
     }
 
-    // ---------------------- Payment Validation ----------------------
     if (quote.paymentStatus !== "paid" || !quote.stripePaymentIntentId) {
-      console.log("[BLOCKED] Payment not completed");
-
       return res.status(400).json({
         success: false,
-        message: "Cannot cancel. Customer has not completed payment.",
+        message: "Payment not completed",
       });
     }
 
-    // ---------------------- Fetch Shipment ----------------------
     const shipment = await CustomerShipment.findById(quote.shipment._id);
-
-    if (!shipment) {
-      console.log("[ERROR] Shipment not found");
-      return res.status(404).json({
-        success: false,
-        message: "Shipment not found",
-      });
-    }
-
-    // ---------------------- Fetch Shipper ----------------------
     const shipper = await Shipper.findById(shipperId);
 
-    if (!shipper) {
-      return res.status(404).json({
-        success: false,
-        message: "Shipper not found",
-      });
-    }
-
-    if (!shipper.stripeCustomerId || !shipper.paymentMethodId) {
-      console.log("[ERROR] Missing card details");
+    if (!shipper?.stripeCustomerId || !shipper?.paymentMethodId) {
       return res.status(400).json({
         success: false,
-        message: "Shipper card not available",
+        message: "Card not available",
       });
     }
 
-    // ---------------------- Fee Calculation ----------------------
+    // ---------------------- Fees ----------------------
     const settings = await PlatformSettings.findOne();
 
-    const platformFeePercent = settings?.platformFeePercent || 5;
-    const platformFeeFlat = settings?.platformFeeFlat || 0;
-    const currency = settings?.currency || "usd";
-
     const amountPaid = quote.totalPrice;
-
     const platformFee =
-      (amountPaid * platformFeePercent) / 100 + platformFeeFlat;
+      (amountPaid * (settings?.platformFeePercent || 5)) / 100;
 
     const stripeFee = (amountPaid * 2.9) / 100 + 0.3;
 
     let cancellationFee = platformFee + stripeFee;
 
-    // Stripe minimum
-    if (currency === "usd" && cancellationFee < 0.5) {
-      cancellationFee = 0.5;
-    }
+    if (cancellationFee < 0.5) cancellationFee = 0.5;
 
     const finalAmountInCents = Math.round(cancellationFee * 100);
 
-    console.log("[FEE BREAKDOWN]", {
-      amountPaid,
-      platformFee,
-      stripeFee,
-      cancellationFee,
-      finalAmountInCents,
-    });
-
     // ---------------------- Charge Shipper ----------------------
+    let chargeIntent;
+
     try {
-      const paymentIntent = await stripe.paymentIntents.create({
+      chargeIntent = await stripe.paymentIntents.create({
         amount: finalAmountInCents,
-        currency,
+        currency: settings?.currency || "usd",
         customer: shipper.stripeCustomerId,
         payment_method: shipper.paymentMethodId,
         off_session: true,
         confirm: true,
+
+        metadata: {
+          type: "shipper_cancellation_fee",
+          quoteId: quote._id.toString(),
+          shipmentId: shipment._id.toString(),
+          shipperId: shipperId.toString(),
+          amountPaid: amountPaid.toString(),
+          cancellationFee: cancellationFee.toString(),
+        },
       });
 
-      console.log("[SUCCESS] Shipper charged:", paymentIntent.id);
+      console.log("[SUCCESS] Charge:", chargeIntent.id);
     } catch (err) {
-      console.error("[PAYMENT FAILED]", err.message);
-
       shipper.accountStatus = "RESTRICTED";
       shipper.lastPaymentFailure = new Date();
       shipper.paymentFailureReason = err.message;
@@ -141,64 +102,60 @@ exports.shipperCancelQuote = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message:
-          "Payment failed. Your account is restricted. Please update your card.",
+        message: "Payment failed. Account restricted.",
       });
     }
 
-    // ---------------------- Refund Customer ----------------------
-    try {
-      console.log("[REFUND] Starting refund");
+    // ---------------------- Refund ----------------------
+    let refund;
 
-      const refund = await stripe.refunds.create({
+    try {
+      refund = await stripe.refunds.create({
         payment_intent: quote.stripePaymentIntentId,
         amount: Math.round(amountPaid * 100),
+
+        metadata: {
+          type: "customer_refund",
+          quoteId: quote._id.toString(),
+          shipmentId: shipment._id.toString(),
+          reason: "shipper_cancelled",
+        },
       });
 
       if (refund.status !== "succeeded") {
-        throw new Error("Refund not successful");
+        throw new Error("Refund failed");
       }
 
-      console.log("[SUCCESS] Customer refunded");
+      console.log("[SUCCESS] Refund:", refund.id);
     } catch (err) {
-      console.error("[REFUND FAILED]", err.message);
-
       return res.status(500).json({
         success: false,
-        message: "Customer refund failed. Please contact support.",
+        message: "Refund failed",
       });
     }
 
-    // ---------------------- Update DB ----------------------
-    try {
-      quote.isCancelled = true;
-      quote.cancelledAt = new Date();
-      quote.cancelReason = "Cancelled by shipper";
-      quote.refundAmount = amountPaid;
-      quote.refundStatus = "processed";
+    // ---------------------- DB UPDATE ----------------------
+    quote.isCancelled = true;
+    quote.cancelledAt = new Date();
+    quote.cancelReason = "Cancelled by shipper";
 
-      await quote.save();
+    quote.refundAmount = amountPaid;
+    quote.refundStatus = "processed";
 
-      shipment.status = "cancelled";
-      await shipment.save();
+    quote.cancellationChargeId = chargeIntent.id;
+    quote.refundId = refund.id;
+    quote.cancellationFee = cancellationFee;
 
-      console.log("[DB UPDATED]");
-    } catch (err) {
-      console.error("[DB ERROR AFTER PAYMENT]", err);
+    await quote.save();
 
-      return res.status(500).json({
-        success: false,
-        message: "Critical error after payment. Please contact admin.",
-      });
-    }
+    shipment.status = "cancelled";
+    await shipment.save();
 
-    console.log("[COMPLETE] Cancellation success");
-    console.log("======================================");
+    console.log("[COMPLETE] Done");
 
     return res.status(200).json({
       success: true,
-      message:
-        "Quote cancelled successfully. Customer refunded and shipper charged.",
+      message: "Cancelled, refunded, and charged",
       cancellationFee,
     });
   } catch (error) {
