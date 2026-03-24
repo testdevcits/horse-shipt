@@ -3,6 +3,7 @@ const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
+const Shipper = require("../../models/shipper/shipperModel");
 const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
