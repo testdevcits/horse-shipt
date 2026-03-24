@@ -360,7 +360,7 @@ exports.getSingleShipmentForMap = async (req, res) => {
 // ============================================================
 // ===================== PUBLISH SHIPMENT =====================
 // ============================================================
-
+const logoUrl = `${process.env.BACKEND_URL}/assets/logo.png`;
 // ---------------- EMAIL FUNCTION ----------------
 const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
   try {
