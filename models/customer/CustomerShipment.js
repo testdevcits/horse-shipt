@@ -188,6 +188,14 @@ const shipmentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    inviteToken: {
+      type: String,
+      default: null,
+    },
+    inviteTokenExpiry: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
