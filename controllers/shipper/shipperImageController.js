@@ -15,25 +15,31 @@ cloudinary.config({
 // ===================================================
 exports.getShipperProfile = async (req, res) => {
   try {
+    console.log("[GET SHIPPER PROFILE] Start", req.user.id);
+
     const shipper = await Shipper.findById(req.user.id)
       .select(
         "uniqueId name email role firstName lastName locale emailVerified " +
-          "profileImage profilePicture bannerImage currentLocation isLogin"
+          "profileImage profilePicture bannerImage currentLocation isLogin accountStatus"
       )
       .lean();
 
     if (!shipper) {
+      console.log("[ERROR] Shipper not found:", req.user.id);
       return res.status(404).json({
         success: false,
         message: "Shipper not found",
       });
     }
 
+    console.log("[SHIPPER DATA FOUND]", {
+      id: shipper._id,
+      email: shipper.email,
+      accountStatus: shipper.accountStatus,
+    });
+
     // ================================
     // Profile Image Resolution Priority
-    // 1. Uploaded profileImage (Cloudinary)
-    // 2. Google OAuth profilePicture
-    // 3. Default local image
     // ================================
     const resolvedProfileImage =
       shipper.profileImage?.url ||
@@ -45,6 +51,11 @@ exports.getShipperProfile = async (req, res) => {
     // ================================
     const resolvedBannerImage =
       shipper.bannerImage?.url || "/images/default_banner.png";
+
+    console.log("[IMAGE RESOLUTION]", {
+      profileImage: resolvedProfileImage,
+      bannerImage: resolvedBannerImage,
+    });
 
     res.status(200).json({
       success: true,
@@ -60,12 +71,18 @@ exports.getShipperProfile = async (req, res) => {
         emailVerified: shipper.emailVerified,
         currentLocation: shipper.currentLocation || null,
         isLogin: shipper.isLogin,
+
+        accountStatus: shipper.accountStatus || "ACTIVE",
+
         profileImage: resolvedProfileImage,
         bannerImage: resolvedBannerImage,
       },
     });
+
+    console.log("[GET SHIPPER PROFILE] Success");
   } catch (error) {
-    console.error("Get Shipper Profile error:", error);
+    console.error("[GET SHIPPER PROFILE ERROR]", error);
+
     res.status(500).json({
       success: false,
       message: "Failed to fetch shipper profile",
