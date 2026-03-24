@@ -39,6 +39,7 @@ const {
   getQuotesByShipment,
   acceptQuote,
   getAcceptedQuoteByShipment,
+  shipperCancelQuote,
 } = require("../../controllers/shipper/shipperQuoteController");
 
 // -------- Messages --------
@@ -192,6 +193,7 @@ router.get(
   shipperAuth,
   getAcceptedQuoteByShipment
 );
+router.post("/quotes/cancel", shipperAuth, shipperCancelQuote);
 
 // ====================================================
 // MESSAGE ROUTES
