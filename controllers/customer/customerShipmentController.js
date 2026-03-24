@@ -362,6 +362,21 @@ exports.getSingleShipmentForMap = async (req, res) => {
 // ============================================================
 const logoUrl = `${process.env.BACKEND_URL}/assets/logo.png`;
 const FRONTEND_URL = process.env.FRONTEND_URL;
+
+const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY; // 32 chars hex
+const IV_LENGTH = 16;
+
+const encryptEmail = (email) => {
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const cipher = crypto.createCipheriv(
+    "aes-256-cbc",
+    Buffer.from(ENCRYPTION_KEY, "hex"),
+    iv
+  );
+  let encrypted = cipher.update(email, "utf8", "hex");
+  encrypted += cipher.final("hex");
+  return iv.toString("hex") + ":" + encrypted;
+};
 // ---------------- EMAIL FUNCTION ----------------
 const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
   try {
@@ -451,7 +466,6 @@ exports.publishShipment = async (req, res) => {
     // ---------------- RECIPIENT LOGIC ----------------
     if (shipment.recipientEmail) {
       const normalizedEmail = shipment.recipientEmail.toLowerCase().trim();
-      console.log("Processing recipient:", normalizedEmail);
 
       // generate unique invite token
       const token = crypto.randomBytes(20).toString("hex"); // 40 chars
@@ -460,24 +474,27 @@ exports.publishShipment = async (req, res) => {
 
       // link recipient to existing user if present
       const existingUser = await Customer.findOne({ email: normalizedEmail });
-      if (existingUser) {
-        shipment.recipientUser = existingUser._id;
-        console.log("Existing recipient linked");
-      }
+      if (existingUser) shipment.recipientUser = existingUser._id;
 
       // send invite email once
       if (!shipment.recipientInviteSent) {
+        const encryptedEmail = encodeURIComponent(
+          encryptEmail(normalizedEmail)
+        );
+        const link = `${process.env.FRONTEND_URL}/invite/${token}?e=${encryptedEmail}`;
+
         await sendRecipientInviteEmail({
           email: normalizedEmail,
           shipment,
           customerName: req.user.name || "Customer",
+          link, // send full encrypted link
         });
+
         shipment.recipientInviteSent = true;
       }
     }
 
     await shipment.save();
-    console.log("Shipment published successfully:", shipment._id);
 
     res.json({
       success: true,
