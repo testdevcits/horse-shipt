@@ -1,3 +1,4 @@
+const Customer = require("../../models/customer/customerModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 const cloudinary = require("../../utils/cloudinary");
