@@ -1,11 +1,10 @@
 const mongoose = require("mongoose");
-const startBackupWatcher = require("../utils/backupWatcher");
 
-let isConnected = false;
+let isConnected = false; // to prevent multiple connections in serverless
 
 const connectDB = async () => {
   if (isConnected) {
-    console.log("MongoDB already connected 🐎");
+    console.log("MongoDB already connected");
     return;
   }
 
@@ -16,13 +15,10 @@ const connectDB = async () => {
     });
 
     isConnected = true;
-
     console.log(`MongoDB Connected: ${conn.connection.host} 🐎`);
-
-    startBackupWatcher();
   } catch (error) {
     console.error(`MongoDB Connection Error: ${error.message}`);
-    process.exit(1);
+    process.exit(1); // Exit process with failure
   }
 };
 
