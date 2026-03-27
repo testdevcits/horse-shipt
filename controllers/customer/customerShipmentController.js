@@ -363,7 +363,8 @@ exports.getSingleShipmentForMap = async (req, res) => {
 const logoUrl = `${process.env.BACKEND_URL}/assets/logo.png`;
 const FRONTEND_URL = process.env.FRONTEND_URL;
 
-const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY; // 32 chars hex
+const ENCRYPTION_KEY =
+  process.env.EMAIL_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY;
 const IV_LENGTH = 16;
 
 const encryptEmail = (email) => {
