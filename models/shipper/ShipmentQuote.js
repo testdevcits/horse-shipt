@@ -214,7 +214,7 @@ const quoteSchema = new mongoose.Schema(
     cancellationFee: Number,
     refundStatus: {
       type: String,
-      enum: ["pending", "processed", "failed"],
+      enum: ["pending", "processed", "failed", "not_required"],
       default: "pending",
     },
 
