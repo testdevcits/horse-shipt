@@ -367,21 +367,64 @@ const ENCRYPTION_KEY = process.env.EMAIL_ENCRYPTION_KEY; // 32 chars hex
 const IV_LENGTH = 16;
 
 const encryptEmail = (email) => {
-  const iv = crypto.randomBytes(IV_LENGTH);
-  const cipher = crypto.createCipheriv(
-    "aes-256-cbc",
-    Buffer.from(ENCRYPTION_KEY, "hex"),
-    iv
-  );
-  let encrypted = cipher.update(email, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  return iv.toString("hex") + ":" + encrypted;
+  try {
+    console.log("Encrypting email:", email);
+
+    if (!email || typeof email !== "string") {
+      throw new Error("Invalid email for encryption");
+    }
+
+    if (!ENCRYPTION_KEY) {
+      throw new Error("ENCRYPTION_KEY is missing in env");
+    }
+
+    if (ENCRYPTION_KEY.length !== 64) {
+      throw new Error(
+        "ENCRYPTION_KEY must be 64 hex characters (32 bytes for AES-256)"
+      );
+    }
+
+    const iv = crypto.randomBytes(IV_LENGTH);
+
+    console.log("Using ENCRYPTION_KEY:", ENCRYPTION_KEY);
+
+    const cipher = crypto.createCipheriv(
+      "aes-256-cbc",
+      Buffer.from(ENCRYPTION_KEY, "hex"),
+      iv
+    );
+
+    let encrypted = cipher.update(email, "utf8", "hex");
+    encrypted += cipher.final("hex");
+
+    const finalData = iv.toString("hex") + ":" + encrypted;
+
+    console.log("Encryption successful");
+
+    return finalData;
+  } catch (err) {
+    console.error("Encryption error:", err.message);
+    throw err;
+  }
 };
 // ---------------- EMAIL FUNCTION ----------------
-const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
+const sendRecipientInviteEmail = async ({
+  email,
+  shipment,
+  customerName,
+  link, // receive link from publishShipment
+}) => {
   try {
-    const token = shipment.inviteToken;
-    const link = `${FRONTEND_URL}/invite/${token}`;
+    console.log("Preparing email for:", email);
+    console.log("Invite link:", link);
+
+    if (!email || typeof email !== "string") {
+      throw new Error("Invalid email");
+    }
+
+    if (!link) {
+      throw new Error("Invite link is missing");
+    }
 
     const html = `
     <div style="font-family: Arial, sans-serif; padding:20px;">
@@ -391,27 +434,33 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
         </div>
         <div style="padding:20px;">
           <p><strong>${customerName}</strong> has invited you to track a shipment.</p>
+
           <h3>Shipment Details</h3>
           <table style="width:100%; border-collapse:collapse;">
             <tr><td><strong>Shipment Code</strong></td><td>${
               shipment.shipmentCode || "N/A"
             }</td></tr>
             <tr><td><strong>Pickup</strong></td><td>${
-              shipment.pickupLocation
+              shipment.pickupLocation || "N/A"
             }</td></tr>
             <tr><td><strong>Delivery</strong></td><td>${
-              shipment.deliveryLocation
+              shipment.deliveryLocation || "N/A"
             }</td></tr>
-            <tr><td><strong>Pickup Date</strong></td><td>${new Date(
+            <tr><td><strong>Pickup Date</strong></td><td>${
               shipment.pickupDate
-            ).toLocaleDateString()}</td></tr>
-            <tr><td><strong>Delivery Date</strong></td><td>${new Date(
+                ? new Date(shipment.pickupDate).toLocaleDateString()
+                : "N/A"
+            }</td></tr>
+            <tr><td><strong>Delivery Date</strong></td><td>${
               shipment.deliveryDate
-            ).toLocaleDateString()}</td></tr>
+                ? new Date(shipment.deliveryDate).toLocaleDateString()
+                : "N/A"
+            }</td></tr>
           </table>
 
           <div style="text-align:center; margin:25px 0;">
-            <a href="${link}" style="background:#BF9B53; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
+            <a href="${link}" 
+              style="background:#BF9B53; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
               View Shipment
             </a>
           </div>
@@ -419,9 +468,10 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
           <p style="font-size:12px; color:#777;">
             Link expires in 24 hours. To track more shipments, please sign up.
             <br/>
-            <a href="${FRONTEND_URL}/signup">Sign Up</a>
+            <a href="${process.env.FRONTEND_URL}/signup">Sign Up</a>
           </p>
         </div>
+
         <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
           © ${new Date().getFullYear()} Horsehipt
         </div>
@@ -434,9 +484,10 @@ const sendRecipientInviteEmail = async ({ email, shipment, customerName }) => {
       subject: `Shipment Invite from ${customerName}`,
       html,
     });
+
     console.log("Recipient email sent:", email);
   } catch (err) {
-    console.error("Email send error:", err);
+    console.error("Email send error:", err.message);
   }
 };
 
@@ -445,56 +496,107 @@ exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(shipmentId))
+    console.log("➡️ Incoming publish request for shipmentId:", shipmentId);
+
+    if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
+      console.log("Invalid shipment ID");
       return res.status(400).json({ message: "Invalid shipment ID" });
+    }
 
     const shipment = await CustomerShipment.findOne({
       _id: shipmentId,
       customer: req.user._id,
     });
 
-    if (!shipment)
+    console.log("Shipment fetched:", shipment?._id);
+
+    if (!shipment) {
+      console.log("Shipment not found");
       return res.status(404).json({ message: "Shipment not found" });
-    if (shipment.publish)
+    }
+
+    if (shipment.publish) {
+      console.log("Shipment already published");
       return res.status(400).json({ message: "Shipment already published" });
+    }
 
     // ---------------- PUBLISH SHIPMENT ----------------
     shipment.publish = true;
     shipment.status = "open_for_offers";
     shipment.publishedAt = new Date();
 
+    console.log("Shipment marked as published");
+
     // ---------------- RECIPIENT LOGIC ----------------
-    if (shipment.recipientEmail) {
+    console.log("Raw recipientEmail:", shipment.recipientEmail);
+
+    if (
+      shipment.recipientEmail &&
+      typeof shipment.recipientEmail === "string"
+    ) {
       const normalizedEmail = shipment.recipientEmail.toLowerCase().trim();
 
+      console.log("Normalized Email:", normalizedEmail);
+
+      if (!normalizedEmail) {
+        console.log("Email became empty after normalization");
+        throw new Error("Invalid recipient email");
+      }
+
       // generate unique invite token
-      const token = crypto.randomBytes(20).toString("hex"); // 40 chars
+      const token = crypto.randomBytes(20).toString("hex");
       shipment.inviteToken = token;
-      shipment.inviteTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h expiry
+      shipment.inviteTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+      console.log("Invite token generated:", token);
 
       // link recipient to existing user if present
-      const existingUser = await Customer.findOne({ email: normalizedEmail });
-      if (existingUser) shipment.recipientUser = existingUser._id;
+      const existingUser = await Customer.findOne({
+        email: normalizedEmail,
+      });
+
+      if (existingUser) {
+        shipment.recipientUser = existingUser._id;
+        console.log("Existing user linked:", existingUser._id);
+      } else {
+        console.log("No existing user found for email");
+      }
 
       // send invite email once
       if (!shipment.recipientInviteSent) {
-        const encryptedEmail = encodeURIComponent(
-          encryptEmail(normalizedEmail)
-        );
+        let encryptedEmail;
+
+        try {
+          encryptedEmail = encodeURIComponent(encryptEmail(normalizedEmail));
+        } catch (err) {
+          console.error("Email encryption failed:", err);
+          throw new Error("Email encryption failed");
+        }
+
         const link = `${process.env.FRONTEND_URL}/invite/${token}?e=${encryptedEmail}`;
+
+        console.log("Invite link generated:", link);
 
         await sendRecipientInviteEmail({
           email: normalizedEmail,
           shipment,
           customerName: req.user.name || "Customer",
-          link, // send full encrypted link
+          link,
         });
 
+        console.log("Invite email sent");
+
         shipment.recipientInviteSent = true;
+      } else {
+        console.log("⚠️ Invite already sent, skipping email");
       }
+    } else {
+      console.log("⚠️ recipientEmail missing or invalid");
     }
 
     await shipment.save();
+
+    console.log("Shipment saved successfully");
 
     res.json({
       success: true,
@@ -503,7 +605,9 @@ exports.publishShipment = async (req, res) => {
     });
   } catch (err) {
     console.error("[PUBLISH SHIPMENT ERROR]", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({
+      message: err.message || "Server error",
+    });
   }
 };
 
