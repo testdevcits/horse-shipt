@@ -176,7 +176,7 @@ exports.addQuote = async (req, res) => {
     console.log("=====================================");
     console.log("[ADD QUOTE] Start", { shipperId });
 
-    // ----------------- CHECK SHIPPER STATUS -----------------
+    // ----------------- CHECK SHIPPER -----------------
     const shipper = await Shipper.findById(shipperId);
 
     if (!shipper) {
@@ -190,7 +190,7 @@ exports.addQuote = async (req, res) => {
       return res.status(403).json({
         success: false,
         message:
-          "Your account is restricted due to payment failure. Please update your card to continue.",
+          "Your account is restricted due to payment failure. Please update your card.",
       });
     }
 
@@ -212,13 +212,11 @@ exports.addQuote = async (req, res) => {
     // ----------------- VALIDATION -----------------
     if (
       !shipment ||
-      !vehicle ||
       !totalPrice ||
       !paymentMethod ||
+      !paymentDue ||
       !pickupTime ||
       !estimatedArrivalTime ||
-      !transportType ||
-      !stallsRequired ||
       !shipperSignature ||
       cancellationWindowDays === undefined ||
       cancellationWindowDays === null ||
@@ -247,7 +245,7 @@ exports.addQuote = async (req, res) => {
       });
     }
 
-    // ----------------- PREVENT DUPLICATE QUOTE -----------------
+    // ----------------- PREVENT DUPLICATE -----------------
     const alreadyQuoted = await ShipmentQuote.findOne({
       shipment,
       shipper: shipperId,
@@ -256,7 +254,7 @@ exports.addQuote = async (req, res) => {
     if (alreadyQuoted) {
       return res.status(400).json({
         success: false,
-        message: "You have already sent a quote for this shipment",
+        message: "You already sent a quote for this shipment",
       });
     }
 
@@ -267,6 +265,11 @@ exports.addQuote = async (req, res) => {
       bookingDate.getTime() +
         Number(cancellationWindowDays) * 24 * 60 * 60 * 1000
     );
+
+    console.log("[CANCELLATION]", {
+      days: cancellationWindowDays,
+      lastDate: cancellationLastDate,
+    });
 
     // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
@@ -286,11 +289,6 @@ exports.addQuote = async (req, res) => {
         pickupTime,
         estimatedArrivalTime,
         estimatedDeliveryDays,
-
-        // removed vehicle-based fields
-        transportType: "",
-        stallsRequired: 0,
-
         notes,
         cancellationWindowDays,
       },
@@ -314,6 +312,8 @@ exports.addQuote = async (req, res) => {
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
+    console.log("[PDF UPLOADED]", uploadResult.secure_url);
+
     // ----------------- CREATE QUOTE -----------------
     const quote = await ShipmentQuote.create({
       shipment,
@@ -329,17 +329,13 @@ exports.addQuote = async (req, res) => {
       pickupTime,
       estimatedArrivalTime,
       estimatedDeliveryDays,
-
-      // vehicle-based fields removed
-      transportType: "",
-      stallsRequired: 0,
-
       notes,
 
       status: "pending",
       termsAccepted: false,
 
       contractId: new mongoose.Types.ObjectId().toString(),
+
       contract: {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
@@ -350,9 +346,11 @@ exports.addQuote = async (req, res) => {
       contractAccepted: false,
       contractAcceptedAt: null,
 
-      cancellationWindowDays,
+      cancellationWindowDays: Number(cancellationWindowDays),
       cancellationLastDate,
     });
+
+    console.log("[QUOTE CREATED]", quote._id);
 
     // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
@@ -379,7 +377,6 @@ exports.addQuote = async (req, res) => {
       );
     }
 
-    console.log("[QUOTE CREATED]", quote._id);
     console.log("=====================================");
 
     return res.status(201).json({
