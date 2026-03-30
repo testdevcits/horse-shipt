@@ -180,18 +180,13 @@ exports.addQuote = async (req, res) => {
     const shipper = await Shipper.findById(shipperId);
 
     if (!shipper) {
-      console.log("[ERROR] Shipper not found:", shipperId);
       return res.status(404).json({
         success: false,
         message: "Shipper not found",
       });
     }
 
-    console.log("[SHIPPER STATUS]", shipper.accountStatus);
-
     if (shipper.accountStatus === "RESTRICTED") {
-      console.log("[BLOCKED] Restricted shipper tried to send quote");
-
       return res.status(403).json({
         success: false,
         message:
@@ -199,9 +194,9 @@ exports.addQuote = async (req, res) => {
       });
     }
 
+    // ----------------- GET BODY -----------------
     const {
       shipment,
-      vehicle,
       totalPrice,
       currency = "USD",
       paymentMethod,
@@ -209,8 +204,6 @@ exports.addQuote = async (req, res) => {
       pickupTime,
       estimatedArrivalTime,
       estimatedDeliveryDays,
-      transportType,
-      stallsRequired,
       notes,
       shipperSignature,
       cancellationWindowDays,
@@ -227,9 +220,13 @@ exports.addQuote = async (req, res) => {
       !transportType ||
       !stallsRequired ||
       !shipperSignature ||
-      cancellationWindowDays === undefined
+      cancellationWindowDays === undefined ||
+      cancellationWindowDays === null ||
+      isNaN(Number(cancellationWindowDays))
     ) {
-      console.log("[ERROR] Missing required fields");
+      console.log("[ERROR] Missing required fields", {
+        cancellationWindowDays,
+      });
 
       return res.status(400).json({
         success: false,
@@ -244,26 +241,9 @@ exports.addQuote = async (req, res) => {
     );
 
     if (!shipmentExists) {
-      console.log("[ERROR] Shipment not found:", shipment);
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
-      });
-    }
-
-    console.log("[SHIPMENT FOUND]", shipmentExists._id);
-
-    // ----------------- FETCH VEHICLE -----------------
-    const vehicleExists = await ShipperVehicle.findOne({
-      _id: vehicle,
-      shipper: shipperId,
-    });
-
-    if (!vehicleExists) {
-      console.log("[ERROR] Vehicle not found:", vehicle);
-      return res.status(404).json({
-        success: false,
-        message: "Vehicle not found or does not belong to you",
       });
     }
 
@@ -274,8 +254,6 @@ exports.addQuote = async (req, res) => {
     });
 
     if (alreadyQuoted) {
-      console.log("[ERROR] Duplicate quote attempt");
-
       return res.status(400).json({
         success: false,
         message: "You have already sent a quote for this shipment",
@@ -290,18 +268,16 @@ exports.addQuote = async (req, res) => {
         Number(cancellationWindowDays) * 24 * 60 * 60 * 1000
     );
 
-    console.log("[CANCELLATION WINDOW]", {
-      days: cancellationWindowDays,
-      lastDate: cancellationLastDate,
-    });
-
     // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
       shipment: shipmentExists,
       shipmentCode: shipmentExists.shipmentCode,
       customer: shipmentExists.customer,
       shipper: req.user,
-      vehicle: vehicleExists,
+
+      // vehicle removed
+      vehicle: null,
+
       quote: {
         totalPrice,
         currency,
@@ -310,15 +286,17 @@ exports.addQuote = async (req, res) => {
         pickupTime,
         estimatedArrivalTime,
         estimatedDeliveryDays,
-        transportType,
-        stallsRequired,
+
+        // removed vehicle-based fields
+        transportType: "",
+        stallsRequired: 0,
+
         notes,
         cancellationWindowDays,
       },
+
       shipperSignature,
     });
-
-    console.log("[PDF GENERATED]");
 
     // ----------------- UPLOAD PDF -----------------
     const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
@@ -336,13 +314,14 @@ exports.addQuote = async (req, res) => {
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
-    console.log("[PDF UPLOADED]", uploadResult.secure_url);
-
     // ----------------- CREATE QUOTE -----------------
     const quote = await ShipmentQuote.create({
       shipment,
       shipper: shipperId,
-      vehicle,
+
+      // vehicle removed
+      vehicle: null,
+
       totalPrice,
       currency,
       paymentMethod,
@@ -350,14 +329,17 @@ exports.addQuote = async (req, res) => {
       pickupTime,
       estimatedArrivalTime,
       estimatedDeliveryDays,
-      transportType,
-      stallsRequired,
+
+      // vehicle-based fields removed
+      transportType: "",
+      stallsRequired: 0,
+
       notes,
 
       status: "pending",
       termsAccepted: false,
 
-      contractId: new mongoose.Types.ObjectId(),
+      contractId: new mongoose.Types.ObjectId().toString(),
       contract: {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
@@ -371,8 +353,6 @@ exports.addQuote = async (req, res) => {
       cancellationWindowDays,
       cancellationLastDate,
     });
-
-    console.log("[QUOTE CREATED]", quote._id);
 
     // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
@@ -399,8 +379,7 @@ exports.addQuote = async (req, res) => {
       );
     }
 
-    console.log("[NOTIFICATIONS SENT]");
-
+    console.log("[QUOTE CREATED]", quote._id);
     console.log("=====================================");
 
     return res.status(201).json({
