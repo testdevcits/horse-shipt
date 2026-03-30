@@ -395,6 +395,73 @@ exports.addQuote = async (req, res) => {
   }
 };
 
+exports.assignVehicleToQuote = async (req, res) => {
+  try {
+    const shipperId = req.user._id;
+    const { quoteId, vehicleId } = req.body;
+
+    console.log("=====================================");
+    console.log("[ASSIGN VEHICLE]", { quoteId, vehicleId, shipperId });
+
+    // ---------------- VALIDATION ----------------
+    if (!quoteId || !vehicleId) {
+      return res.status(400).json({
+        success: false,
+        message: "Quote ID and Vehicle ID are required",
+      });
+    }
+
+    // ---------------- FIND QUOTE ----------------
+    const quote = await ShipmentQuote.findOne({
+      _id: quoteId,
+      shipper: shipperId,
+    });
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found or not yours",
+      });
+    }
+
+    // ---------------- CHECK VEHICLE ----------------
+    const vehicle = await ShipperVehicle.findOne({
+      _id: vehicleId,
+      shipper: shipperId,
+    });
+
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found or does not belong to you",
+      });
+    }
+
+    // ---------------- UPDATE QUOTE ----------------
+    quote.vehicle = vehicleId;
+    quote.transportType = vehicle.transportType || "";
+    quote.stallsRequired = vehicle.numberOfStalls || 1;
+
+    await quote.save();
+
+    console.log("[VEHICLE ASSIGNED]", quote._id);
+
+    return res.status(200).json({
+      success: true,
+      message: "Vehicle assigned successfully",
+      quote,
+    });
+  } catch (err) {
+    console.error("[ASSIGN VEHICLE ERROR]:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to assign vehicle",
+      error: err.message,
+    });
+  }
+};
+
 // ---------------- GET MY QUOTES ----------------
 exports.getMyQuotes = async (req, res) => {
   try {
