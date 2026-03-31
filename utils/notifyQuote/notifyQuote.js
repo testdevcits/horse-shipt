@@ -19,6 +19,9 @@ const notifyQuote = async ({
   quote,
 }) => {
   try {
+    // Use mobile if available, otherwise use shipperPhone
+    const phoneToUse = shipment.shipper?.mobile || shipperPhone;
+
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
       const html = `
@@ -76,10 +79,10 @@ const notifyQuote = async ({
     }
 
     // ---------------- SMS ----------------
-    if (shipperPhone) {
+    if (phoneToUse) {
       const message = `Hi, ${customerName} accepted your quote for shipment ${shipment.shipmentCode}. Amount: ${quote.totalPrice} ${quote.currency}. Check dashboard for details.`;
 
-      await sendSMS({ phone: shipperPhone, message });
+      await sendSMS({ phone: phoneToUse, message });
     }
 
     console.log("[INFO] Shipper notified via email & SMS");
