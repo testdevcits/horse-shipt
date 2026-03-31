@@ -1,8 +1,7 @@
-// utils/notifyQuote/sendSMS.js
 const axios = require("axios");
 
 /**
- * Send SMS using Fast2SMS
+ * Send Transactional SMS using Fast2SMS
  * @param {Object} options
  * @param {string} options.phone - Recipient phone number (with +91 if India)
  * @param {string} options.message - SMS content
@@ -18,12 +17,12 @@ const sendSMS = async ({ phone, message }) => {
     // Remove all non-digit characters
     let formattedPhone = phone.replace(/\D/g, "");
 
-    // Add +91 if number is exactly 10 digits
+    // Add +91 if 10-digit Indian number
     if (/^\d{10}$/.test(formattedPhone)) {
       formattedPhone = `+91${formattedPhone}`;
     }
 
-    // Send SMS via Fast2SMS API (header-based authorization)
+    // Transactional route (ensures it’s not bulk/promotional)
     const response = await axios.get(
       `https://www.fast2sms.com/dev/bulkV2?route=transactional&numbers=${formattedPhone}&message=${encodeURIComponent(
         message
@@ -35,7 +34,7 @@ const sendSMS = async ({ phone, message }) => {
       }
     );
 
-    console.log("[INFO] SMS sent:", response.data);
+    console.log("[INFO] Transactional SMS sent:", response.data);
     return response.data;
   } catch (err) {
     if (err.response) {
