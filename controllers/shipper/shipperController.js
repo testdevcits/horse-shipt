@@ -9,16 +9,43 @@ exports.updateProfile = async (req, res) => {
   try {
     const user = req.user;
 
-    const {
-      firstName,
-      lastName,
-      mobile,
-      description,
-      locale, // { address, latitude, longitude }
-    } = req.body;
+    const { firstName, lastName, mobile, description, locale } = req.body;
 
     // -------------------------
-    // Name Update
+    // VALIDATION
+    // -------------------------
+
+    // Mobile validation (India standard)
+    if (mobile) {
+      const mobileRegex = /^[6-9]\d{9}$/;
+
+      if (!mobileRegex.test(mobile)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid mobile number",
+        });
+      }
+
+      user.mobile = mobile;
+    }
+
+    // Name validation
+    if (firstName && firstName.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "First name must be at least 2 characters",
+      });
+    }
+
+    if (lastName && lastName.length < 2) {
+      return res.status(400).json({
+        success: false,
+        message: "Last name must be at least 2 characters",
+      });
+    }
+
+    // -------------------------
+    // NAME UPDATE
     // -------------------------
     if (firstName || lastName) {
       user.firstName = firstName || user.firstName;
@@ -27,32 +54,31 @@ exports.updateProfile = async (req, res) => {
     }
 
     // -------------------------
-    // Mobile Update
-    // -------------------------
-    if (mobile) {
-      user.mobile = mobile;
-    }
-
-    // -------------------------
-    // Description Update
+    // DESCRIPTION
     // -------------------------
     if (description !== undefined) {
-      user.description = description;
+      user.description = description.trim();
     }
 
     // -------------------------
-    // Locale Update (Map आधारित)
+    // LOCATION (SAFE UPDATE)
     // -------------------------
     if (locale) {
       user.locale = {
         address: locale.address || user.locale?.address || "",
-        latitude: locale.latitude || user.locale?.latitude || null,
-        longitude: locale.longitude || user.locale?.longitude || null,
+        latitude:
+          typeof locale.latitude === "number"
+            ? locale.latitude
+            : user.locale?.latitude || null,
+        longitude:
+          typeof locale.longitude === "number"
+            ? locale.longitude
+            : user.locale?.longitude || null,
       };
     }
 
     // -------------------------
-    // Profile Image Upload
+    // PROFILE IMAGE
     // -------------------------
     if (req.file) {
       if (user.profilePicture) {
@@ -64,7 +90,7 @@ exports.updateProfile = async (req, res) => {
     }
 
     // -------------------------
-    // Save
+    // SAVE (IMPORTANT)
     // -------------------------
     await user.save();
 
