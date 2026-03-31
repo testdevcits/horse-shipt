@@ -54,7 +54,9 @@ const shipperSchema = new mongoose.Schema(
     rawProfile: { type: Object },
     mobile: {
       type: String,
-      required: true,
+      required: function () {
+        return this.provider === "local"; // only required for local signups
+      },
     },
 
     locale: {
