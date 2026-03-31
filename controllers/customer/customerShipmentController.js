@@ -283,20 +283,34 @@ exports.getShipmentById = async (req, res) => {
 
 exports.getCompletedShipmentsByCustomer = async (req, res) => {
   try {
-    // fetch completed shipments
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-      status: "delivered",
+      status: {
+        $in: [
+          "pending",
+          "assigned",
+          "picked",
+          "in_transit",
+          "delivered",
+          "cancelled",
+          "open_for_offers",
+        ],
+      },
     })
-      .sort({ deliveredAt: -1 })
+      .sort({ createdAt: -1 }) // better for all statuses
       .populate("shipper", "name email phone")
       .lean();
 
-    // map shipments directly without contract
     const finalShipments = shipments.map((s) => {
       return {
         ...s,
-        // optional fields you can keep or remove
+
+        // custom flags (VERY USEFUL )
+        isCompleted: s.status === "delivered",
+        isPending: s.status === "pending",
+        isInProgress: ["assigned", "picked", "in_transit"].includes(s.status),
+
+        // optional fields
         totalPrice: s.totalPrice || null,
         paymentStatus: s.paymentStatus || "pending",
         payoutStatus: s.payoutStatus || "pending",
@@ -304,7 +318,6 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
         pickupTime: s.pickupTime || null,
         estimatedArrivalTime: s.estimatedArrivalTime || null,
 
-        // signatures if they exist on shipment itself
         shipperSignature: s.shipperSignature || null,
         customerSignature: s.customerSignature || null,
       };
@@ -316,7 +329,7 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
       shipments: finalShipments,
     });
   } catch (err) {
-    console.error("[GET COMPLETED SHIPMENTS ERROR]", err);
+    console.error("[GET SHIPMENTS ERROR]", err);
     res.status(500).json({
       success: false,
       message: "Server Error",
