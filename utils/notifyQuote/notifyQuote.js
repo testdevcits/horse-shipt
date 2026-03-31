@@ -1,3 +1,4 @@
+// utils/notifyQuote/notifyQuote.js
 const { sendEmail } = require("./sendEmail");
 const { sendSMS } = require("./sendSMS");
 
@@ -20,7 +21,15 @@ const notifyQuote = async ({
   try {
     // Use shipment mobile if available, else fallback to provided shipperPhone
     let phoneToUse = shipment.shipper?.mobile || shipperPhone;
-    if (phoneToUse) phoneToUse = phoneToUse.replace(/\D/g, ""); // remove non-digit characters
+    if (phoneToUse) {
+      // Remove non-digit characters
+      phoneToUse = phoneToUse.replace(/\D/g, "");
+
+      // Add +91 if number is exactly 10 digits
+      if (/^\d{10}$/.test(phoneToUse)) {
+        phoneToUse = `+91${phoneToUse}`;
+      }
+    }
 
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
@@ -81,11 +90,6 @@ const notifyQuote = async ({
 
     // ---------------- SMS ----------------
     if (phoneToUse) {
-      // Add +91 if 10-digit number
-      if (/^\d{10}$/.test(phoneToUse)) {
-        phoneToUse = `+91${phoneToUse}`;
-      }
-
       const message = `Hi, ${customerName} accepted your quote for shipment ${shipment.shipmentCode}. Amount: ${quote.totalPrice} ${quote.currency}. Check dashboard for details.`;
 
       try {

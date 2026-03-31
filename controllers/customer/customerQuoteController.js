@@ -1,3 +1,4 @@
+// controllers/customer/customerQuoteController.js
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
@@ -14,7 +15,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 /* =========================================================
    ACCEPT QUOTE (WITH PAYMENT + RECEIPT)
 ========================================================= */
-// controllers/customer/customerQuoteController.js
 exports.acceptQuoteWithSignature = async (req, res) => {
   try {
     const { quoteId } = req.params;
@@ -195,22 +195,11 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     // ---------------- SEND NOTIFICATION (EMAIL + SMS) ----------------
     console.log("[DEBUG] Sending notification to shipper:", quote.shipper._id);
+
     try {
-      let shipperPhone = quote.shipper.mobile || "";
-
-      // Remove non-digit characters
-      shipperPhone = shipperPhone.replace(/\D/g, "");
-
-      // Add +91 if 10-digit number
-      if (/^\d{10}$/.test(shipperPhone)) {
-        shipperPhone = `+91${shipperPhone}`;
-      }
-
-      console.log("[DEBUG] Phone used for SMS:", shipperPhone);
-
       await notifyQuote({
         shipperEmail: quote.shipper.email,
-        shipperPhone,
+        shipperPhone: quote.shipper.mobile, // notifyQuote now auto-formats +91
         customerName: quote.shipment.customer.name,
         shipment: quote.shipment,
         quote: { totalPrice: quote.totalPrice, currency: quote.currency },
