@@ -1,10 +1,9 @@
-// utils/notifyQuote/sendSMS.js
 const axios = require("axios");
 
 /**
  * Send SMS using Fast2SMS
  * @param {Object} options
- * @param {string} options.phone - Recipient phone number (with +91)
+ * @param {string} options.phone - Recipient phone number (with +91 if India)
  * @param {string} options.message - SMS content
  */
 const sendSMS = async ({ phone, message }) => {
@@ -15,10 +14,15 @@ const sendSMS = async ({ phone, message }) => {
     const apiKey = process.env.FAST2SMS_API_KEY;
     if (!apiKey) throw new Error("FAST2SMS_API_KEY missing in .env");
 
-    // Ensure phone has no spaces
-    const formattedPhone = phone.replace(/\s+/g, "");
+    // Remove all spaces or non-digit characters
+    let formattedPhone = phone.replace(/\D/g, "");
 
-    // Send SMS via Fast2SMS latest API (header-based authorization)
+    // Add +91 if 10-digit number
+    if (/^\d{10}$/.test(formattedPhone)) {
+      formattedPhone = `+91${formattedPhone}`;
+    }
+
+    // Send SMS via Fast2SMS API with header authorization
     const response = await axios.get(
       `https://www.fast2sms.com/dev/bulkV2?route=transactional&numbers=${formattedPhone}&message=${encodeURIComponent(
         message
@@ -30,11 +34,9 @@ const sendSMS = async ({ phone, message }) => {
       }
     );
 
-    // Log success response
     console.log("[INFO] SMS sent:", response.data);
     return response.data;
   } catch (err) {
-    // Log detailed error response if available
     if (err.response) {
       console.error("[ERROR] sendSMS failed:", err.response.data);
     } else {
