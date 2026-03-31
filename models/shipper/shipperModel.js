@@ -52,6 +52,22 @@ const shipperSchema = new mongoose.Schema(
     locale: { type: String },
     emailVerified: { type: Boolean, default: false },
     rawProfile: { type: Object },
+    mobile: {
+      type: String,
+      required: true,
+    },
+
+    locale: {
+      address: { type: String, default: "" },
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+    },
+
+    // Description (NEW)
+    description: {
+      type: String,
+      default: "",
+    },
 
     // Location (Live Tracking)
     currentLocation: locationSchema,

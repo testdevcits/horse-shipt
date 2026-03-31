@@ -8,25 +8,64 @@ const path = require("path");
 exports.updateProfile = async (req, res) => {
   try {
     const user = req.user;
-    const { firstName, lastName, locale } = req.body;
 
+    const {
+      firstName,
+      lastName,
+      mobile,
+      description,
+      locale, // { address, latitude, longitude }
+    } = req.body;
+
+    // -------------------------
+    // Name Update
+    // -------------------------
     if (firstName || lastName) {
       user.firstName = firstName || user.firstName;
       user.lastName = lastName || user.lastName;
       user.name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
     }
 
-    if (locale) user.locale = locale;
+    // -------------------------
+    // Mobile Update
+    // -------------------------
+    if (mobile) {
+      user.mobile = mobile;
+    }
 
-    // Handle profile picture
+    // -------------------------
+    // Description Update
+    // -------------------------
+    if (description !== undefined) {
+      user.description = description;
+    }
+
+    // -------------------------
+    // Locale Update (Map आधारित)
+    // -------------------------
+    if (locale) {
+      user.locale = {
+        address: locale.address || user.locale?.address || "",
+        latitude: locale.latitude || user.locale?.latitude || null,
+        longitude: locale.longitude || user.locale?.longitude || null,
+      };
+    }
+
+    // -------------------------
+    // Profile Image Upload
+    // -------------------------
     if (req.file) {
       if (user.profilePicture) {
         const oldPath = path.join(__dirname, "../../", user.profilePicture);
         if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
       }
+
       user.profilePicture = `uploads/profilePictures/${req.file.filename}`;
     }
 
+    // -------------------------
+    // Save
+    // -------------------------
     await user.save();
 
     res.status(200).json({
@@ -36,7 +75,10 @@ exports.updateProfile = async (req, res) => {
     });
   } catch (err) {
     console.error("[SHIPPER PROFILE UPDATE] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
   }
 };
 
