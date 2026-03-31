@@ -33,18 +33,17 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       !customerSignature.startsWith("data:image/")
     ) {
       console.log("[ERROR] Invalid customer signature");
-      return res.status(400).json({
-        success: false,
-        message: "Valid customer signature is required",
-      });
+      return res
+        .status(400)
+        .json({
+          success: false,
+          message: "Valid customer signature is required",
+        });
     }
 
     // ---------------- FETCH QUOTE ----------------
     const quote = await ShipmentQuote.findById(quoteId)
-      .populate({
-        path: "shipment",
-        populate: { path: "customer" },
-      })
+      .populate({ path: "shipment", populate: { path: "customer" } })
       .populate("shipper")
       .populate("vehicle");
 
@@ -78,35 +77,37 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     }
 
     // ---------------- PAYMENT VALIDATION ----------------
-    if (quote.paymentMethod === "card") {
-      if (quote.paymentStatus !== "paid") {
-        if (quote.stripePaymentIntentId) {
-          const paymentIntent = await stripe.paymentIntents.retrieve(
-            quote.stripePaymentIntentId
-          );
-          console.log("[DEBUG] Stripe payment status:", paymentIntent.status);
-
-          if (paymentIntent.status === "succeeded") {
-            quote.paymentStatus = "paid";
-            await quote.save();
-            console.log("[INFO] Payment marked as paid for quote:", quoteId);
-          } else {
-            console.log("[ERROR] Payment not completed for quote:", quoteId);
-            return res.status(400).json({
-              success: false,
-              message: "Payment must be completed before accepting quote",
-            });
-          }
-        } else {
-          console.log(
-            "[ERROR] Stripe paymentIntentId missing for quote:",
-            quoteId
-          );
-          return res.status(400).json({
+    if (quote.paymentMethod === "card" && quote.paymentStatus !== "paid") {
+      if (!quote.stripePaymentIntentId) {
+        console.log(
+          "[ERROR] Stripe paymentIntentId missing for quote:",
+          quoteId
+        );
+        return res
+          .status(400)
+          .json({
             success: false,
             message: "Payment must be completed before accepting quote",
           });
-        }
+      }
+
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        quote.stripePaymentIntentId
+      );
+      console.log("[DEBUG] Stripe payment status:", paymentIntent.status);
+
+      if (paymentIntent.status === "succeeded") {
+        quote.paymentStatus = "paid";
+        await quote.save();
+        console.log("[INFO] Payment marked as paid for quote:", quoteId);
+      } else {
+        console.log("[ERROR] Payment not completed for quote:", quoteId);
+        return res
+          .status(400)
+          .json({
+            success: false,
+            message: "Payment must be completed before accepting quote",
+          });
       }
     }
 
@@ -150,13 +151,16 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       );
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
-    console.log("[INFO] Contract PDF uploaded:", uploadResult.secure_url);
+    console.log("[INFO] Contract PDF uploaded:", {
+      url: uploadResult.secure_url,
+      public_id: uploadResult.public_id,
+    });
 
     // ---------------- UPDATE QUOTE ----------------
     quote.customerSignature = customerSignature;
     quote.contract = {
       url: uploadResult.secure_url,
-      public_id: quote.contract?.public_id || `contracts/${quote._id}`,
+      public_id: uploadResult.public_id,
     };
     quote.contractAccepted = true;
     quote.contractAcceptedAt = new Date();
@@ -197,20 +201,10 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     // ---------------- SEND NOTIFICATION (EMAIL + SMS) ----------------
     console.log("[DEBUG] Sending notification to shipper:", quote.shipper._id);
-
     try {
-      // Format mobile number for SMS (prepend +91 if 10-digit)
-      let shipperPhone = quote.shipper.mobile || "";
-      shipperPhone = shipperPhone.replace(/\s+/g, ""); // remove spaces
-      if (/^\d{10}$/.test(shipperPhone)) {
-        shipperPhone = `+91${shipperPhone}`;
-      }
-
-      console.log("[DEBUG] Phone used for SMS:", shipperPhone);
-
       await notifyQuote({
         shipperEmail: quote.shipper.email,
-        shipperPhone,
+        shipperPhone: quote.shipper.mobile || "",
         customerName: quote.shipment.customer.name,
         shipment: quote.shipment,
         quote: { totalPrice: quote.totalPrice, currency: quote.currency },
@@ -233,18 +227,22 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     };
 
     console.log("[SUCCESS] Quote accepted successfully:", quoteId);
-    return res.status(200).json({
-      success: true,
-      message: "Quote accepted & contract signed successfully",
-      receipt,
-      quote,
-    });
+    return res
+      .status(200)
+      .json({
+        success: true,
+        message: "Quote accepted & contract signed successfully",
+        receipt,
+        quote,
+      });
   } catch (error) {
     console.error("acceptQuoteWithSignature error:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to accept quote",
-    });
+    return res
+      .status(500)
+      .json({
+        success: false,
+        message: error.message || "Failed to accept quote",
+      });
   }
 };
 

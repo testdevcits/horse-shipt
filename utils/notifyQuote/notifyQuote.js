@@ -20,7 +20,8 @@ const notifyQuote = async ({
 }) => {
   try {
     // Use mobile if available, otherwise use shipperPhone
-    const phoneToUse = shipment.shipper?.mobile || shipperPhone;
+    let phoneToUse = shipment.shipper?.mobile || shipperPhone;
+    if (phoneToUse) phoneToUse = phoneToUse.replace(/\s+/g, ""); // remove spaces
 
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
@@ -76,13 +77,19 @@ const notifyQuote = async ({
         subject: `Quote Accepted by ${customerName}`,
         html,
       });
+      console.log("[INFO] Email sent to shipper:", shipperEmail);
     }
 
     // ---------------- SMS ----------------
     if (phoneToUse) {
       const message = `Hi, ${customerName} accepted your quote for shipment ${shipment.shipmentCode}. Amount: ${quote.totalPrice} ${quote.currency}. Check dashboard for details.`;
 
-      await sendSMS({ phone: phoneToUse, message });
+      try {
+        await sendSMS({ phone: phoneToUse, message });
+        console.log("[INFO] SMS sent to shipper:", phoneToUse);
+      } catch (smsError) {
+        console.error("[ERROR] SMS failed but continuing:", smsError);
+      }
     }
 
     console.log("[INFO] Shipper notified via email & SMS");
