@@ -1,0 +1,91 @@
+// utils/notifyQuote/notifyQuote.js
+const { sendEmail } = require("./sendEmail");
+const { sendSMS } = require("./sendSMS");
+
+/**
+ * Notify Shipper after customer accepts quote
+ * @param {Object} options
+ *   - shipperEmail
+ *   - shipperPhone
+ *   - customerName
+ *   - shipment
+ *   - quote
+ */
+const notifyQuote = async ({
+  shipperEmail,
+  shipperPhone,
+  customerName,
+  shipment,
+  quote,
+}) => {
+  try {
+    // ---------------- EMAIL ----------------
+    if (shipperEmail) {
+      const html = `
+      <div style="font-family: Arial, sans-serif; padding:20px;">
+        <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
+          <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
+            <h2>Quote Accepted</h2>
+          </div>
+          <div style="padding:20px;">
+            <p>Hello, <strong>${
+              shipment.shipper?.name || "Shipper"
+            }</strong></p>
+            <p>${customerName} has accepted your quote for the shipment <strong>${
+        shipment.shipmentCode
+      }</strong>.</p>
+
+            <h3>Shipment Details</h3>
+            <table style="width:100%; border-collapse:collapse;">
+              <tr><td><strong>Pickup</strong></td><td>${
+                shipment.pickupLocation || "N/A"
+              }</td></tr>
+              <tr><td><strong>Delivery</strong></td><td>${
+                shipment.deliveryLocation || "N/A"
+              }</td></tr>
+              <tr><td><strong>Pickup Date</strong></td><td>${
+                shipment.pickupDate
+                  ? new Date(shipment.pickupDate).toLocaleDateString()
+                  : "N/A"
+              }</td></tr>
+              <tr><td><strong>Delivery Date</strong></td><td>${
+                shipment.deliveryDate
+                  ? new Date(shipment.deliveryDate).toLocaleDateString()
+                  : "N/A"
+              }</td></tr>
+              <tr><td><strong>Quote Amount</strong></td><td>${
+                quote.totalPrice
+              } ${quote.currency}</td></tr>
+            </table>
+
+            <p style="margin-top:20px;">Please check your dashboard for more details.</p>
+          </div>
+
+          <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
+            © ${new Date().getFullYear()} Horsehipt
+          </div>
+        </div>
+      </div>
+      `;
+
+      await sendEmail({
+        to: shipperEmail,
+        subject: `Quote Accepted by ${customerName}`,
+        html,
+      });
+    }
+
+    // ---------------- SMS ----------------
+    if (shipperPhone) {
+      const message = `Hi, ${customerName} accepted your quote for shipment ${shipment.shipmentCode}. Amount: ${quote.totalPrice} ${quote.currency}. Check dashboard for details.`;
+
+      await sendSMS({ phone: shipperPhone, message });
+    }
+
+    console.log("[INFO] Shipper notified via email & SMS");
+  } catch (err) {
+    console.error("[ERROR] notifyQuote failed:", err.message);
+  }
+};
+
+module.exports = { notifyQuote };
