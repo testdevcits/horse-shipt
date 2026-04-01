@@ -478,6 +478,7 @@ exports.assignVehicleToQuote = async (req, res) => {
 
     // ---------------- UPDATE QUOTE ----------------
     quote.vehicle = vehicleId;
+    quote.assignedDriver = vehicle.driver._id; // 🔹 NEW: assign driver to the quote
     quote.transportType = vehicle.transportType || "";
     quote.stallsRequired = vehicle.numberOfStalls || 1;
 
