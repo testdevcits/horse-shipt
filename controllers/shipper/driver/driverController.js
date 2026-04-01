@@ -292,21 +292,14 @@ exports.getDriverDashboard = async (req, res) => {
   try {
     const driverId = req.driver._id;
 
-    console.log("=====================================");
-    console.log("[DRIVER DASHBOARD] START");
-    console.log("Driver ID:", driverId);
-
     // ================= DRIVER =================
     const driver = await Driver.findById(driverId).select(
       "_id name email phone licenseNumber role profileImage driverStatus assignedVehicles isActive"
     );
-    if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: "Driver not found",
-      });
-    }
-    console.log("Driver Found:", !!driver);
+    if (!driver)
+      return res
+        .status(404)
+        .json({ success: false, message: "Driver not found" });
 
     // ================= VEHICLE =================
     const vehicle = await ShipperVehicle.findOne({ driver: driverId })
@@ -318,23 +311,19 @@ exports.getDriverDashboard = async (req, res) => {
         "_id name email phone licenseNumber role profileImage driverStatus"
       );
 
-    console.log("Vehicle Found:", !!vehicle);
-
     // ================= ALL SHIPMENTS =================
-    const allShipments = await ShipmentQuote.find({ assignedDriver: driverId })
+    let allShipments = await ShipmentQuote.find({ assignedDriver: driverId })
       .select(
         "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status"
       )
       .populate("vehicle", "_id vehicleNumber vehicleType transportType")
       .populate(
         "shipment",
-        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation"
+        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation pickupCoords deliveryCoords"
       );
 
-    console.log("Total Shipments for Driver:", allShipments.length);
-
     // ================= ACTIVE SHIPMENT =================
-    const activeShipment = await ShipmentQuote.findOne({
+    let activeShipment = await ShipmentQuote.findOne({
       assignedDriver: driverId,
       tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
@@ -344,12 +333,27 @@ exports.getDriverDashboard = async (req, res) => {
       .populate("vehicle", "_id vehicleNumber vehicleType transportType")
       .populate(
         "shipment",
-        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation"
+        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation pickupCoords deliveryCoords"
       );
 
-    console.log("Active Shipment Found:", !!activeShipment);
+    // ================= MAP-FRIENDLY FORMAT =================
+    const mapCoords = (shipment) => {
+      if (!shipment?.shipment) return null;
+      const { shipment: sh } = shipment;
+      return {
+        ...shipment._doc,
+        shipment: {
+          ...sh._doc,
+          pickupLat: sh.pickupCoords?.latitude || null,
+          pickupLng: sh.pickupCoords?.longitude || null,
+          deliveryLat: sh.deliveryCoords?.latitude || null,
+          deliveryLng: sh.deliveryCoords?.longitude || null,
+        },
+      };
+    };
 
-    console.log("=====================================");
+    allShipments = allShipments.map(mapCoords);
+    activeShipment = mapCoords(activeShipment);
 
     return res.json({
       success: true,
@@ -360,10 +364,7 @@ exports.getDriverDashboard = async (req, res) => {
     });
   } catch (error) {
     console.error("[DRIVER DASHBOARD ERROR]", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 // ====================================================
