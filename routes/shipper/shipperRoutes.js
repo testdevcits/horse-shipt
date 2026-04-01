@@ -96,6 +96,9 @@ const {
   updateDriverProfileImage,
   deleteDriverProfileImage,
   getDriverAssignedShipments,
+  startTrip,
+  updateDriverLocation,
+  completeShipment,
 } = require("../../controllers/shipper/driver/driverController");
 
 // -------- Contracts --------
@@ -272,26 +275,32 @@ router.patch(
 // ====================================================
 // DRIVER LOGIN & SELF ROUTES (NO SHIPPER AUTH)
 // ====================================================
+// AUTH
 
-// Driver Login
 router.post("/driver/login", driverLogin);
 
-// Driver Profile + Assigned Vehicles
+// DASHBOARD
 router.get("/driver/me", driverAuth, getDriverDashboard);
-// Driver profile image (SELF ONLY)
+
+// PROFILE
 router.put(
   "/driver/profile-image",
   driverAuth,
   upload.single("image"),
   updateDriverProfileImage
 );
-
 router.delete("/driver/profile-image", driverAuth, deleteDriverProfileImage);
+
+// SHIPMENTS
 router.get(
   "/driver/assigned-shipments",
   driverAuth,
   getDriverAssignedShipments
 );
+
+router.post("/driver/start-trip", driverAuth, startTrip);
+router.post("/driver/update-location", driverAuth, updateDriverLocation);
+router.post("/driver/complete-shipment", driverAuth, completeShipment);
 
 // ====================================================
 // SHIPPER CONTRACT ROUTES

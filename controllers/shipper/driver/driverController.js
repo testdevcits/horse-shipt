@@ -60,7 +60,7 @@ exports.getDriverAssignedShipments = async (req, res) => {
 
     const shipments = await ShipmentQuote.find({
       assignedDriver: driverId,
-      status: { $in: ["driverAccepted", "inTransit"] },
+      tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
       .populate("shipment")
       .populate("vehicle")
@@ -126,6 +126,7 @@ exports.acceptShipment = async (req, res) => {
 // ====================================================
 exports.startTrip = async (req, res) => {
   try {
+    const driverId = req.driver._id;
     const { quoteId } = req.body;
 
     const quote = await ShipmentQuote.findById(quoteId);
@@ -137,24 +138,33 @@ exports.startTrip = async (req, res) => {
       });
     }
 
-    if (quote.status !== "driverAccepted") {
+    if (quote.tripStatus !== "notStarted") {
       return res.status(400).json({
         success: false,
         message: "Trip cannot be started",
       });
     }
 
-    quote.status = "inTransit";
+    quote.tripStatus = "started";
+    quote.isTrackingActive = true;
+    quote.tripStartedAt = new Date();
+
     await quote.save();
 
-    // update vehicle current shipment
+    // update vehicle
     await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
       currentShipment: quoteId,
+      driverStatus: "BUSY",
+    });
+
+    // update driver
+    await Driver.findByIdAndUpdate(driverId, {
+      driverStatus: "onTrip",
     });
 
     res.json({
       success: true,
-      message: "Trip started",
+      message: "Trip started successfully",
     });
   } catch (error) {
     console.error("[START TRIP]", error);
@@ -177,30 +187,44 @@ exports.updateDriverLocation = async (req, res) => {
       });
     }
 
-    const vehicle = await ShipperVehicle.findOne({
-      driver: driverId,
-      currentShipment: { $ne: null },
+    // find active shipment
+    const activeShipment = await ShipmentQuote.findOne({
+      assignedDriver: driverId,
+      tripStatus: { $in: ["started", "inTransit"] },
     });
 
-    if (!vehicle) {
+    if (!activeShipment) {
       return res.status(400).json({
         success: false,
-        message: "No active shipment found",
+        message: "No active trip found",
       });
     }
 
-    vehicle.currentLocation = {
+    // update driver location
+    await Driver.findByIdAndUpdate(driverId, {
+      currentLocation: {
+        lat,
+        lng,
+        updatedAt: new Date(),
+      },
+      lastActiveAt: new Date(),
+    });
+
+    // update shipment location (for customer tracking)
+    activeShipment.currentLocation = {
       lat,
       lng,
       updatedAt: new Date(),
     };
 
-    await vehicle.save();
+    activeShipment.tripStatus = "inTransit";
+
+    await activeShipment.save();
 
     res.json({
       success: true,
       message: "Location updated",
-      location: vehicle.currentLocation,
+      location: activeShipment.currentLocation,
     });
   } catch (error) {
     console.error("[LOCATION UPDATE]", error);
@@ -213,6 +237,7 @@ exports.updateDriverLocation = async (req, res) => {
 // ====================================================
 exports.completeShipment = async (req, res) => {
   try {
+    const driverId = req.driver._id;
     const { quoteId } = req.body;
 
     const quote = await ShipmentQuote.findById(quoteId);
@@ -224,21 +249,39 @@ exports.completeShipment = async (req, res) => {
       });
     }
 
-    quote.status = "delivered";
+    // ================= UPDATE SHIPMENT =================
+    quote.tripStatus = "completed";
+    quote.deliveredAt = new Date();
+    quote.isTrackingActive = false;
+
     await quote.save();
 
-    // free vehicle
+    // ================= FREE VEHICLE =================
     await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
       currentShipment: null,
+      driverStatus: "AVAILABLE",
     });
 
-    res.json({
+    // ================= FREE DRIVER =================
+    await Driver.findByIdAndUpdate(driverId, {
+      driverStatus: "available",
+    });
+
+    // ================= RESPONSE =================
+    return res.json({
       success: true,
       message: "Shipment completed successfully",
+      data: {
+        quoteId: quote._id,
+        deliveredAt: quote.deliveredAt,
+      },
     });
   } catch (error) {
     console.error("[COMPLETE SHIPMENT]", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
@@ -247,20 +290,36 @@ exports.completeShipment = async (req, res) => {
 // ====================================================
 exports.getDriverDashboard = async (req, res) => {
   try {
-    const driver = req.driver;
+    const driverId = req.driver._id;
 
+    // ================= DRIVER =================
+    const driver = await Driver.findById(driverId).select("-password");
+
+    // ================= VEHICLE =================
     const vehicle = await ShipperVehicle.findOne({
-      driver: driver._id,
+      driver: driverId,
     });
 
-    res.json({
+    // ================= ACTIVE SHIPMENT (ONLY ONE) =================
+    const activeShipment = await ShipmentQuote.findOne({
+      assignedDriver: driverId,
+      tripStatus: { $in: ["notStarted", "started", "inTransit"] },
+    })
+      .populate("shipment")
+      .populate("vehicle");
+
+    return res.json({
       success: true,
       driver,
       vehicle,
+      shipment: activeShipment || null,
     });
   } catch (error) {
     console.error("[DRIVER DASHBOARD]", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 

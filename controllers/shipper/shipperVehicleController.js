@@ -345,6 +345,7 @@ exports.assignDriverToVehicle = async (req, res) => {
 
     console.log("[ASSIGN DRIVER] Start", { vehicleId, driverId });
 
+    // ================= VALIDATION =================
     if (!vehicleId || !driverId) {
       return res.status(400).json({
         success: false,
@@ -352,7 +353,7 @@ exports.assignDriverToVehicle = async (req, res) => {
       });
     }
 
-    // -------- FIND VEHICLE --------
+    // ================= FIND VEHICLE =================
     const vehicle = await ShipperVehicle.findOne({
       _id: vehicleId,
       shipper: shipperId,
@@ -365,7 +366,7 @@ exports.assignDriverToVehicle = async (req, res) => {
       });
     }
 
-    // -------- FIND DRIVER --------
+    // ================= FIND DRIVER =================
     const driver = await Driver.findOne({
       _id: driverId,
       shipper: shipperId,
@@ -379,23 +380,23 @@ exports.assignDriverToVehicle = async (req, res) => {
       });
     }
 
-    // -------- DRIVER BUSY CHECK --------
+    // ================= DRIVER BUSY CHECK =================
     const activeDriverShipment = await ShipmentQuote.findOne({
       assignedDriver: driverId,
-      status: { $in: ["accepted", "driverAccepted", "inTransit"] },
+      tripStatus: { $in: ["started", "inTransit"] },
     });
 
     if (activeDriverShipment) {
       return res.status(400).json({
         success: false,
-        message: "Driver is already busy",
+        message: "Driver is already busy with another shipment",
       });
     }
 
-    // -------- VEHICLE BUSY CHECK --------
+    // ================= VEHICLE BUSY CHECK =================
     const activeVehicleShipment = await ShipmentQuote.findOne({
       vehicle: vehicleId,
-      status: { $in: ["accepted", "driverAccepted", "inTransit"] },
+      tripStatus: { $in: ["started", "inTransit"] },
     });
 
     if (activeVehicleShipment) {
@@ -405,24 +406,30 @@ exports.assignDriverToVehicle = async (req, res) => {
       });
     }
 
-    // -------- ASSIGN DRIVER --------
+    // ================= ASSIGN DRIVER =================
     vehicle.driver = driverId;
     vehicle.driverStatus = "AVAILABLE";
 
-    await vehicle.save();
+    // ALSO UPDATE DRIVER SIDE (IMPORTANT)
+    driver.assignedVehicles = [vehicleId];
+    driver.driverStatus = "available";
 
-    // Populate driver (IMPORTANT)
+    await vehicle.save();
+    await driver.save();
+
+    // ================= POPULATE DRIVER =================
     const updatedVehicle = await ShipperVehicle.findById(vehicle._id).populate(
       "driver",
       "name email phone"
     );
 
+    // ================= RESPONSE =================
     return res.status(200).json({
       success: true,
       message: "Driver assigned successfully",
+
       vehicle: updatedVehicle,
 
-      // Separate clean driver object
       driver: {
         id: driver._id,
         name: driver.name,
