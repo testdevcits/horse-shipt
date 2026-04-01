@@ -401,7 +401,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     const { quoteId, vehicleId } = req.body;
 
     console.log("=====================================");
-    console.log("[ASSIGN VEHICLE]", { quoteId, vehicleId, shipperId });
+    console.log("[ASSIGN VEHICLE] Start", { quoteId, vehicleId, shipperId });
 
     // ---------------- VALIDATION ----------------
     if (!quoteId || !vehicleId) {
@@ -420,11 +420,19 @@ exports.assignVehicleToQuote = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Quote not found or not yours",
+        message: "Quote not found or does not belong to you",
       });
     }
 
-    // ---------------- CHECK VEHICLE ----------------
+    // ---------------- CHECK QUOTE STATUS ----------------
+    if (quote.status !== "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle can only be assigned after quote is accepted",
+      });
+    }
+
+    // ---------------- FIND VEHICLE ----------------
     const vehicle = await ShipperVehicle.findOne({
       _id: vehicleId,
       shipper: shipperId,
@@ -444,7 +452,13 @@ exports.assignVehicleToQuote = async (req, res) => {
 
     await quote.save();
 
-    console.log("[VEHICLE ASSIGNED]", quote._id);
+    console.log("[VEHICLE ASSIGNED] Success", {
+      quoteId: quote._id,
+      vehicleId,
+    });
+
+    // ---------------- OPTIONAL: NOTIFICATION ----------------
+    // await sendVehicleAssignedNotification(quote.shipper, quote._id);
 
     return res.status(200).json({
       success: true,
