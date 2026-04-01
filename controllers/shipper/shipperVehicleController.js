@@ -123,7 +123,9 @@ exports.getMyVehicles = async (req, res) => {
 
     const vehicles = await ShipperVehicle.find({
       shipper: shipperId,
-    }).sort({ createdAt: -1 });
+    })
+      .populate("driver", "name email phone isActive")
+      .sort({ createdAt: -1 });
 
     res.status(200).json({
       success: true,
@@ -131,6 +133,8 @@ exports.getMyVehicles = async (req, res) => {
       vehicles,
     });
   } catch (error) {
+    console.error("[GET VEHICLES ERROR]:", error);
+
     res.status(500).json({
       success: false,
       message: VEHICLE_MESSAGES.VEHICLE_FETCH_ERROR,
