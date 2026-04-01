@@ -288,91 +288,46 @@ exports.completeShipment = async (req, res) => {
 // ====================================================
 // DRIVER DASHBOARD
 // ====================================================
-exports.getDriverDashboard = async (req, res) => {
-  try {
-    const driverId = req.driver._id;
+// utils/driverData.js
+exports.getDriverDashboard = (apiResponse) => {
+  if (!apiResponse.success) return null;
 
-    console.log("=====================================");
-    console.log("[DRIVER DASHBOARD] START");
-    console.log("Driver ID:", driverId);
+  const { driver, shipment } = apiResponse;
 
-    // ================= DRIVER =================
-    const driver = await Driver.findById(driverId).select("-password");
-    if (!driver) {
-      return res.status(404).json({
-        success: false,
-        message: "Driver not found",
-      });
-    }
-    console.log("Driver Found:", !!driver);
+  // Pickup & Delivery coordinates
+  const pickupCoords = shipment?.shipment?.pickupCoords || {
+    latitude: null,
+    longitude: null,
+  };
+  const deliveryCoords = shipment?.shipment?.deliveryCoords || {
+    latitude: null,
+    longitude: null,
+  };
 
-    // ================= VEHICLE =================
-    const vehicle = await ShipperVehicle.findOne({ driver: driverId }).populate(
-      "driver",
-      "-password"
-    ); // Populate driver info if needed
+  // Shipment basic info
+  const shipmentInfo = {
+    shipmentId: shipment?._id,
+    status: shipment?.status || "pending",
+    pickupLocation: shipment?.shipment?.pickupLocation,
+    deliveryLocation: shipment?.shipment?.deliveryLocation,
+    pickupCoords,
+    deliveryCoords,
+    numberOfHorses: shipment?.shipment?.numberOfHorses || 0,
+  };
 
-    console.log("Vehicle Found:", !!vehicle);
-    if (vehicle) {
-      console.log("Vehicle ID:", vehicle._id);
-      console.log("Vehicle Driver:", vehicle.driver?._id || null);
-      console.log("Current Shipment:", vehicle.currentShipment || null);
-      console.log("Driver Status:", vehicle.driverStatus);
-    }
+  // Driver info
+  const driverInfo = {
+    driverId: driver?._id,
+    name: driver?.name,
+    email: driver?.email,
+    phone: driver?.phone,
+    licenseNumber: driver?.licenseNumber,
+    driverStatus: driver?.driverStatus,
+    assignedVehicle: driver?.assignedVehicles?.[0] || null,
+    currentLocation: driver?.currentLocation || { lat: null, lng: null },
+  };
 
-    // ================= CHECK ALL SHIPMENTS =================
-    const allShipments = await ShipmentQuote.find({ assignedDriver: driverId })
-      .populate("vehicle")
-      .populate("shipment"); // populate shipment if you have a separate collection
-
-    console.log("Total Shipments for Driver:", allShipments.length);
-
-    if (allShipments.length > 0) {
-      console.log(
-        "Shipment Status List:",
-        allShipments.map((s) => ({
-          id: s._id,
-          status: s.status,
-          tripStatus: s.tripStatus,
-          vehicle: s.vehicle?._id || null,
-          shipment: s.shipment?._id || null,
-        }))
-      );
-    }
-
-    // ================= ACTIVE SHIPMENT =================
-    const activeShipment = await ShipmentQuote.findOne({
-      assignedDriver: driverId,
-      tripStatus: { $in: ["notStarted", "started", "inTransit"] },
-    })
-      .populate("shipment")
-      .populate("vehicle");
-
-    console.log("Active Shipment Found:", !!activeShipment);
-
-    if (activeShipment) {
-      console.log("Active Shipment ID:", activeShipment._id);
-      console.log("Trip Status:", activeShipment.tripStatus);
-      console.log("Vehicle Assigned:", activeShipment.vehicle?._id || null);
-      console.log("Shipment Details:", activeShipment.shipment?._id || null);
-    }
-
-    console.log("=====================================");
-
-    return res.json({
-      success: true,
-      driver,
-      vehicle,
-      shipment: activeShipment || null,
-      allShipments, // 🔹 optional: send all shipments for full dashboard
-    });
-  } catch (error) {
-    console.error("[DRIVER DASHBOARD ERROR]", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
+  return { driverInfo, shipmentInfo };
 };
 
 // ====================================================
