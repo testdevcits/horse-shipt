@@ -297,9 +297,7 @@ exports.getDriverDashboard = async (req, res) => {
     console.log("Driver ID:", driverId);
 
     // ================= DRIVER =================
-    const driver = await Driver.findById(driverId).select(
-      "-password -email -notes"
-    );
+    const driver = await Driver.findById(driverId).select("-password");
     if (!driver) {
       return res.status(404).json({
         success: false,
@@ -311,37 +309,27 @@ exports.getDriverDashboard = async (req, res) => {
     // ================= VEHICLE =================
     const vehicle = await ShipperVehicle.findOne({ driver: driverId }).populate(
       "driver",
-      "-password -email -notes"
-    ); // Populate driver info if needed
+      "-password"
+    ); // Include driver details
 
     console.log("Vehicle Found:", !!vehicle);
-    if (vehicle) {
-      console.log("Vehicle ID:", vehicle._id);
-      console.log("Driver Status:", vehicle.driverStatus);
-    }
+
+    // ================= ALL SHIPMENTS =================
+    const allShipments = await ShipmentQuote.find({ assignedDriver: driverId })
+      .populate("vehicle")
+      .populate("shipment");
+
+    console.log("Total Shipments for Driver:", allShipments.length);
 
     // ================= ACTIVE SHIPMENT =================
     const activeShipment = await ShipmentQuote.findOne({
       assignedDriver: driverId,
       tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
-      .populate(
-        "shipment",
-        "pickupCoords deliveryCoords pickupLocation deliveryLocation"
-      )
-      .populate("vehicle", "vehicleNumber vehicleType trailerType");
+      .populate("shipment")
+      .populate("vehicle");
 
     console.log("Active Shipment Found:", !!activeShipment);
-
-    if (activeShipment) {
-      console.log("Active Shipment ID:", activeShipment._id);
-      console.log("Trip Status:", activeShipment.tripStatus);
-      console.log("Pickup Location:", activeShipment.shipment?.pickupLocation);
-      console.log(
-        "Delivery Location:",
-        activeShipment.shipment?.deliveryLocation
-      );
-    }
 
     console.log("=====================================");
 
@@ -350,6 +338,7 @@ exports.getDriverDashboard = async (req, res) => {
       driver,
       vehicle,
       shipment: activeShipment || null,
+      allShipments,
     });
   } catch (error) {
     console.error("[DRIVER DASHBOARD ERROR]", error);
