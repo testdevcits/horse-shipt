@@ -292,21 +292,59 @@ exports.getDriverDashboard = async (req, res) => {
   try {
     const driverId = req.driver._id;
 
+    console.log("=====================================");
+    console.log("[DRIVER DASHBOARD] START");
+    console.log("Driver ID:", driverId);
+
     // ================= DRIVER =================
     const driver = await Driver.findById(driverId).select("-password");
+    console.log("Driver Found:", !!driver);
 
     // ================= VEHICLE =================
     const vehicle = await ShipperVehicle.findOne({
       driver: driverId,
     });
 
-    // ================= ACTIVE SHIPMENT (ONLY ONE) =================
+    console.log("Vehicle Found:", !!vehicle);
+    if (vehicle) {
+      console.log("Vehicle ID:", vehicle._id);
+      console.log("Vehicle Driver:", vehicle.driver);
+    }
+
+    // ================= CHECK ALL SHIPMENTS =================
+    const allShipments = await ShipmentQuote.find({
+      assignedDriver: driverId,
+    });
+
+    console.log("Total Shipments for Driver:", allShipments.length);
+
+    if (allShipments.length > 0) {
+      console.log(
+        "Shipment Status List:",
+        allShipments.map((s) => ({
+          id: s._id,
+          status: s.status,
+          tripStatus: s.tripStatus,
+        }))
+      );
+    }
+
+    // ================= ACTIVE SHIPMENT =================
     const activeShipment = await ShipmentQuote.findOne({
       assignedDriver: driverId,
       tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
       .populate("shipment")
       .populate("vehicle");
+
+    console.log("Active Shipment Found:", !!activeShipment);
+
+    if (activeShipment) {
+      console.log("Active Shipment ID:", activeShipment._id);
+      console.log("Trip Status:", activeShipment.tripStatus);
+    }
+
+    console.log("=====================================");
 
     return res.json({
       success: true,
@@ -315,7 +353,7 @@ exports.getDriverDashboard = async (req, res) => {
       shipment: activeShipment || null,
     });
   } catch (error) {
-    console.error("[DRIVER DASHBOARD]", error);
+    console.error("[DRIVER DASHBOARD ERROR]", error);
     res.status(500).json({
       success: false,
       message: error.message,
