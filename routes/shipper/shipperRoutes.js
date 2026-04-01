@@ -9,6 +9,14 @@ const upload = require("../../middleware/uploadMiddleware");
 // ----- DRIVER AUTH MIDDLEWARE -----
 const driverAuth = require("../../middleware/shipper/driverAuth");
 
+const {
+  markShipmentDelivered,
+  verifyDeliveryOtp,
+  shipperPayout,
+  getShipmentDeliveryStatus,
+  getShipperStripePayoutHistory,
+} = require("../../controllers/shipper/deliveryController");
+
 // ================= CONTROLLERS =================
 
 // -------- Shipper Profile --------
@@ -49,15 +57,6 @@ const {
   sendMessage,
   getMessages,
 } = require("../../controllers/shipper/shipmentMessageController");
-
-// -------- Vehicles --------
-const {
-  addVehicle,
-  getMyVehicles,
-  updateVehicle,
-  deleteVehicle,
-  verifyVehicle,
-} = require("../../controllers/shipper/shipperVehicleController");
 
 // -------- Location --------
 const {
@@ -129,13 +128,15 @@ const {
   getPaymentStatus,
 } = require("../../controllers/shipper/shipperStripeController");
 
+// -------- Vehicles --------
 const {
-  markShipmentDelivered,
-  verifyDeliveryOtp,
-  shipperPayout,
-  getShipmentDeliveryStatus,
-  getShipperStripePayoutHistory,
-} = require("../../controllers/shipper/deliveryController");
+  addVehicle,
+  getMyVehicles,
+  updateVehicle,
+  deleteVehicle,
+  verifyVehicle,
+  assignDriverToVehicle,
+} = require("../../controllers/shipper/shipperVehicleController");
 
 // ====================================================
 // SHIPPER PROFILE ROUTES
@@ -212,7 +213,7 @@ router.get("/messages/:shipmentId", shipperAuth, getMessages);
 
 router.post("/vehicles", shipperAuth, upload.array("images", 5), addVehicle);
 router.post("/vehicles/verify/:vehicleId", shipperAuth, verifyVehicle);
-
+router.post("/vehicles/assign-driver", shipperAuth, assignDriverToVehicle);
 router.get("/vehicles", shipperAuth, getMyVehicles);
 
 router.put(
