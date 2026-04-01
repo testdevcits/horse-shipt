@@ -288,48 +288,77 @@ exports.completeShipment = async (req, res) => {
 // ====================================================
 // DRIVER DASHBOARD
 // ====================================================
-// utils/driverData.js
-exports.getDriverDashboard = (apiResponse) => {
-  if (!apiResponse.success) return null;
+exports.getDriverDashboard = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
 
-  const { driver, shipment } = apiResponse;
+    console.log("=====================================");
+    console.log("[DRIVER DASHBOARD] START");
+    console.log("Driver ID:", driverId);
 
-  // Pickup & Delivery coordinates
-  const pickupCoords = shipment?.shipment?.pickupCoords || {
-    latitude: null,
-    longitude: null,
-  };
-  const deliveryCoords = shipment?.shipment?.deliveryCoords || {
-    latitude: null,
-    longitude: null,
-  };
+    // ================= DRIVER =================
+    const driver = await Driver.findById(driverId).select(
+      "-password -email -notes"
+    );
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found",
+      });
+    }
+    console.log("Driver Found:", !!driver);
 
-  // Shipment basic info
-  const shipmentInfo = {
-    shipmentId: shipment?._id,
-    status: shipment?.status || "pending",
-    pickupLocation: shipment?.shipment?.pickupLocation,
-    deliveryLocation: shipment?.shipment?.deliveryLocation,
-    pickupCoords,
-    deliveryCoords,
-    numberOfHorses: shipment?.shipment?.numberOfHorses || 0,
-  };
+    // ================= VEHICLE =================
+    const vehicle = await ShipperVehicle.findOne({ driver: driverId }).populate(
+      "driver",
+      "-password -email -notes"
+    ); // Populate driver info if needed
 
-  // Driver info
-  const driverInfo = {
-    driverId: driver?._id,
-    name: driver?.name,
-    email: driver?.email,
-    phone: driver?.phone,
-    licenseNumber: driver?.licenseNumber,
-    driverStatus: driver?.driverStatus,
-    assignedVehicle: driver?.assignedVehicles?.[0] || null,
-    currentLocation: driver?.currentLocation || { lat: null, lng: null },
-  };
+    console.log("Vehicle Found:", !!vehicle);
+    if (vehicle) {
+      console.log("Vehicle ID:", vehicle._id);
+      console.log("Driver Status:", vehicle.driverStatus);
+    }
 
-  return { driverInfo, shipmentInfo };
+    // ================= ACTIVE SHIPMENT =================
+    const activeShipment = await ShipmentQuote.findOne({
+      assignedDriver: driverId,
+      tripStatus: { $in: ["notStarted", "started", "inTransit"] },
+    })
+      .populate(
+        "shipment",
+        "pickupCoords deliveryCoords pickupLocation deliveryLocation"
+      )
+      .populate("vehicle", "vehicleNumber vehicleType trailerType");
+
+    console.log("Active Shipment Found:", !!activeShipment);
+
+    if (activeShipment) {
+      console.log("Active Shipment ID:", activeShipment._id);
+      console.log("Trip Status:", activeShipment.tripStatus);
+      console.log("Pickup Location:", activeShipment.shipment?.pickupLocation);
+      console.log(
+        "Delivery Location:",
+        activeShipment.shipment?.deliveryLocation
+      );
+    }
+
+    console.log("=====================================");
+
+    return res.json({
+      success: true,
+      driver,
+      vehicle,
+      shipment: activeShipment || null,
+    });
+  } catch (error) {
+    console.error("[DRIVER DASHBOARD ERROR]", error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
 };
-
 // ====================================================
 // UPDATE DRIVER PROFILE IMAGE
 // ====================================================
