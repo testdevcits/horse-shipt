@@ -297,7 +297,9 @@ exports.getDriverDashboard = async (req, res) => {
     console.log("Driver ID:", driverId);
 
     // ================= DRIVER =================
-    const driver = await Driver.findById(driverId).select("-password");
+    const driver = await Driver.findById(driverId).select(
+      "_id name email phone licenseNumber role profileImage driverStatus assignedVehicles isActive"
+    );
     if (!driver) {
       return res.status(404).json({
         success: false,
@@ -307,17 +309,27 @@ exports.getDriverDashboard = async (req, res) => {
     console.log("Driver Found:", !!driver);
 
     // ================= VEHICLE =================
-    const vehicle = await ShipperVehicle.findOne({ driver: driverId }).populate(
-      "driver",
-      "-password"
-    ); // Include driver details
+    const vehicle = await ShipperVehicle.findOne({ driver: driverId })
+      .select(
+        "_id vehicleNumber vehicleType transportType trailerType numberOfStalls stallSize driverStatus currentShipment notes images"
+      )
+      .populate(
+        "driver",
+        "_id name email phone licenseNumber role profileImage driverStatus"
+      );
 
     console.log("Vehicle Found:", !!vehicle);
 
     // ================= ALL SHIPMENTS =================
     const allShipments = await ShipmentQuote.find({ assignedDriver: driverId })
-      .populate("vehicle")
-      .populate("shipment");
+      .select(
+        "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status"
+      )
+      .populate("vehicle", "_id vehicleNumber vehicleType transportType")
+      .populate(
+        "shipment",
+        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation"
+      );
 
     console.log("Total Shipments for Driver:", allShipments.length);
 
@@ -326,8 +338,14 @@ exports.getDriverDashboard = async (req, res) => {
       assignedDriver: driverId,
       tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
-      .populate("shipment")
-      .populate("vehicle");
+      .select(
+        "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status"
+      )
+      .populate("vehicle", "_id vehicleNumber vehicleType transportType")
+      .populate(
+        "shipment",
+        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation"
+      );
 
     console.log("Active Shipment Found:", !!activeShipment);
 
