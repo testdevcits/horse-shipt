@@ -339,10 +339,8 @@ exports.assignDriverToVehicle = async (req, res) => {
     const shipperId = req.user._id;
     const { vehicleId, driverId } = req.body;
 
-    console.log("=====================================");
     console.log("[ASSIGN DRIVER] Start", { vehicleId, driverId });
 
-    // ---------------- VALIDATION ----------------
     if (!vehicleId || !driverId) {
       return res.status(400).json({
         success: false,
@@ -350,7 +348,7 @@ exports.assignDriverToVehicle = async (req, res) => {
       });
     }
 
-    // ---------------- FIND VEHICLE ----------------
+    // -------- FIND VEHICLE --------
     const vehicle = await ShipperVehicle.findOne({
       _id: vehicleId,
       shipper: shipperId,
@@ -359,11 +357,11 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (!vehicle) {
       return res.status(404).json({
         success: false,
-        message: "Vehicle not found or does not belong to you",
+        message: "Vehicle not found",
       });
     }
 
-    // ---------------- FIND DRIVER ----------------
+    // -------- FIND DRIVER --------
     const driver = await Driver.findOne({
       _id: driverId,
       shipper: shipperId,
@@ -377,7 +375,7 @@ exports.assignDriverToVehicle = async (req, res) => {
       });
     }
 
-    // ---------------- CHECK DRIVER BUSY (BEST WAY) ----------------
+    // -------- DRIVER BUSY CHECK --------
     const activeDriverShipment = await ShipmentQuote.findOne({
       assignedDriver: driverId,
       status: { $in: ["accepted", "driverAccepted", "inTransit"] },
@@ -386,13 +384,11 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (activeDriverShipment) {
       return res.status(400).json({
         success: false,
-        message:
-          "Driver is already busy with another active shipment. Complete it first.",
-        shipmentId: activeDriverShipment._id,
+        message: "Driver is already busy",
       });
     }
 
-    // ---------------- CHECK VEHICLE BUSY ----------------
+    // -------- VEHICLE BUSY CHECK --------
     const activeVehicleShipment = await ShipmentQuote.findOne({
       vehicle: vehicleId,
       status: { $in: ["accepted", "driverAccepted", "inTransit"] },
@@ -401,32 +397,34 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (activeVehicleShipment) {
       return res.status(400).json({
         success: false,
-        message:
-          "Vehicle is already assigned to an active shipment. Complete it first.",
-        shipmentId: activeVehicleShipment._id,
+        message: "Vehicle already in use",
       });
     }
 
-    // ---------------- ASSIGN DRIVER ----------------
+    // -------- ASSIGN DRIVER --------
     vehicle.driver = driverId;
     vehicle.driverStatus = "AVAILABLE";
 
     await vehicle.save();
 
-    console.log("[DRIVER ASSIGNED SUCCESS]", {
-      vehicleId: vehicle._id,
-      driverId,
-    });
+    // Populate driver (IMPORTANT)
+    const updatedVehicle = await ShipperVehicle.findById(vehicle._id).populate(
+      "driver",
+      "name email phone"
+    );
 
     return res.status(200).json({
       success: true,
-      message: "Driver assigned to vehicle successfully",
-      data: {
-        vehicleId: vehicle._id,
-        driverId,
-        driverName: driver.name,
+      message: "Driver assigned successfully",
+      vehicle: updatedVehicle,
+
+      // Separate clean driver object
+      driver: {
+        id: driver._id,
+        name: driver.name,
+        email: driver.email,
+        phone: driver.phone,
       },
-      vehicle,
     });
   } catch (err) {
     console.error("[ASSIGN DRIVER ERROR]:", err);
