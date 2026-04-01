@@ -41,6 +41,27 @@ const driverSchema = new mongoose.Schema(
         ref: "ShipperVehicle",
       },
     ],
+
+    // ================= DRIVER STATUS =================
+    driverStatus: {
+      type: String,
+      enum: ["offline", "available", "onTrip"],
+      default: "offline",
+      index: true,
+    },
+
+    // ================= LIVE LOCATION =================
+    currentLocation: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      updatedAt: { type: Date, default: null },
+    },
+
+    lastActiveAt: {
+      type: Date,
+      default: null,
+    },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -49,7 +70,7 @@ const driverSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// ================= Pre-save hook to hash password =================
+// ================= PASSWORD HASH =================
 driverSchema.pre("save", async function (next) {
   if (!this.isModified("password")) return next();
 
@@ -62,7 +83,7 @@ driverSchema.pre("save", async function (next) {
   }
 });
 
-// ================= Compare password method =================
+// ================= COMPARE PASSWORD =================
 driverSchema.methods.comparePassword = async function (plainPassword) {
   return await bcrypt.compare(plainPassword, this.password);
 };

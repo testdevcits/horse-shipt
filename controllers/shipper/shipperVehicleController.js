@@ -1,6 +1,8 @@
 const axios = require("axios");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+const Driver = require("../../models/shipper/Driver");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 
 const { VEHICLE_MESSAGES } = require("../../utils/response/vehicleMessages");
 
@@ -325,6 +327,114 @@ exports.verifyVehicle = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Verification error",
+    });
+  }
+};
+
+// ====================================================
+// ASSIGN DRIVER TO VEHICLE
+// ====================================================
+exports.assignDriverToVehicle = async (req, res) => {
+  try {
+    const shipperId = req.user._id;
+    const { vehicleId, driverId } = req.body;
+
+    console.log("=====================================");
+    console.log("[ASSIGN DRIVER] Start", { vehicleId, driverId });
+
+    // ---------------- VALIDATION ----------------
+    if (!vehicleId || !driverId) {
+      return res.status(400).json({
+        success: false,
+        message: "Vehicle ID and Driver ID are required",
+      });
+    }
+
+    // ---------------- FIND VEHICLE ----------------
+    const vehicle = await ShipperVehicle.findOne({
+      _id: vehicleId,
+      shipper: shipperId,
+    });
+
+    if (!vehicle) {
+      return res.status(404).json({
+        success: false,
+        message: "Vehicle not found or does not belong to you",
+      });
+    }
+
+    // ---------------- FIND DRIVER ----------------
+    const driver = await Driver.findOne({
+      _id: driverId,
+      shipper: shipperId,
+      isActive: true,
+    });
+
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: "Driver not found or inactive",
+      });
+    }
+
+    // ---------------- CHECK DRIVER BUSY (BEST WAY) ----------------
+    const activeDriverShipment = await ShipmentQuote.findOne({
+      assignedDriver: driverId,
+      status: { $in: ["accepted", "driverAccepted", "inTransit"] },
+    });
+
+    if (activeDriverShipment) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Driver is already busy with another active shipment. Complete it first.",
+        shipmentId: activeDriverShipment._id,
+      });
+    }
+
+    // ---------------- CHECK VEHICLE BUSY ----------------
+    const activeVehicleShipment = await ShipmentQuote.findOne({
+      vehicle: vehicleId,
+      status: { $in: ["accepted", "driverAccepted", "inTransit"] },
+    });
+
+    if (activeVehicleShipment) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Vehicle is already assigned to an active shipment. Complete it first.",
+        shipmentId: activeVehicleShipment._id,
+      });
+    }
+
+    // ---------------- ASSIGN DRIVER ----------------
+    vehicle.driver = driverId;
+    vehicle.driverStatus = "AVAILABLE";
+
+    await vehicle.save();
+
+    console.log("[DRIVER ASSIGNED SUCCESS]", {
+      vehicleId: vehicle._id,
+      driverId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Driver assigned to vehicle successfully",
+      data: {
+        vehicleId: vehicle._id,
+        driverId,
+        driverName: driver.name,
+      },
+      vehicle,
+    });
+  } catch (err) {
+    console.error("[ASSIGN DRIVER ERROR]:", err);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to assign driver",
+      error: err.message,
     });
   }
 };

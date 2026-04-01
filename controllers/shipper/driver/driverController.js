@@ -1,5 +1,6 @@
 const Driver = require("../../../models/shipper/Driver");
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
+const ShipperVehicle = require("../../../models/shipper/ShipperVehicle");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
 
@@ -12,22 +13,24 @@ exports.driverLogin = async (req, res) => {
 
     const driver = await Driver.findOne({ email });
     if (!driver) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid credentials" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
     }
 
     const isMatch = await driver.comparePassword(password);
     if (!isMatch) {
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid credentials" });
+      return res.status(401).json({
+        success: false,
+        message: "Invalid credentials",
+      });
     }
 
     if (!driver.isActive) {
       return res.status(403).json({
         success: false,
-        message: "Your account is deactivated. Contact shipper.",
+        message: "Account is deactivated",
       });
     }
 
@@ -40,15 +43,7 @@ exports.driverLogin = async (req, res) => {
     res.json({
       success: true,
       token,
-      driver: {
-        id: driver._id,
-        name: driver.name,
-        email: driver.email,
-        phone: driver.phone,
-        licenseNumber: driver.licenseNumber,
-        notes: driver.notes,
-        profileImage: driver.profileImage,
-      },
+      driver,
     });
   } catch (error) {
     console.error("[DRIVER LOGIN]", error);
@@ -57,151 +52,60 @@ exports.driverLogin = async (req, res) => {
 };
 
 // ====================================================
-// DRIVER DASHBOARD (ME) WITH ASSIGNED SHIPMENTS
-// ====================================================
-exports.getDriverDashboard = async (req, res) => {
-  try {
-    const driver = await Driver.findById(req.driver._id).populate(
-      "assignedVehicles"
-    );
-    if (!driver)
-      return res
-        .status(404)
-        .json({ success: false, message: "Driver not found" });
-
-    // Fetch accepted shipment quotes (assigned shipments)
-    const acceptedQuotes = await ShipmentQuote.find({ status: "accepted" })
-      .populate("shipment")
-      .populate("shipper", "name email phone companyName")
-      .populate("vehicle", "vehicleNumber type capacity")
-      .lean();
-
-    // Map shipments from accepted quotes
-    const shipments = acceptedQuotes.map((quote) => ({
-      ...quote.shipment,
-      quoteId: quote._id,
-      shipper: quote.shipper,
-      vehicle: quote.vehicle,
-      totalPrice: quote.totalPrice,
-      paymentMethod: quote.paymentMethod,
-      pickupTime: quote.pickupTime,
-      estimatedArrivalTime: quote.estimatedArrivalTime,
-    }));
-
-    res.json({
-      success: true,
-      driver: {
-        id: driver._id,
-        name: driver.name,
-        email: driver.email,
-        phone: driver.phone,
-        licenseNumber: driver.licenseNumber,
-        notes: driver.notes,
-        profileImage: driver.profileImage,
-        assignedVehicles: driver.assignedVehicles,
-      },
-      shipments,
-    });
-  } catch (error) {
-    console.error("[DRIVER DASHBOARD]", error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-};
-
-// ====================================================
-// GET ASSIGNED SHIPMENTS FOR DRIVER (WITH CUSTOMER & COORDS)
+// GET DRIVER ASSIGNED SHIPMENTS (FIXED)
 // ====================================================
 exports.getDriverAssignedShipments = async (req, res) => {
   try {
     const driverId = req.driver._id;
 
-    // Fetch all ShipmentQuotes assigned to this driver, not delivered/cancelled
-    const assignedQuotes = await ShipmentQuote.find({
+    const shipments = await ShipmentQuote.find({
       assignedDriver: driverId,
-      status: { $nin: ["delivered", "cancelled"] },
+      status: { $in: ["driverAccepted", "inTransit"] },
     })
-      .populate({
-        path: "shipment",
-        populate: { path: "customer", select: "name phone email" },
-      })
-      .populate("vehicle", "vehicleName vehicleType")
+      .populate("shipment")
+      .populate("vehicle")
       .lean();
-
-    if (!assignedQuotes || assignedQuotes.length === 0) {
-      return res.json({
-        success: true,
-        driverId,
-        assignedShipments: [],
-        message: "No assigned shipments found",
-      });
-    }
-
-    // Format response
-    const shipments = assignedQuotes.map((quote) => {
-      const shipment = quote.shipment;
-      return {
-        quoteId: quote._id,
-        shipmentId: shipment._id,
-        shipmentCode: shipment.shipmentCode,
-        status: quote.status,
-        pickupAddress: shipment.pickupLocation,
-        pickupCoords: shipment.pickupCoords || {},
-        deliveryAddress: shipment.deliveryLocation,
-        deliveryCoords: shipment.deliveryCoords || {},
-        pickupTime: quote.pickupTime || shipment.pickupDate,
-        estimatedArrivalTime:
-          quote.estimatedArrivalTime || shipment.deliveryDate,
-        transportType: quote.transportType || shipment.transportType,
-        stallsRequired: quote.stallsRequired || shipment.numberOfHorses,
-        notes: quote.notes || shipment.additionalInfo,
-        vehicle: quote.vehicle
-          ? {
-              vehicleId: quote.vehicle._id,
-              vehicleName: quote.vehicle.vehicleName,
-              vehicleType: quote.vehicle.vehicleType,
-            }
-          : null,
-        customer: shipment.customer
-          ? {
-              customerId: shipment.customer._id,
-              name: shipment.customer.name,
-              phone: shipment.customer.phone,
-              email: shipment.customer.email,
-            }
-          : null,
-      };
-    });
 
     res.json({
       success: true,
-      driverId,
-      assignedShipments: shipments,
+      shipments,
     });
   } catch (error) {
-    console.error("[GET ASSIGNED SHIPMENTS]", error);
-    res.status(500).json({ success: false, message: "Server Error" });
+    console.error("[GET SHIPMENTS]", error);
+    res.status(500).json({ success: false, message: error.message });
   }
 };
+
 // ====================================================
-// ACCEPT SHIPMENT (SELF ASSIGN)
+// DRIVER ACCEPT SHIPMENT
 // ====================================================
 exports.acceptShipment = async (req, res) => {
   try {
     const driverId = req.driver._id;
     const { quoteId } = req.body;
 
-    const quote = await ShipmentQuote.findById(quoteId)
-      .populate("shipment")
-      .populate("shipper")
-      .populate("vehicle")
-      .lean();
+    // check already busy
+    const busy = await ShipmentQuote.findOne({
+      assignedDriver: driverId,
+      status: { $in: ["driverAccepted", "inTransit"] },
+    });
 
-    if (!quote)
-      return res
-        .status(404)
-        .json({ success: false, message: "Quote not found" });
+    if (busy) {
+      return res.status(400).json({
+        success: false,
+        message: "You already have an active shipment",
+      });
+    }
 
-    // Update shipment quote status
+    const quote = await ShipmentQuote.findById(quoteId);
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
     await ShipmentQuote.findByIdAndUpdate(quoteId, {
       assignedDriver: driverId,
       status: "driverAccepted",
@@ -210,17 +114,6 @@ exports.acceptShipment = async (req, res) => {
     res.json({
       success: true,
       message: "Shipment accepted successfully",
-      driverId,
-      shipment: {
-        ...quote.shipment,
-        quoteId: quote._id,
-        shipper: quote.shipper,
-        vehicle: quote.vehicle,
-        totalPrice: quote.totalPrice,
-        paymentMethod: quote.paymentMethod,
-        pickupTime: quote.pickupTime,
-        estimatedArrivalTime: quote.estimatedArrivalTime,
-      },
     });
   } catch (error) {
     console.error("[ACCEPT SHIPMENT]", error);
@@ -229,64 +122,199 @@ exports.acceptShipment = async (req, res) => {
 };
 
 // ====================================================
-// UPDATE DRIVER PROFILE IMAGE (SELF ONLY)
+// START TRIP (IMPORTANT)
 // ====================================================
-exports.updateDriverProfileImage = async (req, res) => {
+exports.startTrip = async (req, res) => {
   try {
-    const driver = await Driver.findById(req.driver._id);
-    if (!driver)
-      return res
-        .status(404)
-        .json({ success: false, message: "Driver not found" });
+    const { quoteId } = req.body;
 
-    if (!req.file)
-      return res
-        .status(400)
-        .json({ success: false, message: "Profile image is required" });
+    const quote = await ShipmentQuote.findById(quoteId);
 
-    if (driver.profileImage?.public_id) {
-      await cloudinary.uploader.destroy(driver.profileImage.public_id);
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
     }
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "driver_profiles",
-    });
+    if (quote.status !== "driverAccepted") {
+      return res.status(400).json({
+        success: false,
+        message: "Trip cannot be started",
+      });
+    }
 
-    driver.profileImage = {
-      url: result.secure_url,
-      public_id: result.public_id,
-    };
-    await driver.save();
+    quote.status = "inTransit";
+    await quote.save();
+
+    // update vehicle current shipment
+    await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
+      currentShipment: quoteId,
+    });
 
     res.json({
       success: true,
-      message: "Profile image updated successfully",
-      profileImage: driver.profileImage,
+      message: "Trip started",
     });
   } catch (error) {
-    console.error("[DRIVER IMAGE UPDATE]", error);
+    console.error("[START TRIP]", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
 
 // ====================================================
-// DELETE DRIVER PROFILE IMAGE (SELF ONLY)
+// UPDATE DRIVER LOCATION (LIVE TRACKING CORE)
+// ====================================================
+exports.updateDriverLocation = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
+    const { lat, lng } = req.body;
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and Longitude required",
+      });
+    }
+
+    const vehicle = await ShipperVehicle.findOne({
+      driver: driverId,
+      currentShipment: { $ne: null },
+    });
+
+    if (!vehicle) {
+      return res.status(400).json({
+        success: false,
+        message: "No active shipment found",
+      });
+    }
+
+    vehicle.currentLocation = {
+      lat,
+      lng,
+      updatedAt: new Date(),
+    };
+
+    await vehicle.save();
+
+    res.json({
+      success: true,
+      message: "Location updated",
+      location: vehicle.currentLocation,
+    });
+  } catch (error) {
+    console.error("[LOCATION UPDATE]", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ====================================================
+// COMPLETE SHIPMENT
+// ====================================================
+exports.completeShipment = async (req, res) => {
+  try {
+    const { quoteId } = req.body;
+
+    const quote = await ShipmentQuote.findById(quoteId);
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    quote.status = "delivered";
+    await quote.save();
+
+    // free vehicle
+    await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
+      currentShipment: null,
+    });
+
+    res.json({
+      success: true,
+      message: "Shipment completed successfully",
+    });
+  } catch (error) {
+    console.error("[COMPLETE SHIPMENT]", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ====================================================
+// DRIVER DASHBOARD
+// ====================================================
+exports.getDriverDashboard = async (req, res) => {
+  try {
+    const driver = req.driver;
+
+    const vehicle = await ShipperVehicle.findOne({
+      driver: driver._id,
+    });
+
+    res.json({
+      success: true,
+      driver,
+      vehicle,
+    });
+  } catch (error) {
+    console.error("[DRIVER DASHBOARD]", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ====================================================
+// UPDATE DRIVER PROFILE IMAGE
+// ====================================================
+exports.updateDriverProfileImage = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
+
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: "Image is required",
+      });
+    }
+
+    const driver = await Driver.findByIdAndUpdate(
+      driverId,
+      { profileImage: req.file.path },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Profile image updated",
+      driver,
+    });
+  } catch (error) {
+    console.error("[UPDATE DRIVER IMAGE]", error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// ====================================================
+// DELETE DRIVER PROFILE IMAGE
 // ====================================================
 exports.deleteDriverProfileImage = async (req, res) => {
   try {
-    const driver = await Driver.findById(req.driver._id);
-    if (!driver || !driver.profileImage?.public_id)
-      return res
-        .status(404)
-        .json({ success: false, message: "Profile image not found" });
+    const driverId = req.driver._id;
 
-    await cloudinary.uploader.destroy(driver.profileImage.public_id);
-    driver.profileImage = { url: null, public_id: null };
-    await driver.save();
+    const driver = await Driver.findByIdAndUpdate(
+      driverId,
+      { profileImage: null },
+      { new: true }
+    );
 
-    res.json({ success: true, message: "Profile image deleted successfully" });
+    res.json({
+      success: true,
+      message: "Profile image removed",
+      driver,
+    });
   } catch (error) {
-    console.error("[DRIVER IMAGE DELETE]", error);
+    console.error("[DELETE DRIVER IMAGE]", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };

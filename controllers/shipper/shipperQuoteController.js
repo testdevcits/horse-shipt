@@ -424,7 +424,7 @@ exports.assignVehicleToQuote = async (req, res) => {
       });
     }
 
-    // ---------------- CHECK QUOTE STATUS ----------------
+    // ---------------- CHECK STATUS ----------------
     if (quote.status !== "accepted") {
       return res.status(400).json({
         success: false,
@@ -436,12 +436,43 @@ exports.assignVehicleToQuote = async (req, res) => {
     const vehicle = await ShipperVehicle.findOne({
       _id: vehicleId,
       shipper: shipperId,
-    });
+    }).populate("driver");
 
     if (!vehicle) {
       return res.status(404).json({
         success: false,
         message: "Vehicle not found or does not belong to you",
+      });
+    }
+
+    // ---------------- CHECK DRIVER ASSIGNED ----------------
+    if (!vehicle.driver) {
+      return res.status(400).json({
+        success: false,
+        message: "Please assign a driver to this vehicle first",
+      });
+    }
+
+    // ---------------- CHECK VEHICLE BUSY ----------------
+    if (vehicle.currentShipment) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This vehicle is already assigned to an active shipment. Complete it first.",
+      });
+    }
+
+    // ---------------- CHECK DRIVER BUSY ----------------
+    const driverBusy = await ShipperVehicle.findOne({
+      driver: vehicle.driver._id,
+      currentShipment: { $ne: null },
+    });
+
+    if (driverBusy) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "This driver is already handling another shipment. Please complete it first.",
       });
     }
 
@@ -452,17 +483,21 @@ exports.assignVehicleToQuote = async (req, res) => {
 
     await quote.save();
 
+    // ---------------- UPDATE VEHICLE ----------------
+    vehicle.currentShipment = quote._id;
+    vehicle.driverStatus = "BUSY";
+
+    await vehicle.save();
+
     console.log("[VEHICLE ASSIGNED] Success", {
       quoteId: quote._id,
       vehicleId,
+      driverId: vehicle.driver._id,
     });
-
-    // ---------------- OPTIONAL: NOTIFICATION ----------------
-    // await sendVehicleAssignedNotification(quote.shipper, quote._id);
 
     return res.status(200).json({
       success: true,
-      message: "Vehicle assigned successfully",
+      message: "Vehicle and driver assigned successfully",
       quote,
     });
   } catch (err) {

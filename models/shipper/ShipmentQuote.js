@@ -176,6 +176,42 @@ const quoteSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ================= DRIVER & TRACKING =================
+
+    assignedDriver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Driver",
+      default: null,
+      index: true,
+    },
+
+    tripStatus: {
+      type: String,
+      enum: ["notStarted", "started", "inTransit", "completed"],
+      default: "notStarted",
+      index: true,
+    },
+
+    isTrackingActive: {
+      type: Boolean,
+      default: false,
+    },
+
+    currentLocation: {
+      lat: { type: Number, default: null },
+      lng: { type: Number, default: null },
+      updatedAt: { type: Date, default: null },
+    },
+
+    tripStartedAt: {
+      type: Date,
+      default: null,
+    },
+
+    deliveredAt: {
+      type: Date,
+      default: null,
+    },
     // ================= CANCELLATION =================
     cancellationWindowDays: {
       type: Number,
@@ -229,6 +265,7 @@ const quoteSchema = new mongoose.Schema(
       default: null,
     },
   },
+
   { timestamps: true }
 );
 

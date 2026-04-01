@@ -2,12 +2,33 @@ const mongoose = require("mongoose");
 
 const shipperVehicleSchema = new mongoose.Schema(
   {
+    // ================= OWNER =================
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Shipper",
       required: true,
     },
 
+    // ================= DRIVER (NEW) =================
+    driver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Driver",
+      default: null,
+    },
+
+    driverStatus: {
+      type: String,
+      enum: ["AVAILABLE", "BUSY", "OFFLINE"],
+      default: "AVAILABLE",
+    },
+
+    currentShipment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "ShipmentQuote",
+      default: null,
+    },
+
+    // ================= VEHICLE TYPE =================
     transportType: {
       type: String,
       enum: ["Trucking"],
@@ -35,8 +56,7 @@ const shipperVehicleSchema = new mongoose.Schema(
       default: null,
     },
 
-    // ===== Vehicle Identification Metadata =====
-
+    // ================= VEHICLE META =================
     manufacturer: {
       type: String,
       trim: true,
@@ -64,8 +84,7 @@ const shipperVehicleSchema = new mongoose.Schema(
       default: "",
     },
 
-    // ===== Verification System =====
-
+    // ================= VERIFICATION =================
     verificationStatus: {
       type: String,
       enum: ["PENDING", "VERIFIED", "REJECTED"],
@@ -84,6 +103,7 @@ const shipperVehicleSchema = new mongoose.Schema(
       },
     },
 
+    // ================= TRAILER DETAILS =================
     trailerType: {
       type: String,
       enum: ["Stock Trailer", "Slant Load", "Head to Head", "Semi", "Other"],
@@ -106,6 +126,7 @@ const shipperVehicleSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ================= IMAGES =================
     images: [
       {
         public_id: { type: String, required: true },
@@ -113,6 +134,7 @@ const shipperVehicleSchema = new mongoose.Schema(
       },
     ],
 
+    // ================= EXTRA =================
     notes: {
       type: String,
       default: "",
