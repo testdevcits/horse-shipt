@@ -4,12 +4,6 @@ const { sendSMS } = require("./sendSMS");
 
 /**
  * Notify Shipper after customer accepts quote
- * @param {Object} options
- *   - shipperEmail
- *   - shipperPhone
- *   - customerName
- *   - shipment
- *   - quote
  */
 const notifyQuote = async ({
   shipperEmail,
@@ -19,17 +13,24 @@ const notifyQuote = async ({
   quote,
 }) => {
   try {
-    // Use shipment mobile if available, else fallback to provided shipperPhone
-    let phoneToUse = shipment.shipper?.mobile || shipperPhone;
+    // ALWAYS use trusted phone source
+    let phoneToUse = shipperPhone;
+
+    // FORMAT PHONE (E.164)
     if (phoneToUse) {
-      // Remove non-digit characters
       phoneToUse = phoneToUse.replace(/\D/g, "");
 
-      // Add +91 if number is exactly 10 digits
-      if (/^\d{10}$/.test(phoneToUse)) {
+      if (/^91\d{10}$/.test(phoneToUse)) {
+        phoneToUse = `+${phoneToUse}`;
+      } else if (/^\d{10}$/.test(phoneToUse)) {
         phoneToUse = `+91${phoneToUse}`;
+      } else {
+        console.warn("[WARN] Invalid phone format after cleanup:", phoneToUse);
+        phoneToUse = null;
       }
     }
+
+    console.log("[DEBUG] Final phoneToUse:", phoneToUse);
 
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
@@ -85,6 +86,7 @@ const notifyQuote = async ({
         subject: `Quote Accepted by ${customerName}`,
         html,
       });
+
       console.log("[INFO] Email sent to shipper:", shipperEmail);
     }
 
@@ -96,8 +98,10 @@ const notifyQuote = async ({
         await sendSMS({ phone: phoneToUse, message });
         console.log("[INFO] SMS sent to shipper:", phoneToUse);
       } catch (smsError) {
-        console.error("[ERROR] SMS failed but continuing:", smsError);
+        console.error("[ERROR] SMS failed but continuing:", smsError.message);
       }
+    } else {
+      console.warn("[WARN] SMS skipped due to invalid phone");
     }
 
     console.log("[INFO] Shipper notified via email & SMS");

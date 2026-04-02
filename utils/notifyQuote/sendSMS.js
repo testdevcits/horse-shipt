@@ -3,9 +3,6 @@ const twilio = require("twilio");
 
 /**
  * Send Transactional SMS using Twilio
- * @param {Object} options
- * @param {string} options.phone - Recipient phone number (with +91 if India)
- * @param {string} options.message - SMS content
  */
 const sendSMS = async ({ phone, message }) => {
   try {
@@ -14,18 +11,24 @@ const sendSMS = async ({ phone, message }) => {
 
     const accountSid = process.env.TWILIO_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromNumber = process.env.TWILIO_PHONE; // your Twilio number
+    const fromNumber = process.env.TWILIO_PHONE;
 
-    if (!accountSid || !authToken || !fromNumber)
-      throw new Error(
-        "Twilio credentials missing in .env (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER)"
-      );
-
-    // Format phone number
-    let formattedPhone = phone.replace(/\D/g, "");
-    if (/^\d{10}$/.test(formattedPhone)) {
-      formattedPhone = `+91${formattedPhone}`;
+    if (!accountSid || !authToken || !fromNumber) {
+      throw new Error("Twilio credentials missing in .env");
     }
+
+    // FINAL SAFETY FORMAT (again double-check)
+    let formattedPhone = phone.replace(/\D/g, "");
+
+    if (/^91\d{10}$/.test(formattedPhone)) {
+      formattedPhone = `+${formattedPhone}`;
+    } else if (/^\d{10}$/.test(formattedPhone)) {
+      formattedPhone = `+91${formattedPhone}`;
+    } else {
+      throw new Error(`Invalid phone number format: ${phone}`);
+    }
+
+    console.log("[DEBUG] Sending SMS to:", formattedPhone);
 
     const client = twilio(accountSid, authToken);
 
@@ -35,10 +38,11 @@ const sendSMS = async ({ phone, message }) => {
       to: formattedPhone,
     });
 
-    console.log("[INFO] SMS sent via Twilio:", response.sid);
+    console.log("[SUCCESS] SMS sent via Twilio:", response.sid);
     return response;
   } catch (err) {
     console.error("[ERROR] sendSMS failed (Twilio):", err.message);
+    throw err; // important so caller knows it failed
   }
 };
 
