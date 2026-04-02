@@ -10,7 +10,6 @@ const upload = require("../../middleware/uploadMiddleware");
 
 // ---------------- Controllers ----------------
 const {
-  updateProfile,
   addOrUpdatePayment,
   getPaymentByUser,
   getAllPayments,
@@ -20,6 +19,7 @@ const {
   verifyOtp,
   updateCustomerProfileImage,
   getCustomerProfile,
+  updateCustomerDetails,
 } = require("../../controllers/customer/customerController");
 
 const {
@@ -73,12 +73,7 @@ const {
 // CUSTOMER PROFILE
 // ====================================================
 
-router.put(
-  "/update-profile",
-  customerAuth,
-  upload.single("profilePicture"), // Cloudinary
-  updateProfile
-);
+router.put("/profile-details", customerAuth, updateCustomerDetails);
 
 // ---------------- Reviews ----------------
 const {

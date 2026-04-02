@@ -17,37 +17,46 @@ cloudinary.config({
 });
 
 // ------------------ Profile Update ------------------
-exports.updateProfile = async (req, res) => {
+exports.updateCustomerDetails = async (req, res) => {
   try {
-    const user = req.user;
-    const { firstName, lastName, locale } = req.body;
+    const customer = req.user;
+
+    const { firstName, lastName, phone, locale } = req.body;
+
+    // Update name
+    if (firstName !== undefined) customer.firstName = firstName;
+    if (lastName !== undefined) customer.lastName = lastName;
 
     if (firstName || lastName) {
-      user.firstName = firstName || user.firstName;
-      user.lastName = lastName || user.lastName;
-      user.name = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+      customer.name = `${customer.firstName || ""} ${
+        customer.lastName || ""
+      }`.trim();
     }
 
-    if (locale) user.locale = locale;
-
-    if (req.file) {
-      if (user.profilePicture) {
-        const oldPath = path.join(__dirname, "../../", user.profilePicture);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
-      }
-      user.profilePicture = req.file.path;
+    // Update phone
+    if (phone !== undefined) {
+      customer.phone = phone;
+      customer.phoneVerified = false;
     }
 
-    await user.save();
+    // Update locale
+    if (locale !== undefined) {
+      customer.locale = locale;
+    }
+
+    await customer.save();
 
     res.status(200).json({
       success: true,
-      data: user,
-      message: "Customer profile updated successfully",
+      message: "Profile details updated successfully",
+      data: customer,
     });
-  } catch (err) {
-    console.error("[CUSTOMER PROFILE UPDATE] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+  } catch (error) {
+    console.error("Update Customer Details Error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update profile details",
+    });
   }
 };
 

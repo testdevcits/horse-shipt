@@ -39,7 +39,7 @@ const customerSchema = new mongoose.Schema(
     profilePicture: { type: String },
 
     // Uploaded profile image via Cloudinary
-    profileImage: imageSchema, // ← added field
+    profileImage: imageSchema,
 
     // Extra Info
     firstName: { type: String },
@@ -47,6 +47,12 @@ const customerSchema = new mongoose.Schema(
     locale: { type: String },
     emailVerified: { type: Boolean, default: false },
     rawProfile: { type: Object },
+
+    // -------------------------
+    // New fields for SMS notifications
+    // -------------------------
+    phone: { type: String, default: null }, // Customer's mobile number
+    phoneVerified: { type: Boolean, default: false }, // Whether the phone is verified
 
     // Location (Live Tracking)
     currentLocation: locationSchema,
@@ -82,7 +88,7 @@ customerSchema.pre("save", async function (next) {
 // Password Verification Method
 // -------------------------
 customerSchema.methods.matchPassword = async function (enteredPassword) {
-  if (!this.password) return false; // google accounts may have no password
+  if (!this.password) return false; // Google accounts may have no password
   return await bcrypt.compare(enteredPassword, this.password);
 };
 

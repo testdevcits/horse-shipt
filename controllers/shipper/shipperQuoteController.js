@@ -353,6 +353,7 @@ exports.addQuote = async (req, res) => {
     console.log("[QUOTE CREATED]", quote._id);
 
     // ----------------- NOTIFICATIONS -----------------
+    // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
 
     if (!shipperSettings) {
@@ -371,10 +372,12 @@ exports.addQuote = async (req, res) => {
     }
 
     if (canSMS) {
-      await sendQuoteSms(
-        shipperId,
-        `Quote sent successfully for shipment ${shipment}.`
-      );
+      const customer = shipmentExists.customer;
+      const customerName = customer.name || "Customer";
+      const customerEmail = customer.email ? ` (${customer.email})` : "";
+      const message = `New quote received for shipment ${shipmentExists.shipmentCode} from ${customerName}${customerEmail}. Amount: ${totalPrice} ${currency}. Check your dashboard for details.`;
+
+      await sendQuoteSms(shipperId, message);
     }
 
     console.log("=====================================");
