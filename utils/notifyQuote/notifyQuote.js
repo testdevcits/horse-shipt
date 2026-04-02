@@ -80,7 +80,7 @@ const notifyQuote = async ({
     // ---------------- SMS ----------------
     if (phoneToUse) {
       try {
-        const message = `Hi ${customerName}, your quote for ${shipment.shipmentCode} is accepted. Amount: ${quote.totalPrice} ${quote.currency}.`;
+        const message = `Hi ${customerName}, your quote for ${shipment.shipmentCode} is accepted. Amount: ${quote.totalPrice} ${quote.currency}. View here: https://horse-shipt-frontend.vercel.app/shipper/shipments`;
 
         await sendSMS({ phone: phoneToUse, message });
 
