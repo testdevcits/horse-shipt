@@ -39,7 +39,7 @@
     "socket.io": "^4.8.3",
     "streamifier": "^0.1.1",
     "stripe": "^20.4.0",
-    "twilio": "^5.10.3",
+    "twilio": "^5.13.1",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
