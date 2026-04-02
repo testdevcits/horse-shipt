@@ -1,4 +1,5 @@
 // controllers/customer/customerQuoteController.js
+const mongoose = require("mongoose");
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
