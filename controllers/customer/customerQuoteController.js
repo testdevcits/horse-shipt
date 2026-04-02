@@ -16,15 +16,15 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
    ACCEPT QUOTE (WITH PAYMENT + RECEIPT)
 ========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+
   try {
     const { quoteId } = req.params;
     const { customerSignature } = req.body;
     const customerId = req.user._id;
 
-    console.log(
-      "[DEBUG] acceptQuoteWithSignature called for quoteId:",
-      quoteId
-    );
+    console.log("[DEBUG] acceptQuoteWithSignature:", { quoteId });
 
     // ---------------- VALIDATION ----------------
     if (
@@ -32,7 +32,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       typeof customerSignature !== "string" ||
       !customerSignature.startsWith("data:image/")
     ) {
-      console.log("[ERROR] Invalid customer signature");
       return res.status(400).json({
         success: false,
         message: "Valid customer signature is required",
@@ -43,44 +42,46 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     const quote = await ShipmentQuote.findById(quoteId)
       .populate({ path: "shipment", populate: { path: "customer" } })
       .populate("shipper")
-      .populate("vehicle");
+      .populate("vehicle")
+      .session(session);
 
     if (!quote) {
-      console.log("[ERROR] Quote not found:", quoteId);
-      return res
-        .status(404)
-        .json({ success: false, message: "Quote not found" });
+      await session.abortTransaction();
+      return res.status(404).json({
+        success: false,
+        message: "Quote not found",
+      });
     }
 
     if (quote.contractAccepted) {
-      console.log("[WARN] Quote already accepted:", quoteId);
-      return res
-        .status(400)
-        .json({ success: false, message: "Quote already accepted" });
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Quote already accepted",
+      });
     }
 
     // ---------------- AUTH ----------------
     if (quote.shipment.customer._id.toString() !== customerId.toString()) {
-      console.log("[ERROR] Customer not authorized for quote:", quoteId);
-      return res
-        .status(403)
-        .json({ success: false, message: "Not authorized" });
+      await session.abortTransaction();
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized",
+      });
     }
 
     if (!quote.shipperSignature) {
-      console.log("[ERROR] Shipper signature missing for quote:", quoteId);
-      return res
-        .status(400)
-        .json({ success: false, message: "Shipper signature missing" });
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message: "Shipper signature missing",
+      });
     }
 
     // ---------------- PAYMENT VALIDATION ----------------
     if (quote.paymentMethod === "card" && quote.paymentStatus !== "paid") {
       if (!quote.stripePaymentIntentId) {
-        console.log(
-          "[ERROR] Stripe paymentIntentId missing for quote:",
-          quoteId
-        );
+        await session.abortTransaction();
         return res.status(400).json({
           success: false,
           message: "Payment must be completed before accepting quote",
@@ -90,23 +91,19 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       const paymentIntent = await stripe.paymentIntents.retrieve(
         quote.stripePaymentIntentId
       );
-      console.log("[DEBUG] Stripe payment status:", paymentIntent.status);
 
       if (paymentIntent.status === "succeeded") {
         quote.paymentStatus = "paid";
-        await quote.save();
-        console.log("[INFO] Payment marked as paid for quote:", quoteId);
       } else {
-        console.log("[ERROR] Payment not completed for quote:", quoteId);
+        await session.abortTransaction();
         return res.status(400).json({
           success: false,
-          message: "Payment must be completed before accepting quote",
+          message: "Payment not completed",
         });
       }
     }
 
-    // ---------------- GENERATE CONTRACT PDF ----------------
-    console.log("[DEBUG] Generating contract PDF for quote:", quoteId);
+    // ---------------- GENERATE PDF ----------------
     const pdfBuffer = await generateContractPDF({
       shipment: quote.shipment,
       shipmentCode: quote.shipment.shipmentCode,
@@ -130,10 +127,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     });
 
     // ---------------- UPLOAD PDF ----------------
-    console.log(
-      "[DEBUG] Uploading contract PDF to Cloudinary for quote:",
-      quoteId
-    );
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
         {
@@ -143,11 +136,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         },
         (err, result) => (err ? reject(err) : resolve(result))
       );
+
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
-    });
-    console.log("[INFO] Contract PDF uploaded:", {
-      url: uploadResult.secure_url,
-      public_id: uploadResult.public_id,
     });
 
     // ---------------- UPDATE QUOTE ----------------
@@ -159,78 +149,95 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     quote.contractAccepted = true;
     quote.contractAcceptedAt = new Date();
     quote.status = "accepted";
-    await quote.save();
-    console.log("[INFO] Quote updated with customer signature:", quoteId);
+
+    await quote.save({ session });
 
     // ---------------- REJECT OTHER QUOTES ----------------
     await ShipmentQuote.updateMany(
       { shipment: quote.shipment._id, _id: { $ne: quote._id } },
-      { status: "rejected" }
-    );
-    console.log(
-      "[INFO] Other quotes rejected for shipment:",
-      quote.shipment._id
+      { status: "rejected" },
+      { session }
     );
 
     // ---------------- UPDATE SHIPMENT ----------------
-    await CustomerShipment.findByIdAndUpdate(quote.shipment._id, {
-      status: "assigned",
-      assignedShipper: quote.shipper._id,
-    });
-    console.log(
-      "[INFO] Shipment updated with assigned shipper:",
-      quote.shipper._id
+    await CustomerShipment.findByIdAndUpdate(
+      quote.shipment._id,
+      {
+        status: "assigned",
+        assignedShipper: quote.shipper._id,
+      },
+      { new: true, session }
     );
 
     // ---------------- SAVE HISTORY ----------------
-    await CustomerQuote.create({
-      shipmentId: quote.shipment._id,
-      customerId,
-      shipperId: quote.shipper._id,
-      price: quote.totalPrice,
-      message: "Customer accepted quote",
-      status: "accepted",
+    await CustomerQuote.create(
+      [
+        {
+          shipmentId: quote.shipment._id,
+          customerId,
+          shipperId: quote.shipper._id,
+          price: quote.totalPrice,
+          message: "Customer accepted quote",
+          status: "accepted",
+        },
+      ],
+      { session }
+    );
+
+    // COMMIT TRANSACTION
+    await session.commitTransaction();
+    session.endSession();
+
+    console.log("[SUCCESS] Quote accepted", {
+      quoteId,
+      shipment: quote.shipment.shipmentCode,
+      shipper: quote.shipper._id,
     });
-    console.log("[INFO] Customer quote history saved");
 
-    // ---------------- SEND NOTIFICATION (EMAIL + SMS) ----------------
-    console.log("[DEBUG] Sending notification to shipper:", quote.shipper._id);
+    // ---------------- NOTIFICATIONS (OUTSIDE TRANSACTION) ----------------
+    const shipperEmail = quote.shipper?.email;
+    const shipperPhone = quote.shipper?.mobile || quote.shipper?.phone;
 
-    try {
-      await notifyQuote({
-        shipperEmail: quote.shipper.email,
-        shipperPhone: quote.shipper.mobile, // notifyQuote now auto-formats +91
-        customerName: quote.shipment.customer.name,
-        shipment: quote.shipment,
-        quote: { totalPrice: quote.totalPrice, currency: quote.currency },
-      });
+    if (shipperEmail || shipperPhone) {
+      try {
+        await notifyQuote({
+          shipperEmail,
+          shipperPhone,
+          customerName: quote.shipment.customer.name,
+          shipment: quote.shipment,
+          quote: {
+            totalPrice: quote.totalPrice,
+            currency: quote.currency,
+          },
+        });
 
-      console.log("[INFO] Notification sent successfully to shipper");
-    } catch (notifyError) {
-      console.error(
-        "[ERROR] Notification failed but continuing:",
-        notifyError.message
-      );
+        console.log("[INFO] Notification sent to shipper");
+      } catch (err) {
+        console.error("[ERROR] Notification failed:", err.message);
+      }
+    } else {
+      console.warn("[WARN] No contact info for shipper");
     }
 
-    // ---------------- RECEIPT ----------------
-    const receipt = {
-      shipmentPrice: quote.totalPrice,
-      platformFee: 0,
-      shipperReceives: quote.totalPrice,
-      currency: quote.currency,
-      note: "Full payment received. Platform fee will be deducted during payout.",
-    };
-
-    console.log("[SUCCESS] Quote accepted successfully:", quoteId);
+    // ---------------- RESPONSE ----------------
     return res.status(200).json({
       success: true,
       message: "Quote accepted & contract signed successfully",
-      receipt,
+      receipt: {
+        shipmentPrice: quote.totalPrice,
+        platformFee: 0,
+        shipperReceives: quote.totalPrice,
+        currency: quote.currency,
+        note: "Full payment received. Platform fee deducted during payout.",
+      },
       quote,
     });
   } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+
     console.error("acceptQuoteWithSignature error:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to accept quote",

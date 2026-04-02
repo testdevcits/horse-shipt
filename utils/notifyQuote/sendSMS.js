@@ -2,47 +2,55 @@
 const twilio = require("twilio");
 
 /**
- * Send Transactional SMS using Twilio
+ * Format phone to E.164 (+91XXXXXXXXXX)
+ */
+const formatPhone = (phone) => {
+  if (!phone) return null;
+
+  const cleaned = phone.replace(/\D/g, "");
+
+  if (/^91\d{10}$/.test(cleaned)) return `+${cleaned}`;
+  if (/^\d{10}$/.test(cleaned)) return `+91${cleaned}`;
+
+  return null;
+};
+
+/**
+ * Send SMS using Twilio
  */
 const sendSMS = async ({ phone, message }) => {
   try {
-    if (!phone) throw new Error("Phone number is required");
-    if (!message) throw new Error("Message is required");
+    if (!phone) throw new Error("Phone required");
+    if (!message) throw new Error("Message required");
 
-    const accountSid = process.env.TWILIO_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromNumber = process.env.TWILIO_PHONE;
+    const formattedPhone = formatPhone(phone);
 
-    if (!accountSid || !authToken || !fromNumber) {
-      throw new Error("Twilio credentials missing in .env");
+    if (!formattedPhone) {
+      throw new Error(`Invalid phone format: ${phone}`);
     }
 
-    // FINAL SAFETY FORMAT (again double-check)
-    let formattedPhone = phone.replace(/\D/g, "");
+    const { TWILIO_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE } = process.env;
 
-    if (/^91\d{10}$/.test(formattedPhone)) {
-      formattedPhone = `+${formattedPhone}`;
-    } else if (/^\d{10}$/.test(formattedPhone)) {
-      formattedPhone = `+91${formattedPhone}`;
-    } else {
-      throw new Error(`Invalid phone number format: ${phone}`);
+    if (!TWILIO_SID || !TWILIO_AUTH_TOKEN || !TWILIO_PHONE) {
+      throw new Error("Missing Twilio env config");
     }
 
-    console.log("[DEBUG] Sending SMS to:", formattedPhone);
+    console.log("[DEBUG] Sending SMS →", formattedPhone);
 
-    const client = twilio(accountSid, authToken);
+    const client = twilio(TWILIO_SID, TWILIO_AUTH_TOKEN);
 
     const response = await client.messages.create({
       body: message,
-      from: fromNumber,
+      from: TWILIO_PHONE,
       to: formattedPhone,
     });
 
-    console.log("[SUCCESS] SMS sent via Twilio:", response.sid);
+    console.log("[SUCCESS] SMS sent:", response.sid);
+
     return response;
   } catch (err) {
-    console.error("[ERROR] sendSMS failed (Twilio):", err.message);
-    throw err; // important so caller knows it failed
+    console.error("[ERROR] sendSMS:", err.message);
+    throw err;
   }
 };
 

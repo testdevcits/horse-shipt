@@ -3,6 +3,20 @@ const { sendEmail } = require("./sendEmail");
 const { sendSMS } = require("./sendSMS");
 
 /**
+ * Format phone to E.164 (+91XXXXXXXXXX)
+ */
+const formatPhone = (phone) => {
+  if (!phone) return null;
+
+  const cleaned = phone.replace(/\D/g, "");
+
+  if (/^91\d{10}$/.test(cleaned)) return `+${cleaned}`;
+  if (/^\d{10}$/.test(cleaned)) return `+91${cleaned}`;
+
+  return null;
+};
+
+/**
  * Notify Shipper after customer accepts quote
  */
 const notifyQuote = async ({
@@ -13,97 +27,72 @@ const notifyQuote = async ({
   quote,
 }) => {
   try {
-    // ALWAYS use trusted phone source
-    let phoneToUse = shipperPhone;
+    const phoneToUse = formatPhone(shipperPhone);
 
-    // FORMAT PHONE (E.164)
-    if (phoneToUse) {
-      phoneToUse = phoneToUse.replace(/\D/g, "");
-
-      if (/^91\d{10}$/.test(phoneToUse)) {
-        phoneToUse = `+${phoneToUse}`;
-      } else if (/^\d{10}$/.test(phoneToUse)) {
-        phoneToUse = `+91${phoneToUse}`;
-      } else {
-        console.warn("[WARN] Invalid phone format after cleanup:", phoneToUse);
-        phoneToUse = null;
-      }
-    }
-
-    console.log("[DEBUG] Final phoneToUse:", phoneToUse);
+    console.log("[DEBUG] notifyQuote:", {
+      email: shipperEmail,
+      phone: phoneToUse,
+    });
 
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
-      const html = `
-      <div style="font-family: Arial, sans-serif; padding:20px;">
-        <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
-          <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
-            <h2>Quote Accepted</h2>
-          </div>
-          <div style="padding:20px;">
-            <p>Hello, <strong>${
-              shipment.shipper?.name || "Shipper"
-            }</strong></p>
-            <p>${customerName} has accepted your quote for the shipment <strong>${
-        shipment.shipmentCode
-      }</strong>.</p>
+      try {
+        const html = `
+        <div style="font-family: Arial, sans-serif; padding:20px;">
+          <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px;">
+            <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
+              <h2>Quote Accepted</h2>
+            </div>
 
-            <h3>Shipment Details</h3>
-            <table style="width:100%; border-collapse:collapse;">
-              <tr><td><strong>Pickup</strong></td><td>${
-                shipment.pickupLocation || "N/A"
-              }</td></tr>
-              <tr><td><strong>Delivery</strong></td><td>${
-                shipment.deliveryLocation || "N/A"
-              }</td></tr>
-              <tr><td><strong>Pickup Date</strong></td><td>${
-                shipment.pickupDate
-                  ? new Date(shipment.pickupDate).toLocaleDateString()
-                  : "N/A"
-              }</td></tr>
-              <tr><td><strong>Delivery Date</strong></td><td>${
-                shipment.deliveryDate
-                  ? new Date(shipment.deliveryDate).toLocaleDateString()
-                  : "N/A"
-              }</td></tr>
-              <tr><td><strong>Quote Amount</strong></td><td>${
-                quote.totalPrice
-              } ${quote.currency}</td></tr>
-            </table>
+            <div style="padding:20px;">
+              <p>Hello, <strong>${
+                shipment.shipper?.name || "Shipper"
+              }</strong></p>
+              <p>${customerName} accepted your quote for <strong>${
+          shipment.shipmentCode
+        }</strong>.</p>
 
-            <p style="margin-top:20px;">Please check your dashboard for more details.</p>
-          </div>
+              <p><strong>Amount:</strong> ${quote.totalPrice} ${
+          quote.currency
+        }</p>
+              <p>Please check your dashboard.</p>
+            </div>
 
-          <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
-            © ${new Date().getFullYear()} Horsehipt
+            <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
+              © ${new Date().getFullYear()} Horsehipt
+            </div>
           </div>
         </div>
-      </div>
-      `;
+        `;
 
-      await sendEmail({
-        to: shipperEmail,
-        subject: `Quote Accepted by ${customerName}`,
-        html,
-      });
+        await sendEmail({
+          to: shipperEmail,
+          subject: `Quote Accepted by ${customerName}`,
+          html,
+        });
 
-      console.log("[INFO] Email sent to shipper:", shipperEmail);
+        console.log("[INFO] Email sent:", shipperEmail);
+      } catch (emailError) {
+        console.error("[ERROR] Email failed:", emailError.message);
+      }
     }
 
+    // ---------------- SMS ----------------
     if (phoneToUse) {
-      const message = `Hi, ${customerName} accepted your quote for shipment ${shipment.shipmentCode}. Amount: ${quote.totalPrice} ${quote.currency}. Check dashboard for details.`;
-
       try {
+        const message = `Hi ${customerName}, your quote for ${shipment.shipmentCode} is accepted. Amount: ${quote.totalPrice} ${quote.currency}.`;
+
         await sendSMS({ phone: phoneToUse, message });
-        console.log("[INFO] SMS sent to shipper:", phoneToUse);
+
+        console.log("[INFO] SMS sent:", phoneToUse);
       } catch (smsError) {
-        console.error("[ERROR] SMS failed but continuing:", smsError.message);
+        console.error("[ERROR] SMS failed:", smsError.message);
       }
     } else {
-      console.warn("[WARN] SMS skipped due to invalid phone");
+      console.warn("[WARN] Invalid or missing phone, SMS skipped");
     }
 
-    console.log("[INFO] Shipper notified via email & SMS");
+    console.log("[INFO] Notification process completed");
   } catch (err) {
     console.error("[ERROR] notifyQuote failed:", err.message);
   }

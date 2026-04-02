@@ -353,7 +353,6 @@ exports.addQuote = async (req, res) => {
     console.log("[QUOTE CREATED]", quote._id);
 
     // ----------------- NOTIFICATIONS -----------------
-    // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
 
     if (!shipperSettings) {
@@ -363,21 +362,31 @@ exports.addQuote = async (req, res) => {
     const canEmail = shipperSettings?.notifications?.quote?.email ?? true;
     const canSMS = shipperSettings?.notifications?.quote?.sms ?? true;
 
+    // EMAIL
     if (canEmail) {
-      await sendQuoteEmail(
-        shipperId,
-        "Quote Sent Successfully",
-        `Your quote for shipment ${shipment} has been sent successfully.`
-      );
+      try {
+        await sendQuoteEmail(
+          shipperId,
+          "Quote Sent Successfully",
+          `Your quote for shipment ${shipmentExists.shipmentCode} has been sent successfully.`
+        );
+      } catch (emailError) {
+        console.error("[QUOTE MAIL ERROR]", emailError.message);
+      }
     }
 
+    // SMS
     if (canSMS) {
-      const customer = shipmentExists.customer;
-      const customerName = customer.name || "Customer";
-      const customerEmail = customer.email ? ` (${customer.email})` : "";
-      const message = `New quote received for shipment ${shipmentExists.shipmentCode} from ${customerName}${customerEmail}. Amount: ${totalPrice} ${currency}. Check your dashboard for details.`;
-
-      await sendQuoteSms(shipperId, message);
+      try {
+        await sendQuoteSms(shipperId, {
+          shipment: shipmentExists,
+          customer: shipmentExists.customer,
+          totalPrice,
+          currency,
+        });
+      } catch (smsError) {
+        console.error("[QUOTE SMS ERROR]", smsError.message);
+      }
     }
 
     console.log("=====================================");

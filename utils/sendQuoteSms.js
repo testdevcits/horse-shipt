@@ -10,7 +10,7 @@ const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 const formatPhone = (phone) => {
   if (!phone) return null;
 
-  let cleaned = phone.replace(/\D/g, "");
+  const cleaned = phone.replace(/\D/g, "");
 
   if (/^91\d{10}$/.test(cleaned)) {
     return `+${cleaned}`;
@@ -26,6 +26,11 @@ const formatPhone = (phone) => {
  */
 const sendQuoteSms = async (shipperId, options = {}) => {
   try {
+    // ✅ HANDLE WRONG INPUT (string passed instead of object)
+    if (typeof options === "string") {
+      options = { message: options };
+    }
+
     const shipper = await Shipper.findById(shipperId);
 
     if (!shipper) {
@@ -33,15 +38,15 @@ const sendQuoteSms = async (shipperId, options = {}) => {
       return;
     }
 
-    // ✅ Use consistent field (mobile preferred, fallback to phone)
+    // ✅ Get phone
     const rawPhone = shipper.mobile || shipper.phone;
 
     if (!rawPhone) {
-      console.warn(`[SMS] No phone number for shipper: ${shipper._id}`);
+      console.warn(`[SMS] No phone for shipper: ${shipper._id}`);
       return;
     }
 
-    // ✅ Format properly
+    // ✅ Format phone
     const phoneToUse = formatPhone(rawPhone);
 
     if (!phoneToUse) {
@@ -54,17 +59,29 @@ const sendQuoteSms = async (shipperId, options = {}) => {
     // ---------------- MESSAGE ----------------
     let message = options.message;
 
+    // ✅ Auto build message if not provided
     if (!message && options.shipment && options.customer) {
       const customerName = options.customer.name || "Customer";
       const customerEmail = options.customer.email
         ? ` (${options.customer.email})`
         : "";
 
-      message = `New quote received for shipment ${options.shipment.shipmentCode} from ${customerName}${customerEmail}. Amount: ${options.totalPrice} ${options.currency}. Check your dashboard for details.`;
+      message = `New quote received for shipment ${
+        options.shipment.shipmentCode
+      } from ${customerName}${customerEmail}. Amount: ${
+        options.totalPrice || "N/A"
+      } ${options.currency || ""}. Check dashboard.`;
     }
 
+    // ✅ FINAL FALLBACK MESSAGE (important)
     if (!message) {
-      console.warn("[SMS] No message content provided");
+      message = "You have a new quote update. Please check your dashboard.";
+      console.warn("[SMS] Using fallback message");
+    }
+
+    // ---------------- TWILIO CHECK ----------------
+    if (!process.env.TWILIO_PHONE) {
+      console.error("[SMS ERROR] TWILIO_PHONE missing in env");
       return;
     }
 
@@ -79,7 +96,7 @@ const sendQuoteSms = async (shipperId, options = {}) => {
     return sms;
   } catch (err) {
     console.error("[ERROR] sendQuoteSms failed:", err.message);
-    throw err; // important for debugging
+    throw err;
   }
 };
 
