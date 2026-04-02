@@ -23,7 +23,7 @@ exports.updateCustomerDetails = async (req, res) => {
 
     const { firstName, lastName, phone, locale } = req.body;
 
-    // Update name
+    // ----------------- NAME UPDATE -----------------
     if (firstName !== undefined) customer.firstName = firstName;
     if (lastName !== undefined) customer.lastName = lastName;
 
@@ -33,13 +33,33 @@ exports.updateCustomerDetails = async (req, res) => {
       }`.trim();
     }
 
-    // Update phone
+    // ----------------- PHONE UPDATE -----------------
     if (phone !== undefined) {
-      customer.phone = phone;
+      let cleanedPhone = phone.toString().trim();
+
+      // remove spaces, dashes
+      cleanedPhone = cleanedPhone.replace(/[\s-]/g, "");
+
+      // auto add +91 if 10 digit Indian number
+      if (/^\d{10}$/.test(cleanedPhone)) {
+        cleanedPhone = `+91${cleanedPhone}`;
+      }
+
+      // validate final format (E.164)
+      const phoneRegex = /^\+[1-9]\d{9,14}$/;
+
+      if (!phoneRegex.test(cleanedPhone)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid phone number format. Use valid number",
+        });
+      }
+
+      customer.phone = cleanedPhone;
       customer.phoneVerified = false;
     }
 
-    // Update locale
+    // ----------------- LOCALE UPDATE -----------------
     if (locale !== undefined) {
       customer.locale = locale;
     }
