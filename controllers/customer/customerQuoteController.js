@@ -385,7 +385,6 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
-    /* ---------------- CREATE PAYMENT INTENT ---------------- */
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(quote.totalPrice * 100), // cents
       currency: quote.currency || "usd",
