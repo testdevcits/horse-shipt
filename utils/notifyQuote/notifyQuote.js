@@ -90,7 +90,6 @@ const notifyQuote = async ({
       console.log("[INFO] Email sent to shipper:", shipperEmail);
     }
 
-    // ---------------- SMS ----------------
     if (phoneToUse) {
       const message = `Hi, ${customerName} accepted your quote for shipment ${shipment.shipmentCode}. Amount: ${quote.totalPrice} ${quote.currency}. Check dashboard for details.`;
 
