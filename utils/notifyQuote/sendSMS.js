@@ -12,9 +12,9 @@ const sendSMS = async ({ phone, message }) => {
     if (!phone) throw new Error("Phone number is required");
     if (!message) throw new Error("Message is required");
 
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const accountSid = process.env.TWILIO_SID;
     const authToken = process.env.TWILIO_AUTH_TOKEN;
-    const fromNumber = process.env.TWILIO_PHONE_NUMBER; // your Twilio number
+    const fromNumber = process.env.TWILIO_PHONE; // your Twilio number
 
     if (!accountSid || !authToken || !fromNumber)
       throw new Error(
