@@ -5,14 +5,24 @@ const Shipper = require("../models/shipper/shipperModel");
 const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
 
 /**
+ * Format phone number to E.164 (+91XXXXXXXXXX)
+ */
+const formatPhone = (phone) => {
+  if (!phone) return null;
+
+  let cleaned = phone.replace(/\D/g, "");
+
+  if (/^91\d{10}$/.test(cleaned)) {
+    return `+${cleaned}`;
+  } else if (/^\d{10}$/.test(cleaned)) {
+    return `+91${cleaned}`;
+  } else {
+    return null;
+  }
+};
+
+/**
  * Send SMS to a shipper by ID
- * @param {String} shipperId - MongoDB ID
- * @param {Object} options
- *   - message (optional if shipment/customer provided)
- *   - shipment (optional)
- *   - customer (optional)
- *   - totalPrice (optional, required if shipment provided)
- *   - currency (optional, required if shipment provided)
  */
 const sendQuoteSms = async (shipperId, options = {}) => {
   try {
@@ -23,23 +33,33 @@ const sendQuoteSms = async (shipperId, options = {}) => {
       return;
     }
 
-    if (!shipper.phone) {
-      console.warn(`[SMS] Invalid phone number for shipper: ${shipper._id}`);
+    // ✅ Use consistent field (mobile preferred, fallback to phone)
+    const rawPhone = shipper.mobile || shipper.phone;
+
+    if (!rawPhone) {
+      console.warn(`[SMS] No phone number for shipper: ${shipper._id}`);
       return;
     }
 
-    // Format phone number
-    let phoneToUse = shipper.phone.replace(/\D/g, "");
-    if (/^\d{10}$/.test(phoneToUse)) phoneToUse = `+91${phoneToUse}`;
-    if (!phoneToUse.startsWith("+")) phoneToUse = `+${phoneToUse}`; // fallback
+    // ✅ Format properly
+    const phoneToUse = formatPhone(rawPhone);
 
-    // Compose message
+    if (!phoneToUse) {
+      console.warn("[SMS] Invalid phone format:", rawPhone);
+      return;
+    }
+
+    console.log("[DEBUG] SMS phoneToUse:", phoneToUse);
+
+    // ---------------- MESSAGE ----------------
     let message = options.message;
+
     if (!message && options.shipment && options.customer) {
       const customerName = options.customer.name || "Customer";
       const customerEmail = options.customer.email
         ? ` (${options.customer.email})`
         : "";
+
       message = `New quote received for shipment ${options.shipment.shipmentCode} from ${customerName}${customerEmail}. Amount: ${options.totalPrice} ${options.currency}. Check your dashboard for details.`;
     }
 
@@ -48,16 +68,18 @@ const sendQuoteSms = async (shipperId, options = {}) => {
       return;
     }
 
+    // ---------------- SEND ----------------
     const sms = await client.messages.create({
       body: message,
-      from: process.env.TWILIO_PHONE, // your Twilio number
+      from: process.env.TWILIO_PHONE,
       to: phoneToUse,
     });
 
-    console.log(`[SMS] Quote SMS sent to ${phoneToUse} (SID: ${sms.sid})`);
+    console.log(`[SUCCESS] SMS sent to ${phoneToUse} (SID: ${sms.sid})`);
     return sms;
   } catch (err) {
-    console.error("[SMS ERROR] sendQuoteSms failed:", err.message);
+    console.error("[ERROR] sendQuoteSms failed:", err.message);
+    throw err; // important for debugging
   }
 };
 
