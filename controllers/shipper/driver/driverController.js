@@ -5,6 +5,7 @@ const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
 const CustomerShipment = require("../../../models/customer/CustomerShipment");
 const sendDeliveryMail = require("../../../utils/sendDeliveryMail");
+const platformSettings = require("../../../models/admin/payment/platformSettings");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ====================================================
@@ -637,7 +638,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     // PLATFORM SETTINGS
     // ============================================
 
-    const settings = await PlatformSettings.findOne();
+    const settings = await platformSettings.findOne();
 
     const platformPercent = settings?.platformFeePercent || 0;
     const platformFlat = settings?.platformFeeFlat || 0;
