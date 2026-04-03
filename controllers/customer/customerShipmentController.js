@@ -252,7 +252,7 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
     })
       .sort({ createdAt: -1 })
       .populate({
-        path: "shipper",
+        path: "shipper", // the field that now stores the assigned shipper
         select:
           "name email phone company profileImage address rating licenseNumber user",
         populate: {
