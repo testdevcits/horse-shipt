@@ -428,9 +428,15 @@ exports.driverSendDeliveryOtp = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    const shipment = await CustomerShipment.findById(shipmentId).populate(
-      "customer"
-    );
+    // Populate vehicle -> driver + customer
+    const shipment = await CustomerShipment.findById(shipmentId)
+      .populate({
+        path: "vehicle",
+        populate: {
+          path: "driver",
+        },
+      })
+      .populate("customer");
 
     if (!shipment) {
       return res.status(404).json({
@@ -439,17 +445,17 @@ exports.driverSendDeliveryOtp = async (req, res) => {
       });
     }
 
-    // FIX: use req.driver instead of req.user
     const loggedDriverId = req.driver?._id;
 
     // Debug logs
-    console.log("Shipment Driver:", shipment.driver?.toString());
+    console.log("Vehicle Driver:", shipment.vehicle?.driver?._id?.toString());
     console.log("Logged Driver:", loggedDriverId?.toString());
 
-    // Driver check (FIXED)
+    // FIXED DRIVER CHECK (based on your architecture)
     if (
-      !shipment.driver ||
-      shipment.driver.toString() !== loggedDriverId.toString()
+      !shipment.vehicle ||
+      !shipment.vehicle.driver ||
+      shipment.vehicle.driver._id.toString() !== loggedDriverId.toString()
     ) {
       return res.status(403).json({
         success: false,
