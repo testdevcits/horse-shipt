@@ -4,6 +4,7 @@ const ShipperVehicle = require("../../../models/shipper/ShipperVehicle");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
 const CustomerShipment = require("../../../models/customer/CustomerShipment");
+const sendDeliveryMail = require("../../../utils/sendDeliveryMail");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ====================================================
@@ -428,15 +429,10 @@ exports.driverSendDeliveryOtp = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    // Populate vehicle -> driver + customer
-    const shipment = await CustomerShipment.findById(shipmentId)
-      .populate({
-        path: "vehicle",
-        populate: {
-          path: "driver",
-        },
-      })
-      .populate("customer");
+    // ---------------- GET SHIPMENT ----------------
+    const shipment = await CustomerShipment.findById(shipmentId).populate(
+      "customer"
+    );
 
     if (!shipment) {
       return res.status(404).json({
@@ -445,17 +441,39 @@ exports.driverSendDeliveryOtp = async (req, res) => {
       });
     }
 
+    // ---------------- GET ACCEPTED QUOTE ----------------
+    const quote = await ShipmentQuote.findOne({
+      shipment: shipmentId,
+      status: "accepted",
+    }).populate({
+      path: "vehicle",
+      populate: {
+        path: "driver",
+      },
+    });
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: "Accepted quote not found",
+      });
+    }
+
     const loggedDriverId = req.driver?._id;
 
     // Debug logs
-    console.log("Vehicle Driver:", shipment.vehicle?.driver?._id?.toString());
+    console.log(
+      "Quote Driver:",
+      quote.assignedDriver?.toString() || quote.vehicle?.driver?._id?.toString()
+    );
     console.log("Logged Driver:", loggedDriverId?.toString());
 
-    // FIXED DRIVER CHECK (based on your architecture)
+    // ---------------- DRIVER CHECK ----------------
+    const assignedDriverId = quote.assignedDriver || quote.vehicle?.driver?._id;
+
     if (
-      !shipment.vehicle ||
-      !shipment.vehicle.driver ||
-      shipment.vehicle.driver._id.toString() !== loggedDriverId.toString()
+      !assignedDriverId ||
+      assignedDriverId.toString() !== loggedDriverId.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -463,7 +481,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
       });
     }
 
-    // Already delivered check
+    // ---------------- DELIVERY STATUS CHECK ----------------
     if (shipment.status === "delivered" || shipment.deliveryOtpVerified) {
       return res.status(400).json({
         success: false,
@@ -471,7 +489,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
       });
     }
 
-    // Generate OTP
+    // ---------------- GENERATE OTP ----------------
     const otp = Math.floor(100000 + Math.random() * 900000);
 
     shipment.deliveryOtp = otp.toString();
@@ -479,6 +497,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
+    // ---------------- EMAIL ----------------
     const subject = "Shipment Delivery OTP";
 
     const message = `
@@ -495,7 +514,7 @@ HorseShipt Team
 
     await sendDeliveryMail(shipment.customer?.email, subject, message);
 
-    return res.json({
+    return res.status(200).json({
       success: true,
       message: "Driver sent delivery OTP",
     });
