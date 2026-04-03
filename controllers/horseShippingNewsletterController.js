@@ -152,45 +152,65 @@ exports.getAllSubscribers = async (req, res) => {
 };
 
 // ================= Delete Subscriber =================
+// ================= Delete Subscriber =================
 exports.deleteSubscriber = async (req, res) => {
   try {
-    // Single ID from params or multiple IDs from body
+    console.log("[DEBUG] deleteSubscriber called");
+    console.log("[DEBUG] req.params:", req.params);
+    console.log("[DEBUG] req.body:", req.body);
+
     const { id } = req.params;
-    const { ids } = req.body; // expecting an array of IDs for multiple delete
+    const { ids } = req.body || {}; // Safe destructure
 
-    let deletedCount = 0;
-
+    // If multiple IDs provided in body
     if (ids && Array.isArray(ids) && ids.length > 0) {
-      // Delete multiple subscribers
+      console.log("[DEBUG] Deleting multiple subscribers:", ids);
+
       const result = await HorseShippingNewsletter.deleteMany({
         _id: { $in: ids },
       });
-      deletedCount = result.deletedCount;
-      if (deletedCount === 0) {
+
+      console.log("[DEBUG] deleteMany result:", result);
+
+      if (result.deletedCount === 0) {
+        console.log("[DEBUG] No subscribers found to delete for provided IDs");
         return res
           .status(404)
           .json({ success: false, message: "No subscribers found to delete" });
       }
+
+      console.log(
+        `[DEBUG] Successfully deleted ${result.deletedCount} subscriber(s)`
+      );
       return res.status(200).json({
         success: true,
-        message: `${deletedCount} subscriber(s) deleted successfully`,
+        message: `${result.deletedCount} subscriber(s) deleted successfully`,
       });
-    } else if (id) {
-      // Delete single subscriber
+    }
+
+    // If single ID provided in params
+    if (id) {
+      console.log("[DEBUG] Deleting single subscriber with ID:", id);
       const user = await HorseShippingNewsletter.findByIdAndDelete(id);
-      if (!user)
+
+      if (!user) {
+        console.log("[DEBUG] Subscriber not found for ID:", id);
         return res
           .status(404)
           .json({ success: false, message: "Subscriber not found" });
+      }
 
+      console.log("[DEBUG] Subscriber deleted successfully:", user.email);
       return res
         .status(200)
         .json({ success: true, message: "Subscriber deleted successfully" });
-    } else {
-      return res
-        .status(400)
-        .json({ success: false, message: "No subscriber ID(s) provided" });
     }
+
+    // If neither ID nor ids array provided
+    console.log("[DEBUG] No subscriber ID(s) provided in params or body");
+    return res
+      .status(400)
+      .json({ success: false, message: "No subscriber ID(s) provided" });
   } catch (error) {
     console.error("[ERROR] Delete Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
