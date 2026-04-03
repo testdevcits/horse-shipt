@@ -246,22 +246,11 @@ exports.createShipment = async (req, res) => {
 // ============================================================
 exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   try {
-    // Fetch shipments for the logged-in customer, sorted by creation date
+    // console.log(`[GET SHIPMENTS] User ID: ${req.user._id}`);
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-    })
-      .sort({ createdAt: -1 })
-      .populate({
-        path: "shipper", // the field that now stores the assigned shipper
-        select:
-          "name email phone company profileImage address rating licenseNumber user",
-        populate: {
-          path: "user", // optional: populate the linked user if exists
-          select: "username profileImage",
-        },
-      });
-
-    // Respond with shipments
+    }).sort({ createdAt: -1 });
+    // console.log(`[GET SHIPMENTS] Found ${shipments.length} shipments`);
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[GET SHIPMENTS ERROR]", err);
