@@ -154,16 +154,43 @@ exports.getAllSubscribers = async (req, res) => {
 // ================= Delete Subscriber =================
 exports.deleteSubscriber = async (req, res) => {
   try {
+    // Single ID from params or multiple IDs from body
     const { id } = req.params;
-    const user = await HorseShippingNewsletter.findByIdAndDelete(id);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, message: "Subscriber not found" });
+    const { ids } = req.body; // expecting an array of IDs for multiple delete
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Subscriber deleted successfully" });
+    let deletedCount = 0;
+
+    if (ids && Array.isArray(ids) && ids.length > 0) {
+      // Delete multiple subscribers
+      const result = await HorseShippingNewsletter.deleteMany({
+        _id: { $in: ids },
+      });
+      deletedCount = result.deletedCount;
+      if (deletedCount === 0) {
+        return res
+          .status(404)
+          .json({ success: false, message: "No subscribers found to delete" });
+      }
+      return res.status(200).json({
+        success: true,
+        message: `${deletedCount} subscriber(s) deleted successfully`,
+      });
+    } else if (id) {
+      // Delete single subscriber
+      const user = await HorseShippingNewsletter.findByIdAndDelete(id);
+      if (!user)
+        return res
+          .status(404)
+          .json({ success: false, message: "Subscriber not found" });
+
+      return res
+        .status(200)
+        .json({ success: true, message: "Subscriber deleted successfully" });
+    } else {
+      return res
+        .status(400)
+        .json({ success: false, message: "No subscriber ID(s) provided" });
+    }
   } catch (error) {
     console.error("[ERROR] Delete Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });

@@ -4,7 +4,7 @@ const router = express.Router();
 const {
   getAllSubscribers,
   deleteSubscriber,
-} = require("../controllers/horseShippingNewsletterController");
+} = require("../../../controllers/horseShippingNewsletterController");
 const adminAuth = require("../middleware/admin/adminAuth");
 
 // ------------------- Admin Routes ------------------- //
