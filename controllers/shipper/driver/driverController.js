@@ -532,6 +532,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
+    // ---------------- GET SHIPMENT ----------------
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
@@ -541,55 +542,9 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
       });
     }
 
-    // FIX: use req.driver
-    const loggedDriverId = req.driver?._id;
+    const loggedDriverId = req.driver?._id?.toString();
 
-    // Debug logs
-    console.log("Shipment Driver:", shipment.driver?.toString());
-    console.log("Logged Driver:", loggedDriverId?.toString());
-
-    // Driver check (FIXED)
-    if (
-      !shipment.driver ||
-      shipment.driver.toString() !== loggedDriverId.toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized driver",
-      });
-    }
-
-    // Already delivered
-    if (shipment.deliveryOtpVerified) {
-      return res.status(400).json({
-        success: false,
-        message: "Already delivered",
-      });
-    }
-
-    // OTP validation
-    if (!otp || shipment.deliveryOtp !== String(otp)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid OTP",
-      });
-    }
-
-    // OTP expiry
-    if (
-      !shipment.deliveryOtpExpires ||
-      shipment.deliveryOtpExpires < new Date()
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "OTP expired",
-      });
-    }
-
-    // ============================================
-    // FIND ACCEPTED QUOTE
-    // ============================================
-
+    // ---------------- GET ACCEPTED QUOTE ----------------
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
@@ -602,6 +557,50 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
       });
     }
 
+    // ---------------- DRIVER VALIDATION ----------------
+    const assignedDriverId = quote.assignedDriver?.toString();
+
+    // DEBUG LOGS (VERY IMPORTANT)
+    console.log("===== DRIVER VERIFY DEBUG =====");
+    console.log("Logged Driver:", loggedDriverId);
+    console.log("Assigned Driver:", assignedDriverId);
+    console.log("================================");
+
+    if (!assignedDriverId || assignedDriverId !== loggedDriverId) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized driver",
+      });
+    }
+
+    // ---------------- DELIVERY STATUS ----------------
+    if (shipment.deliveryOtpVerified) {
+      return res.status(400).json({
+        success: false,
+        message: "Already delivered",
+      });
+    }
+
+    // ---------------- OTP VALIDATION ----------------
+    if (!otp || shipment.deliveryOtp !== String(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    // ---------------- OTP EXPIRY ----------------
+    if (
+      !shipment.deliveryOtpExpires ||
+      shipment.deliveryOtpExpires < new Date()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired",
+      });
+    }
+
+    // ---------------- PAYMENT CHECK ----------------
     if (quote.paymentStatus !== "paid") {
       return res.status(400).json({
         success: false,
