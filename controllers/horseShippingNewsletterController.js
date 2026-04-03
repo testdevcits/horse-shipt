@@ -2,18 +2,7 @@
 
 const HorseShippingNewsletter = require("../models/Newsletter");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
-
-// ================= Nodemailer Transporter =================
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: process.env.EMAIL_PORT,
-  secure: true, // 465 = true
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+const transporter = require("../utils/transporter"); // Reusable transporter
 
 // ================= Email Template =================
 const sendEmail = async ({ email, link }) => {
@@ -52,9 +41,9 @@ const sendEmail = async ({ email, link }) => {
       html,
     });
 
-    console.log("Email sent to:", email);
+    console.log("[INFO] Email sent to:", email);
   } catch (error) {
-    console.error("Email error:", error.message);
+    console.error("[ERROR] Email error:", error.message);
     throw error;
   }
 };
@@ -62,44 +51,56 @@ const sendEmail = async ({ email, link }) => {
 // ================= Subscribe Newsletter =================
 exports.subscribeNewsletter = async (req, res) => {
   try {
+    console.log("[DEBUG] subscribeNewsletter called", req.body);
+
     const { email } = req.body;
-    if (!email)
+    if (!email) {
+      console.log("[DEBUG] No email provided");
       return res
         .status(400)
         .json({ success: false, message: "Email is required" });
+    }
 
     const existingUser = await HorseShippingNewsletter.findOne({ email });
-    if (existingUser && existingUser.isVerified)
+    console.log("[DEBUG] Existing user:", existingUser);
+
+    if (existingUser && existingUser.isVerified) {
+      console.log("[DEBUG] Email already verified");
       return res
         .status(400)
         .json({ success: false, message: "Email already subscribed" });
+    }
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiry = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24h
+    console.log("[DEBUG] Generated token and expiry:", token, expiry);
 
     let user;
     if (existingUser) {
       existingUser.verificationToken = token;
       existingUser.tokenExpiry = expiry;
       user = await existingUser.save();
+      console.log("[DEBUG] Updated existing user:", user);
     } else {
       user = await HorseShippingNewsletter.create({
         email,
         verificationToken: token,
         tokenExpiry: expiry,
       });
+      console.log("[DEBUG] Created new user:", user);
     }
 
-    // Production-ready verify link
     const verifyLink = `${process.env.FRONTEND_URL}/verify?token=${token}`;
+    console.log("[DEBUG] Verification link:", verifyLink);
 
     await sendEmail({ email, link: verifyLink });
+    console.log("[DEBUG] Email sent successfully");
 
     return res
       .status(200)
       .json({ success: true, message: "Verification email sent successfully" });
   } catch (error) {
-    console.error("Subscribe Error:", error);
+    console.error("[ERROR] Subscribe Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -114,6 +115,7 @@ exports.verifyEmail = async (req, res) => {
     const user = await HorseShippingNewsletter.findOne({
       verificationToken: token,
     });
+
     if (!user)
       return res
         .status(401)
@@ -131,7 +133,7 @@ exports.verifyEmail = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Email verified successfully" });
   } catch (error) {
-    console.error("Verify Error:", error);
+    console.error("[ERROR] Verify Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -144,7 +146,7 @@ exports.getAllSubscribers = async (req, res) => {
       .status(200)
       .json({ success: true, count: users.length, data: users });
   } catch (error) {
-    console.error("Fetch Error:", error);
+    console.error("[ERROR] Fetch Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
@@ -163,7 +165,7 @@ exports.deleteSubscriber = async (req, res) => {
       .status(200)
       .json({ success: true, message: "Subscriber deleted successfully" });
   } catch (error) {
-    console.error("Delete Error:", error);
+    console.error("[ERROR] Delete Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
