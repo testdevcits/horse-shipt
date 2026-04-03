@@ -28,6 +28,6 @@ router.delete("/subscribers/:id", adminAuth, deleteSubscriber);
 // Multiple delete (add this)
 router.delete("/delete/subscribers", adminAuth, deleteSubscriber);
 
-router.post("/admin/horse-newsletter/send", adminAuth, sendNewsletter);
+router.post("/send", adminAuth, sendNewsletter);
 
 module.exports = router;
