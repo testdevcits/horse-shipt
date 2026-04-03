@@ -185,6 +185,7 @@ app.use("/api/admin/payments", adminPaymentsRoutes);
 app.use("/api/admin/stripe", stripeAdminRoutes);
 app.use("/api/admin/privacy-policy", privacyPolicyRoutes);
 app.use("/api/admin/terms-condition", termsConditionRoutes);
+app.use("/api/admin/horse-newsletter", horseShippingNewsletterRoutes);
 
 app.use("/api/horse-newsletter", horseShippingNewsletterRoutes);
 
