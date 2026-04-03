@@ -166,6 +166,8 @@ const stripeAdminRoutes = require("./routes/admin/Payments/stripeAdminRoutes");
 const privacyPolicyRoutes = require("./routes/admin/privacyPolicy.routes");
 const termsConditionRoutes = require("./routes/admin/termsCondition.routes");
 
+const horseShippingNewsletterRoutes = require("./routes/horseShippingNewsletterRoutes");
+
 // Public / App APIs
 app.use("/api/auth", authRoutes);
 app.use("/api/customer", customerRoutes);
@@ -183,6 +185,8 @@ app.use("/api/admin/payments", adminPaymentsRoutes);
 app.use("/api/admin/stripe", stripeAdminRoutes);
 app.use("/api/admin/privacy-policy", privacyPolicyRoutes);
 app.use("/api/admin/terms-condition", termsConditionRoutes);
+
+app.use("/api/horse-newsletter", horseShippingNewsletterRoutes);
 
 // -------------------------
 // Health Check
