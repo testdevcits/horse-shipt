@@ -428,7 +428,6 @@ exports.driverSendDeliveryOtp = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    // Get shipment + customer
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customer"
     );
@@ -440,17 +439,17 @@ exports.driverSendDeliveryOtp = async (req, res) => {
       });
     }
 
-    // Extract logged-in driver ID safely
-    const loggedDriverId = req.user?._id || req.user?.id;
+    // FIX: use req.driver instead of req.user
+    const loggedDriverId = req.driver?._id;
 
-    // DEBUG LOGS (remove after testing)
+    // Debug logs
     console.log("Shipment Driver:", shipment.driver?.toString());
-    console.log("Logged Driver:", loggedDriverId);
+    console.log("Logged Driver:", loggedDriverId?.toString());
 
-    // Driver authorization check (FIXED)
+    // Driver check (FIXED)
     if (
       !shipment.driver ||
-      shipment.driver.toString() !== String(loggedDriverId)
+      shipment.driver.toString() !== loggedDriverId.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -474,7 +473,6 @@ exports.driverSendDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
-    // Email content
     const subject = "Shipment Delivery OTP";
 
     const message = `
@@ -512,34 +510,59 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
     }
 
-    // Driver check
-    if (!shipment.driver || shipment.driver.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized driver" });
+    // FIX: use req.driver
+    const loggedDriverId = req.driver?._id;
+
+    // Debug logs
+    console.log("Shipment Driver:", shipment.driver?.toString());
+    console.log("Logged Driver:", loggedDriverId?.toString());
+
+    // Driver check (FIXED)
+    if (
+      !shipment.driver ||
+      shipment.driver.toString() !== loggedDriverId.toString()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized driver",
+      });
     }
 
+    // Already delivered
     if (shipment.deliveryOtpVerified) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Already delivered" });
+      return res.status(400).json({
+        success: false,
+        message: "Already delivered",
+      });
     }
 
-    if (shipment.deliveryOtp !== otp) {
-      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    // OTP validation
+    if (!otp || shipment.deliveryOtp !== String(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
     }
 
-    if (shipment.deliveryOtpExpires < new Date()) {
-      return res.status(400).json({ success: false, message: "OTP expired" });
+    // OTP expiry
+    if (
+      !shipment.deliveryOtpExpires ||
+      shipment.deliveryOtpExpires < new Date()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired",
+      });
     }
 
     // ============================================
-    // SAME: FIND ACCEPTED QUOTE
+    // FIND ACCEPTED QUOTE
     // ============================================
 
     const quote = await ShipmentQuote.findOne({
@@ -548,25 +571,28 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     }).populate("shipper");
 
     if (!quote) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Accepted quote not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Accepted quote not found",
+      });
     }
 
     if (quote.paymentStatus !== "paid") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Payment not completed yet" });
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed yet",
+      });
     }
 
     if (quote.payoutStatus === "transferred") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Payout already processed" });
+      return res.status(400).json({
+        success: false,
+        message: "Payout already processed",
+      });
     }
 
     // ============================================
-    // STRIPE SAME
+    // STRIPE
     // ============================================
 
     const paymentIntent = await stripe.paymentIntents.retrieve(
@@ -588,6 +614,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     // ============================================
 
     const settings = await PlatformSettings.findOne();
+
     const platformPercent = settings?.platformFeePercent || 0;
     const platformFlat = settings?.platformFeeFlat || 0;
 
@@ -603,13 +630,14 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     const shipperCents = netAfterStripeCents - platformFeeTotalCents;
 
     if (shipperCents <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid payout" });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payout",
+      });
     }
 
     // ============================================
-    // TRANSFER (SHIPPER KO HI JAYEGA)
+    // TRANSFER
     // ============================================
 
     const transfer = await stripe.transfers.create({
@@ -656,6 +684,9 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     });
   } catch (error) {
     console.error("DRIVER VERIFY ERROR:", error);
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
