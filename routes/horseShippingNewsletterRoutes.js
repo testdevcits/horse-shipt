@@ -25,6 +25,6 @@ router.get("/subscribers", adminAuth, getAllSubscribers);
 router.delete("/subscribers/:id", adminAuth, deleteSubscriber);
 
 // Multiple delete (add this)
-router.delete("/subscribers", adminAuth, deleteSubscriber);
+router.delete("/delete/subscribers", adminAuth, deleteSubscriber);
 
 module.exports = router;
