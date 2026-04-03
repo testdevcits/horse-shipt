@@ -395,7 +395,8 @@ exports.getCustomerProfile = async (req, res) => {
     const customer = await Customer.findById(req.user.id)
       .select(
         "uniqueId name email role firstName lastName locale emailVerified " +
-          "profileImage profilePicture bannerImage currentLocation isLogin"
+          "profileImage profilePicture bannerImage currentLocation isLogin " +
+          "phone phoneVerified"
       )
       .lean();
 
@@ -408,9 +409,6 @@ exports.getCustomerProfile = async (req, res) => {
 
     // ================================
     // Profile Image Resolution Priority
-    // 1. Uploaded profileImage (Cloudinary)
-    // 2. Google OAuth profilePicture
-    // 3. Default local image
     // ================================
     const resolvedProfileImage =
       customer.profileImage?.url ||
@@ -435,6 +433,11 @@ exports.getCustomerProfile = async (req, res) => {
         lastName: customer.lastName,
         locale: customer.locale || "",
         emailVerified: customer.emailVerified,
+
+        // NEW FIELDS
+        phone: customer.phone || null,
+        phoneVerified: customer.phoneVerified || false,
+
         currentLocation: customer.currentLocation || null,
         isLogin: customer.isLogin,
         profileImage: resolvedProfileImage,
