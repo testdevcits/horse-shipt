@@ -428,29 +428,45 @@ exports.driverSendDeliveryOtp = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
+    // Get shipment + customer
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customer"
     );
 
     if (!shipment) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
     }
 
-    // Driver check
-    if (!shipment.driver || shipment.driver.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized driver" });
+    // Extract logged-in driver ID safely
+    const loggedDriverId = req.user?._id || req.user?.id;
+
+    // DEBUG LOGS (remove after testing)
+    console.log("Shipment Driver:", shipment.driver?.toString());
+    console.log("Logged Driver:", loggedDriverId);
+
+    // Driver authorization check (FIXED)
+    if (
+      !shipment.driver ||
+      shipment.driver.toString() !== String(loggedDriverId)
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized driver",
+      });
     }
 
+    // Already delivered check
     if (shipment.status === "delivered" || shipment.deliveryOtpVerified) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Shipment already delivered" });
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already delivered",
+      });
     }
 
+    // Generate OTP
     const otp = Math.floor(100000 + Math.random() * 900000);
 
     shipment.deliveryOtp = otp.toString();
@@ -458,10 +474,11 @@ exports.driverSendDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
+    // Email content
     const subject = "Shipment Delivery OTP";
 
     const message = `
-Hello ${shipment.customer.name || ""},
+Hello ${shipment.customer?.name || ""},
 
 Your shipment has arrived.
 
@@ -472,7 +489,7 @@ This OTP will expire in 10 minutes.
 HorseShipt Team
 `;
 
-    await sendDeliveryMail(shipment.customer.email, subject, message);
+    await sendDeliveryMail(shipment.customer?.email, subject, message);
 
     return res.json({
       success: true,
@@ -480,7 +497,10 @@ HorseShipt Team
     });
   } catch (error) {
     console.error("DRIVER OTP ERROR:", error);
-    res.status(500).json({ success: false, error: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 
