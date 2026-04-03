@@ -6,6 +6,7 @@ const {
   verifyEmail,
   getAllSubscribers,
   deleteSubscriber,
+  sendNewsletter,
 } = require("../controllers/horseShippingNewsletterController");
 const adminAuth = require("../middleware/admin/adminAuth");
 
@@ -26,5 +27,7 @@ router.delete("/subscribers/:id", adminAuth, deleteSubscriber);
 
 // Multiple delete (add this)
 router.delete("/delete/subscribers", adminAuth, deleteSubscriber);
+
+router.post("/admin/horse-newsletter/send", adminAuth, sendNewsletter);
 
 module.exports = router;

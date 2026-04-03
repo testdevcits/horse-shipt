@@ -3,6 +3,7 @@
 const HorseShippingNewsletter = require("../models/Newsletter");
 const crypto = require("crypto");
 const transporter = require("../utils/transporter"); // Reusable transporter
+const nodemailer = require("nodemailer");
 
 // ================= Email Template =================
 const sendEmail = async ({ email, link }) => {
@@ -214,5 +215,100 @@ exports.deleteSubscriber = async (req, res) => {
   } catch (error) {
     console.error("[ERROR] Delete Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
+  }
+};
+
+// @desc    Send newsletter to all verified subscribers (or provided recipients)
+// @route   POST /admin/horse-newsletter/send
+// @access  Private (Admin)
+
+exports.sendNewsletter = async (req, res) => {
+  try {
+    console.log("[DEBUG] sendNewsletter called");
+    console.log("[DEBUG] Request body:", req.body);
+
+    const { subject, message, htmlContent, recipients } = req.body;
+
+    // --- Validation ---
+    if (!subject || subject.trim() === "") {
+      console.log("[DEBUG] Validation failed: Subject missing");
+      return res
+        .status(400)
+        .json({ success: false, message: "Subject is required" });
+    }
+
+    if (!message && !htmlContent) {
+      console.log("[DEBUG] Validation failed: No message or HTML content");
+      return res.status(400).json({
+        success: false,
+        message: "Message or HTML content is required",
+      });
+    }
+
+    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+      console.log("[DEBUG] Validation failed: No recipients provided");
+      return res
+        .status(400)
+        .json({ success: false, message: "No recipients provided" });
+    }
+
+    console.log(
+      `[DEBUG] Sending newsletter to ${recipients.length} recipients`
+    );
+
+    // --- Setup Nodemailer Transporter ---
+    const transporter = nodemailer.createTransport({
+      host: process.env.EMAIL_HOST, // e.g., smtp.gmail.com
+      port: parseInt(process.env.EMAIL_PORT) || 465,
+      secure: true, // true for 465
+      auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
+      },
+    });
+
+    console.log("[DEBUG] Nodemailer transporter configured");
+
+    // --- Send emails in parallel ---
+    const results = await Promise.allSettled(
+      recipients.map((email) => {
+        console.log(`[DEBUG] Sending email to: ${email}`);
+        return transporter.sendMail({
+          from: process.env.EMAIL_FROM,
+          to: email,
+          subject: subject.trim(),
+          text: message || "",
+          html: htmlContent || `<p>${message}</p>`,
+        });
+      })
+    );
+
+    // --- Count successes and failures ---
+    const succeeded = results.filter((r) => r.status === "fulfilled");
+    const failed = results.filter((r) => r.status === "rejected");
+
+    console.log(`[DEBUG] Emails succeeded: ${succeeded.length}`);
+    console.log(`[DEBUG] Emails failed: ${failed.length}`);
+
+    if (failed.length > 0) {
+      console.error(
+        "[DEBUG] Failed email details:",
+        failed.map((f) => f.reason)
+      );
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Newsletter sent to ${succeeded.length} subscriber(s)`,
+      sentCount: succeeded.length,
+      failedCount: failed.length,
+    });
+  } catch (error) {
+    console.error("[ERROR] Send newsletter error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error while sending newsletter",
+      error: error.message,
+    });
   }
 };
