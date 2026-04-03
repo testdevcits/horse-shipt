@@ -99,6 +99,8 @@ const {
   startTrip,
   updateDriverLocation,
   completeShipment,
+  driverSendDeliveryOtp,
+  driverVerifyDeliveryOtp,
 } = require("../../controllers/shipper/driver/driverController");
 
 // -------- Contracts --------
@@ -301,6 +303,18 @@ router.get(
 router.post("/driver/start-trip", driverAuth, startTrip);
 router.post("/driver/update-location", driverAuth, updateDriverLocation);
 router.post("/driver/complete-shipment", driverAuth, completeShipment);
+
+router.post(
+  "/driver/shipment/:shipmentId/send-delivery-otp",
+  driverAuth,
+  driverSendDeliveryOtp
+);
+
+router.post(
+  "/driver/shipment/:shipmentId/verify-delivery-otp",
+  driverAuth,
+  driverVerifyDeliveryOtp
+);
 
 // ====================================================
 // SHIPPER CONTRACT ROUTES

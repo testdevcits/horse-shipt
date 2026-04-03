@@ -3,7 +3,9 @@ const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const ShipperVehicle = require("../../../models/shipper/ShipperVehicle");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
+const CustomerShipment = require("../../../models/customer/CustomerShipment");
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ====================================================
 // DRIVER LOGIN
 // ====================================================
@@ -419,5 +421,221 @@ exports.deleteDriverProfileImage = async (req, res) => {
   } catch (error) {
     console.error("[DELETE DRIVER IMAGE]", error);
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.driverSendDeliveryOtp = async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+
+    const shipment = await CustomerShipment.findById(shipmentId).populate(
+      "customer"
+    );
+
+    if (!shipment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
+    }
+
+    // Driver check
+    if (!shipment.driver || shipment.driver.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized driver" });
+    }
+
+    if (shipment.status === "delivered" || shipment.deliveryOtpVerified) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Shipment already delivered" });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000);
+
+    shipment.deliveryOtp = otp.toString();
+    shipment.deliveryOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
+
+    await shipment.save();
+
+    const subject = "Shipment Delivery OTP";
+
+    const message = `
+Hello ${shipment.customer.name || ""},
+
+Your shipment has arrived.
+
+OTP: ${otp}
+
+This OTP will expire in 10 minutes.
+
+HorseShipt Team
+`;
+
+    await sendDeliveryMail(shipment.customer.email, subject, message);
+
+    return res.json({
+      success: true,
+      message: "Driver sent delivery OTP",
+    });
+  } catch (error) {
+    console.error("DRIVER OTP ERROR:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+exports.driverVerifyDeliveryOtp = async (req, res) => {
+  try {
+    const { shipmentId } = req.params;
+    const { otp } = req.body;
+
+    const shipment = await CustomerShipment.findById(shipmentId);
+
+    if (!shipment) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
+    }
+
+    // Driver check
+    if (!shipment.driver || shipment.driver.toString() !== req.user.id) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Unauthorized driver" });
+    }
+
+    if (shipment.deliveryOtpVerified) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Already delivered" });
+    }
+
+    if (shipment.deliveryOtp !== otp) {
+      return res.status(400).json({ success: false, message: "Invalid OTP" });
+    }
+
+    if (shipment.deliveryOtpExpires < new Date()) {
+      return res.status(400).json({ success: false, message: "OTP expired" });
+    }
+
+    // ============================================
+    // SAME: FIND ACCEPTED QUOTE
+    // ============================================
+
+    const quote = await ShipmentQuote.findOne({
+      shipment: shipmentId,
+      status: "accepted",
+    }).populate("shipper");
+
+    if (!quote) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Accepted quote not found" });
+    }
+
+    if (quote.paymentStatus !== "paid") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Payment not completed yet" });
+    }
+
+    if (quote.payoutStatus === "transferred") {
+      return res
+        .status(400)
+        .json({ success: false, message: "Payout already processed" });
+    }
+
+    // ============================================
+    // STRIPE SAME
+    // ============================================
+
+    const paymentIntent = await stripe.paymentIntents.retrieve(
+      quote.stripePaymentIntentId
+    );
+
+    const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+
+    const balanceTx = await stripe.balanceTransactions.retrieve(
+      charge.balance_transaction
+    );
+
+    const grossCents = paymentIntent.amount;
+    const stripeFeeCents = balanceTx.fee;
+    const netAfterStripeCents = grossCents - stripeFeeCents;
+
+    // ============================================
+    // PLATFORM SETTINGS
+    // ============================================
+
+    const settings = await PlatformSettings.findOne();
+    const platformPercent = settings?.platformFeePercent || 0;
+    const platformFlat = settings?.platformFeeFlat || 0;
+
+    const platformFeePercentCents = Math.round(
+      netAfterStripeCents * (platformPercent / 100)
+    );
+
+    const platformFeeFlatCents = Math.round(platformFlat * 100);
+
+    const platformFeeTotalCents =
+      platformFeePercentCents + platformFeeFlatCents;
+
+    const shipperCents = netAfterStripeCents - platformFeeTotalCents;
+
+    if (shipperCents <= 0) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Invalid payout" });
+    }
+
+    // ============================================
+    // TRANSFER (SHIPPER KO HI JAYEGA)
+    // ============================================
+
+    const transfer = await stripe.transfers.create({
+      amount: shipperCents,
+      currency: balanceTx.currency,
+      destination: quote.shipper.stripeAccountId,
+      source_transaction: charge.id,
+      metadata: {
+        shipmentId: shipment._id.toString(),
+        quoteId: quote._id.toString(),
+      },
+    });
+
+    // ============================================
+    // UPDATE QUOTE
+    // ============================================
+
+    quote.stripeTransferId = transfer.id;
+    quote.payoutStatus = "transferred";
+    quote.paymentReleasedAt = new Date();
+
+    quote.grossAmount = grossCents / 100;
+    quote.stripeFee = stripeFeeCents / 100;
+    quote.platformFee = platformFeeTotalCents / 100;
+    quote.netAmount = shipperCents / 100;
+
+    await quote.save();
+
+    // ============================================
+    // UPDATE SHIPMENT
+    // ============================================
+
+    shipment.status = "delivered";
+    shipment.deliveredAt = new Date();
+    shipment.deliveryOtpVerified = true;
+    shipment.deliveryOtp = null;
+    shipment.deliveryOtpExpires = null;
+
+    await shipment.save();
+
+    return res.json({
+      success: true,
+      message: "Driver verified delivery & payout sent",
+    });
+  } catch (error) {
+    console.error("DRIVER VERIFY ERROR:", error);
+    res.status(500).json({ success: false, error: error.message });
   }
 };
