@@ -21,6 +21,10 @@ router.get("/verify", verifyEmail);
 router.get("/subscribers", adminAuth, getAllSubscribers);
 
 // Delete a subscriber by ID (Admin only)
+// Single delete (already exists)
 router.delete("/subscribers/:id", adminAuth, deleteSubscriber);
+
+// Multiple delete (add this)
+router.delete("/subscribers", adminAuth, deleteSubscriber);
 
 module.exports = router;
