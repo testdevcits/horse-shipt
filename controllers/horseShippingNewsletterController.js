@@ -109,35 +109,30 @@ exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
     if (!token)
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/newsletter-error?msg=token-missing`
-      );
+      return res.status(400).json({ success: false, message: "Token missing" });
 
     const user = await HorseShippingNewsletter.findOne({
       verificationToken: token,
     });
     if (!user)
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/newsletter-error?msg=invalid-token`
-      );
+      return res
+        .status(401)
+        .json({ success: false, message: "Invalid or expired token" });
 
     if (user.tokenExpiry < new Date())
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/newsletter-error?msg=token-expired`
-      );
+      return res.status(401).json({ success: false, message: "Token expired" });
 
     user.isVerified = true;
     user.verificationToken = null;
     user.tokenExpiry = null;
     await user.save();
 
-    // Redirect success
-    return res.redirect(`${process.env.FRONTEND_URL}/newsletter-success`);
+    return res
+      .status(200)
+      .json({ success: true, message: "Email verified successfully" });
   } catch (error) {
     console.error("Verify Error:", error);
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/newsletter-error?msg=server-error`
-    );
+    return res.status(500).json({ success: false, message: "Server error" });
   }
 };
 
