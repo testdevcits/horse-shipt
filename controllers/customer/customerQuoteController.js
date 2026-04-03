@@ -25,8 +25,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     const { customerSignature } = req.body;
     const customerId = req.user._id;
 
-    console.log("[DEBUG] acceptQuoteWithSignature:", { quoteId });
-
     // ---------------- VALIDATION ----------------
     if (
       !customerSignature ||
@@ -48,35 +46,31 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     if (!quote) {
       await session.abortTransaction();
-      return res.status(404).json({
-        success: false,
-        message: "Quote not found",
-      });
+      return res
+        .status(404)
+        .json({ success: false, message: "Quote not found" });
     }
 
     if (quote.contractAccepted) {
       await session.abortTransaction();
-      return res.status(400).json({
-        success: false,
-        message: "Quote already accepted",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Quote already accepted" });
     }
 
     // ---------------- AUTH ----------------
     if (quote.shipment.customer._id.toString() !== customerId.toString()) {
       await session.abortTransaction();
-      return res.status(403).json({
-        success: false,
-        message: "Not authorized",
-      });
+      return res
+        .status(403)
+        .json({ success: false, message: "Not authorized" });
     }
 
     if (!quote.shipperSignature) {
       await session.abortTransaction();
-      return res.status(400).json({
-        success: false,
-        message: "Shipper signature missing",
-      });
+      return res
+        .status(400)
+        .json({ success: false, message: "Shipper signature missing" });
     }
 
     // ---------------- PAYMENT VALIDATION ----------------
@@ -97,10 +91,9 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         quote.paymentStatus = "paid";
       } else {
         await session.abortTransaction();
-        return res.status(400).json({
-          success: false,
-          message: "Payment not completed",
-        });
+        return res
+          .status(400)
+          .json({ success: false, message: "Payment not completed" });
       }
     }
 
@@ -165,6 +158,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       quote.shipment._id,
       {
         status: "assigned",
+        shipper: quote.shipper._id,
         assignedShipper: quote.shipper._id,
       },
       { new: true, session }
@@ -189,13 +183,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    console.log("[SUCCESS] Quote accepted", {
-      quoteId,
-      shipment: quote.shipment.shipmentCode,
-      shipper: quote.shipper._id,
-    });
-
-    // ---------------- NOTIFICATIONS (OUTSIDE TRANSACTION) ----------------
+    // ---------------- NOTIFICATIONS ----------------
     const shipperEmail = quote.shipper?.email;
     const shipperPhone = quote.shipper?.mobile || quote.shipper?.phone;
 
@@ -211,13 +199,9 @@ exports.acceptQuoteWithSignature = async (req, res) => {
             currency: quote.currency,
           },
         });
-
-        console.log("[INFO] Notification sent to shipper");
       } catch (err) {
         console.error("[ERROR] Notification failed:", err.message);
       }
-    } else {
-      console.warn("[WARN] No contact info for shipper");
     }
 
     // ---------------- RESPONSE ----------------
