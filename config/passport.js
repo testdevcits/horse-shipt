@@ -25,92 +25,124 @@ passport.use(
         // Parse state safely
         // --------------------------
         const state = req.query.state;
-        if (!state) return done(new Error("Missing state parameter"), null);
+
+        if (!state) {
+          return done(null, {
+            redirectUrl: `${
+              process.env.FRONTEND_URL
+            }/login?error=${encodeURIComponent("Missing state parameter")}`,
+          });
+        }
 
         let parsedState;
         try {
           parsedState = JSON.parse(Buffer.from(state, "base64").toString());
         } catch (e) {
-          return done(new Error("Invalid state parameter"), null);
+          return done(null, {
+            redirectUrl: `${
+              process.env.FRONTEND_URL
+            }/login?error=${encodeURIComponent("Invalid state parameter")}`,
+          });
         }
 
         const role = parsedState.role;
         const location = parsedState.location;
 
         if (!role || !["shipper", "customer"].includes(role)) {
-          return done(new Error("Invalid role selected"), null);
+          return done(null, {
+            redirectUrl: `${
+              process.env.FRONTEND_URL
+            }/login?error=${encodeURIComponent("Invalid role selected")}`,
+          });
         }
 
+        // --------------------------
+        // Extract email
+        // --------------------------
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // Prevent duplicates across roles
+        // --------------------------
+        // Prevent cross-role login
+        // --------------------------
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
+
         if (
           (role === "shipper" && existingCustomer) ||
           (role === "customer" && existingShipper)
         ) {
-          return done(
-            new Error("Email already registered with another role"),
-            null
-          );
+          return done(null, {
+            redirectUrl: `${
+              process.env.FRONTEND_URL
+            }/login?error=${encodeURIComponent(
+              "Email already registered with another role"
+            )}`,
+          });
         }
 
         const Model = getModel(role);
 
-        // Check if user exists
-        let user = await Model.findOne({ email, providerId: profile.id });
+        // --------------------------
+        // LOGIN ONLY (NO SIGNUP)
+        // --------------------------
+        let user = await Model.findOne({ email });
 
+        // If user not found → reject
         if (!user) {
-          const uniqueId =
-            role === "shipper"
-              ? `HS${Math.floor(1000 + Math.random() * 9000)}`
-              : `HC${Math.floor(1000 + Math.random() * 9000)}`;
-
-          user = new Model({
-            uniqueId,
-            name: profile.displayName || email.split("@")[0],
-            email,
-            provider: "google",
-            providerId: profile.id,
-            profilePicture: profile.photos?.[0]?.value || null,
-            firstName: profile.name?.givenName || null,
-            lastName: profile.name?.familyName || null,
-            locale: profile._json?.locale || null,
-            emailVerified: true,
-            isLogin: true,
-            role,
-            rawProfile: profile._json || {},
-            currentDevice: req.headers["user-agent"] || null,
-            currentLocation: location || undefined,
-            loginHistory: [
-              {
-                deviceId: req.headers["user-agent"] || null,
-                ip: req.ip || null,
-                loginAt: new Date(),
-              },
-            ],
+          return done(null, {
+            redirectUrl: `${
+              process.env.FRONTEND_URL
+            }/login?error=${encodeURIComponent(
+              "Account not found. Please sign up first."
+            )}`,
           });
-
-          await user.save();
-        } else {
-          // Update login info
-          user.isLogin = true;
-          user.currentDevice = req.headers["user-agent"] || user.currentDevice;
-          user.currentLocation = location
-            ? { ...location, updatedAt: new Date() }
-            : user.currentLocation;
-          user.loginHistory.push({
-            deviceId: req.headers["user-agent"] || null,
-            ip: req.ip || null,
-            loginAt: new Date(),
-          });
-          await user.save();
         }
 
-        const token = generateToken({ id: user._id, role: user.role });
+        // --------------------------
+        // ⚠️ Role mismatch protection
+        // --------------------------
+        if (user.role !== role) {
+          return done(null, {
+            redirectUrl: `${
+              process.env.FRONTEND_URL
+            }/login?error=${encodeURIComponent(
+              "Please login with correct role"
+            )}`,
+          });
+        }
 
-        // Pass redirect URL
+        // --------------------------
+        // Update login info
+        // --------------------------
+        user.provider = "google";
+        user.providerId = profile.id;
+        user.isLogin = true;
+
+        user.currentDevice = req.headers["user-agent"] || user.currentDevice;
+
+        user.currentLocation = location
+          ? { ...location, updatedAt: new Date() }
+          : user.currentLocation;
+
+        user.loginHistory.push({
+          deviceId: req.headers["user-agent"] || null,
+          ip: req.ip || null,
+          loginAt: new Date(),
+        });
+
+        await user.save();
+
+        // --------------------------
+        // Generate token
+        // --------------------------
+        const token = generateToken({
+          id: user._id,
+          role: user.role,
+        });
+
+        // --------------------------
+        // Redirect URL
+        // --------------------------
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&id=${user._id}&role=${
@@ -121,11 +153,17 @@ passport.use(
           user.profilePicture || ""
         )}&provider=google&providerId=${profile.id}`;
 
-        done(null, { redirectUrl });
+        return done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
-        // Pass error message to frontend
-        done(new Error(err.message || "Google OAuth failed"), null);
+
+        return done(null, {
+          redirectUrl: `${
+            process.env.FRONTEND_URL
+          }/login?error=${encodeURIComponent(
+            err.message || "Google OAuth failed"
+          )}`,
+        });
       }
     }
   )

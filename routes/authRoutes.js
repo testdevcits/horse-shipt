@@ -12,44 +12,66 @@ router.post("/logout", authController.logout);
 
 // ------------------------
 // Google OAuth
-// Step 1: Redirect user to Google for authentication
+// Step 1: Redirect user to Google
 // ------------------------
 router.get("/google", (req, res, next) => {
   const { role } = req.query;
 
+  // Validate role
   if (!role || !["shipper", "customer"].includes(role)) {
-    return res
-      .status(400)
-      .send("Role is required and must be 'shipper' or 'customer'");
+    return res.redirect(
+      `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
+        "Please select a valid role"
+      )}`
+    );
   }
 
-  // Encode role into state param to retrieve later
+  const state = Buffer.from(
+    JSON.stringify({
+      role,
+      // location: req.ip (optional future use)
+    })
+  ).toString("base64");
+
   passport.authenticate("google", {
     scope: ["profile", "email"],
-    state: Buffer.from(JSON.stringify({ role })).toString("base64"),
+    state,
   })(req, res, next);
 });
 
 // ------------------------
-// Step 2: Handle callback from Google
+// Step 2: Handle callback
 // ------------------------
 router.get(
   "/google/callback",
   passport.authenticate("google", {
     session: false,
-    failureRedirect: `${process.env.FRONTEND_URL}/login`,
+
+    failureRedirect: `${
+      process.env.FRONTEND_URL
+    }/login?error=${encodeURIComponent("Google authentication failed")}`,
   }),
   (req, res) => {
     try {
-      // req.user.redirectUrl comes from your GoogleStrategy
       const redirectUrl = req.user?.redirectUrl;
-      if (!redirectUrl)
-        return res.redirect(`${process.env.FRONTEND_URL}/login`);
 
-      res.redirect(redirectUrl);
+      if (!redirectUrl) {
+        return res.redirect(
+          `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
+            "Login failed. Please try again."
+          )}`
+        );
+      }
+
+      return res.redirect(redirectUrl);
     } catch (err) {
       console.error("OAuth redirect error:", err);
-      res.redirect(`${process.env.FRONTEND_URL}/login`);
+
+      return res.redirect(
+        `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
+          "Something went wrong"
+        )}`
+      );
     }
   }
 );
