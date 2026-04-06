@@ -6,6 +6,10 @@ const generateToken = require("../utils/generateToken");
 
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
+// Helper: Safe redirect builder
+const buildRedirect = (path, message) =>
+  `${process.env.FRONTEND_URL}${path}?error=${encodeURIComponent(message)}`;
+
 const getCallbackURL = () =>
   process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
@@ -21,109 +25,119 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // --------------------------
-        // Parse state safely
-        // --------------------------
+        /* ===============================
+           PARSE STATE (SAFE)
+        ================================ */
         const state = req.query.state;
 
         if (!state) {
           return done(null, {
-            redirectUrl: `${
-              process.env.FRONTEND_URL
-            }/login?error=${encodeURIComponent("Missing state parameter")}`,
+            redirectUrl: buildRedirect(
+              "/login",
+              "Something went wrong. Please try again."
+            ),
           });
         }
 
         let parsedState;
         try {
           parsedState = JSON.parse(Buffer.from(state, "base64").toString());
-        } catch (e) {
+        } catch (err) {
           return done(null, {
-            redirectUrl: `${
-              process.env.FRONTEND_URL
-            }/login?error=${encodeURIComponent("Invalid state parameter")}`,
+            redirectUrl: buildRedirect(
+              "/login",
+              "Invalid authentication request"
+            ),
           });
         }
 
-        const role = parsedState.role;
-        const location = parsedState.location;
+        const { role, location } = parsedState;
 
         if (!role || !["shipper", "customer"].includes(role)) {
           return done(null, {
-            redirectUrl: `${
-              process.env.FRONTEND_URL
-            }/login?error=${encodeURIComponent("Invalid role selected")}`,
+            redirectUrl: buildRedirect("/login", "Invalid role selected"),
           });
         }
 
-        // --------------------------
-        // Extract email
-        // --------------------------
+        /* ===============================
+           EXTRACT EMAIL
+        ================================ */
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // --------------------------
-        // Prevent cross-role login
-        // --------------------------
-        const existingShipper = await Shipper.findOne({ email });
-        const existingCustomer = await Customer.findOne({ email });
+        if (!email) {
+          return done(null, {
+            redirectUrl: buildRedirect(
+              "/login",
+              "Unable to fetch email from Google"
+            ),
+          });
+        }
+
+        /* ===============================
+           PREVENT CROSS ROLE LOGIN
+        ================================ */
+        const [existingShipper, existingCustomer] = await Promise.all([
+          Shipper.findOne({ email }),
+          Customer.findOne({ email }),
+        ]);
 
         if (
           (role === "shipper" && existingCustomer) ||
           (role === "customer" && existingShipper)
         ) {
           return done(null, {
-            redirectUrl: `${
-              process.env.FRONTEND_URL
-            }/login?error=${encodeURIComponent(
+            redirectUrl: buildRedirect(
+              "/login",
               "Email already registered with another role"
-            )}`,
+            ),
           });
         }
 
         const Model = getModel(role);
 
-        // --------------------------
-        // LOGIN ONLY (NO SIGNUP)
-        // --------------------------
+        /* ===============================
+           LOGIN ONLY (NO AUTO SIGNUP)
+        ================================ */
         let user = await Model.findOne({ email });
 
-        // If user not found → reject
         if (!user) {
           return done(null, {
-            redirectUrl: `${
-              process.env.FRONTEND_URL
-            }/login?error=${encodeURIComponent(
+            redirectUrl: buildRedirect(
+              "/login",
               "Account not found. Please sign up first."
-            )}`,
+            ),
           });
         }
 
-        // --------------------------
-        // ⚠️ Role mismatch protection
-        // --------------------------
+        /* ===============================
+           ROLE VALIDATION
+        ================================ */
         if (user.role !== role) {
           return done(null, {
-            redirectUrl: `${
-              process.env.FRONTEND_URL
-            }/login?error=${encodeURIComponent(
+            redirectUrl: buildRedirect(
+              "/login",
               "Please login with correct role"
-            )}`,
+            ),
           });
         }
 
-        // --------------------------
-        // Update login info
-        // --------------------------
+        /* ===============================
+           UPDATE USER LOGIN INFO
+        ================================ */
         user.provider = "google";
         user.providerId = profile.id;
         user.isLogin = true;
 
         user.currentDevice = req.headers["user-agent"] || user.currentDevice;
 
-        user.currentLocation = location
-          ? { ...location, updatedAt: new Date() }
-          : user.currentLocation;
+        if (location) {
+          user.currentLocation = {
+            ...location,
+            updatedAt: new Date(),
+          };
+        }
 
+        user.loginHistory = user.loginHistory || [];
         user.loginHistory.push({
           deviceId: req.headers["user-agent"] || null,
           ip: req.ip || null,
@@ -132,17 +146,17 @@ passport.use(
 
         await user.save();
 
-        // --------------------------
-        // Generate token
-        // --------------------------
+        /* ===============================
+           GENERATE TOKEN
+        ================================ */
         const token = generateToken({
           id: user._id,
           role: user.role,
         });
 
-        // --------------------------
-        // Redirect URL
-        // --------------------------
+        /* ===============================
+           SUCCESS REDIRECT
+        ================================ */
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&id=${user._id}&role=${
@@ -158,17 +172,18 @@ passport.use(
         console.error("Google OAuth Error:", err);
 
         return done(null, {
-          redirectUrl: `${
-            process.env.FRONTEND_URL
-          }/login?error=${encodeURIComponent(
-            err.message || "Google OAuth failed"
-          )}`,
+          redirectUrl: buildRedirect(
+            "/login",
+            err.message || "Google login failed"
+          ),
         });
       }
     }
   )
 );
 
-// ---------------- Serialize/Deserialize ----------------
+/* ===============================
+   SERIALIZE / DESERIALIZE
+================================ */
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));

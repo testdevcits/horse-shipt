@@ -4,6 +4,15 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 
 // ------------------------
+// Helper: Safe redirect
+// ------------------------
+const redirectWithError = (res, message) => {
+  return res.redirect(
+    `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(message)}`
+  );
+};
+
+// ------------------------
 // Local signup/login/logout
 // ------------------------
 router.post("/signup", authController.signup);
@@ -11,27 +20,25 @@ router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
 // ------------------------
-// Google OAuth
-// Step 1: Redirect user to Google
+// Google OAuth - Step 1
 // ------------------------
 router.get("/google", (req, res, next) => {
   const { role } = req.query;
 
   // Validate role
   if (!role || !["shipper", "customer"].includes(role)) {
-    return res.redirect(
-      `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
-        "Please select a valid role"
-      )}`
-    );
+    return redirectWithError(res, "Please select a valid role");
   }
 
-  const state = Buffer.from(
-    JSON.stringify({
-      role,
-      // location: req.ip (optional future use)
-    })
-  ).toString("base64");
+  // Encode state safely
+  const statePayload = {
+    role,
+    // optional future fields:
+    // ip: req.ip,
+    // userAgent: req.headers["user-agent"]
+  };
+
+  const state = Buffer.from(JSON.stringify(statePayload)).toString("base64");
 
   passport.authenticate("google", {
     scope: ["profile", "email"],
@@ -40,40 +47,33 @@ router.get("/google", (req, res, next) => {
 });
 
 // ------------------------
-// Step 2: Handle callback
+// Google OAuth - Step 2 (Callback)
 // ------------------------
-router.get(
-  "/google/callback",
-  passport.authenticate("google", {
-    session: false,
-
-    failureRedirect: `${
-      process.env.FRONTEND_URL
-    }/login?error=${encodeURIComponent("Google authentication failed")}`,
-  }),
-  (req, res) => {
+router.get("/google/callback", (req, res, next) => {
+  passport.authenticate("google", (err, user, info) => {
     try {
-      const redirectUrl = req.user?.redirectUrl;
-
-      if (!redirectUrl) {
-        return res.redirect(
-          `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
-            "Login failed. Please try again."
-          )}`
+      if (err) {
+        console.error("OAuth Error:", err);
+        return redirectWithError(
+          res,
+          err.message || "Google authentication failed"
         );
       }
 
-      return res.redirect(redirectUrl);
-    } catch (err) {
-      console.error("OAuth redirect error:", err);
+      if (!user) {
+        return redirectWithError(res, info?.message || "Authentication failed");
+      }
 
-      return res.redirect(
-        `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(
-          "Something went wrong"
-        )}`
-      );
+      if (!user.redirectUrl) {
+        return redirectWithError(res, "Login failed. Please try again.");
+      }
+
+      return res.redirect(user.redirectUrl);
+    } catch (error) {
+      console.error("OAuth Callback Error:", error);
+      return redirectWithError(res, "Something went wrong");
     }
-  }
-);
+  })(req, res, next);
+});
 
 module.exports = router;
