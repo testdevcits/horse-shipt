@@ -28,8 +28,12 @@ passport.use(
         console.log("Raw state:", state);
 
         if (!state) {
-          console.warn("Missing state parameter");
-          return done(null, false, { message: "Missing state parameter" });
+          const redirectUrl = `${
+            process.env.FRONTEND_URL
+          }/oauth-success?error=${encodeURIComponent(
+            "Missing state parameter"
+          )}`;
+          return done(null, { redirectUrl });
         }
 
         let parsedState;
@@ -37,18 +41,26 @@ passport.use(
           parsedState = JSON.parse(Buffer.from(state, "base64").toString());
           console.log("Parsed state:", parsedState);
         } catch (e) {
-          console.error("Error parsing state:", e);
-          return done(null, false, { message: "Invalid state parameter" });
+          const redirectUrl = `${
+            process.env.FRONTEND_URL
+          }/oauth-success?error=${encodeURIComponent(
+            "Invalid state parameter"
+          )}`;
+          return done(null, { redirectUrl });
         }
 
         const { role, action } = parsedState;
         if (!role || !["shipper", "customer"].includes(role)) {
-          console.warn("Invalid role:", role);
-          return done(null, false, { message: "Invalid role" });
+          const redirectUrl = `${
+            process.env.FRONTEND_URL
+          }/oauth-success?error=${encodeURIComponent("Invalid role")}`;
+          return done(null, { redirectUrl });
         }
         if (!action || !["signup", "login"].includes(action)) {
-          console.warn("Invalid action:", action);
-          return done(null, false, { message: "Invalid action" });
+          const redirectUrl = `${
+            process.env.FRONTEND_URL
+          }/oauth-success?error=${encodeURIComponent("Invalid action")}`;
+          return done(null, { redirectUrl });
         }
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
@@ -61,18 +73,22 @@ passport.use(
         // ---------------- SIGNUP ----------------
         if (action === "signup") {
           if (user) {
-            console.warn("Signup attempt but user already exists:", user._id);
-            return done(null, false, {
-              message: "Account already exists. Please login.",
-            });
+            const redirectUrl = `${
+              process.env.FRONTEND_URL
+            }/oauth-success?error=${encodeURIComponent(
+              "Account already exists. Please login."
+            )}`;
+            return done(null, { redirectUrl });
           }
 
           const existingEmailUser = await Model.findOne({ email });
           if (existingEmailUser) {
-            console.warn("Email already registered:", email);
-            return done(null, false, {
-              message: "Email already registered. Please login.",
-            });
+            const redirectUrl = `${
+              process.env.FRONTEND_URL
+            }/oauth-success?error=${encodeURIComponent(
+              "Email already registered. Please login."
+            )}`;
+            return done(null, { redirectUrl });
           }
 
           const uniqueId =
@@ -108,10 +124,12 @@ passport.use(
         // ---------------- LOGIN ----------------
         else if (action === "login") {
           if (!user) {
-            console.warn("Login attempt but user not found");
-            return done(null, false, {
-              message: "No account found. Please signup first.",
-            });
+            const redirectUrl = `${
+              process.env.FRONTEND_URL
+            }/oauth-success?error=${encodeURIComponent(
+              "No account found. Please signup first."
+            )}`;
+            return done(null, { redirectUrl });
           }
 
           user.isLogin = true;
@@ -141,7 +159,12 @@ passport.use(
         done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
-        done(null, false, { message: err.message || "Google OAuth failed" });
+        const redirectUrl = `${
+          process.env.FRONTEND_URL
+        }/oauth-success?error=${encodeURIComponent(
+          err.message || "Google OAuth failed"
+        )}`;
+        done(null, { redirectUrl });
       }
     }
   )
