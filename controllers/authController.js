@@ -116,156 +116,59 @@ exports.login = async (req, res) => {
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
-    // --------------------------
-    // VALIDATION
-    // --------------------------
-    if (!role || !["shipper", "customer"].includes(role)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid role",
-        errors: ["Role must be 'shipper' or 'customer'"],
-      });
-    }
-
-    if (!email) {
-      return res.status(400).json({
-        success: false,
-        message: "Email required",
-        errors: ["Email is required"],
-      });
-    }
+    if (!role || !email)
+      return res
+        .status(400)
+        .json({ success: false, errors: ["Role and email are required"] });
 
     const Model = getModel(role);
+    if (!Model)
+      return res.status(400).json({ success: false, errors: ["Invalid role"] });
 
-    // --------------------------
-    // FIND USER
-    // --------------------------
     const user = await Model.findOne({ email });
+    if (!user)
+      return res
+        .status(401)
+        .json({ success: false, errors: ["Invalid credentials"] });
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "Account not found",
-        errors: ["No account found with this email. Please sign up first."],
-      });
-    }
-
-    // --------------------------
-    // ROLE CHECK
-    // --------------------------
-    if (user.role !== role) {
-      return res.status(403).json({
-        success: false,
-        message: "Role mismatch",
-        errors: ["Please login using the correct role"],
-      });
-    }
-
-    // --------------------------
-    // GOOGLE LOGIN
-    // --------------------------
-    if (provider === "google") {
-      if (!profile?.sub) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid Google data",
-          errors: ["Google authentication failed"],
-        });
-      }
-
-      if (user.provider !== "google") {
-        return res.status(400).json({
-          success: false,
-          message: "Wrong login method",
-          errors: ["Use email & password to login"],
-        });
-      }
-
-      if (user.providerId !== profile.sub) {
-        return res.status(401).json({
-          success: false,
-          message: "Google account mismatch",
-          errors: ["Incorrect Google account used"],
-        });
-      }
-    }
-    // --------------------------
-    // LOCAL LOGIN
-    // --------------------------
-    else {
-      if (!password) {
-        return res.status(400).json({
-          success: false,
-          message: "Password required",
-          errors: ["Password is required"],
-        });
-      }
-
+    // Google login
+    if (provider === "google" && profile) {
+      if (user.providerId !== profile.sub)
+        return res
+          .status(401)
+          .json({ success: false, errors: ["Google account mismatch"] });
+    } else {
+      // Local login — compare password
       const isMatch = await user.matchPassword(password);
-
-      if (!isMatch) {
-        return res.status(401).json({
-          success: false,
-          message: "Invalid credentials",
-          errors: ["Email or password is incorrect"],
-        });
-      }
+      if (!isMatch)
+        return res
+          .status(401)
+          .json({ success: false, errors: ["Invalid credentials"] });
     }
 
-    // --------------------------
-    // UPDATE LOGIN INFO
-    // --------------------------
+    // Update login info
     user.isLogin = true;
-
     user.currentDevice = deviceId || user.currentDevice;
-
-    user.currentLocation = location
-      ? { ...location, updatedAt: new Date() }
-      : user.currentLocation;
-
+    user.currentLocation = location || user.currentLocation;
     user.loginHistory.push({
       deviceId: deviceId || null,
-      ip: req.ip || null,
+      ip: req.ip,
       loginAt: new Date(),
     });
 
     await user.save();
 
-    // --------------------------
-    // TOKEN
-    // --------------------------
-    const token = generateToken({
-      id: user._id,
-      role: user.role,
-    });
+    const token = generateToken({ id: user._id, role: user.role });
 
-    // --------------------------
-    // SUCCESS RESPONSE
-    // --------------------------
-    return res.status(200).json({
-      success: true,
-      message: "Login successful",
-      data: {
-        user: {
-          _id: user._id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          profilePicture: user.profilePicture || null,
-        },
-        token,
-      },
-    });
+    res
+      .status(200)
+      .json({ success: true, data: { ...user.toObject(), token } });
   } catch (err) {
     console.error("[LOGIN ERROR]", err);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-      errors: ["Something went wrong. Please try again later."],
-    });
+    res.status(500).json({ success: false, errors: ["Server Error"] });
   }
 };
+
 // ----------------- Logout -----------------
 exports.logout = async (req, res) => {
   try {
