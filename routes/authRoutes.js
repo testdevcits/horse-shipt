@@ -23,19 +23,21 @@ router.post("/logout", authController.logout);
 // Google OAuth - Step 1
 // ------------------------
 router.get("/google", (req, res, next) => {
-  const { role } = req.query;
+  const { role, action } = req.query;
 
-  // Validate role
+  // Validate role & action
   if (!role || !["shipper", "customer"].includes(role)) {
     return redirectWithError(res, "Please select a valid role");
   }
 
-  // Encode state safely
+  if (!action || !["signup", "login"].includes(action)) {
+    return redirectWithError(res, "Please specify action (signup or login)");
+  }
+
   const statePayload = {
     role,
-    // optional future fields:
-    // ip: req.ip,
-    // userAgent: req.headers["user-agent"]
+    action,
+    // optional: location, ip, etc
   };
 
   const state = Buffer.from(JSON.stringify(statePayload)).toString("base64");

@@ -6,10 +6,6 @@ const generateToken = require("../utils/generateToken");
 
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
-// Helper: Safe redirect builder
-const buildRedirect = (path, message) =>
-  `${process.env.FRONTEND_URL}${path}?error=${encodeURIComponent(message)}`;
-
 const getCallbackURL = () =>
   process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
@@ -25,138 +21,117 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        /* ===============================
-           PARSE STATE (SAFE)
-        ================================ */
+        // --------------------------
+        // Parse state safely
+        // --------------------------
         const state = req.query.state;
-
-        if (!state) {
-          return done(null, {
-            redirectUrl: buildRedirect(
-              "/login",
-              "Something went wrong. Please try again."
-            ),
-          });
-        }
+        if (!state)
+          return done(null, false, { message: "Missing state parameter" });
 
         let parsedState;
         try {
           parsedState = JSON.parse(Buffer.from(state, "base64").toString());
-        } catch (err) {
-          return done(null, {
-            redirectUrl: buildRedirect(
-              "/login",
-              "Invalid authentication request"
-            ),
-          });
+        } catch (e) {
+          return done(null, false, { message: "Invalid state parameter" });
         }
 
-        const { role, location } = parsedState;
+        const { role, action, location } = parsedState;
 
         if (!role || !["shipper", "customer"].includes(role)) {
-          return done(null, {
-            redirectUrl: buildRedirect("/login", "Invalid role selected"),
-          });
+          return done(null, false, { message: "Invalid role selected" });
         }
 
-        /* ===============================
-           EXTRACT EMAIL
-        ================================ */
+        if (!action || !["signup", "login"].includes(action)) {
+          return done(null, false, { message: "Invalid action specified" });
+        }
+
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        if (!email) {
-          return done(null, {
-            redirectUrl: buildRedirect(
-              "/login",
-              "Unable to fetch email from Google"
-            ),
-          });
-        }
-
-        /* ===============================
-           PREVENT CROSS ROLE LOGIN
-        ================================ */
-        const [existingShipper, existingCustomer] = await Promise.all([
-          Shipper.findOne({ email }),
-          Customer.findOne({ email }),
-        ]);
-
-        if (
-          (role === "shipper" && existingCustomer) ||
-          (role === "customer" && existingShipper)
-        ) {
-          return done(null, {
-            redirectUrl: buildRedirect(
-              "/login",
-              "Email already registered with another role"
-            ),
-          });
-        }
+        const existingShipper = await Shipper.findOne({ email });
+        const existingCustomer = await Customer.findOne({ email });
 
         const Model = getModel(role);
 
-        /* ===============================
-           LOGIN ONLY (NO AUTO SIGNUP)
-        ================================ */
-        let user = await Model.findOne({ email });
+        // ---------------- ACTION LOGIC ----------------
+        if (action === "signup") {
+          if (
+            (role === "shipper" && existingShipper) ||
+            (role === "customer" && existingCustomer)
+          ) {
+            return done(null, false, {
+              message: "Account already exists. Please login.",
+            });
+          }
+        } else if (action === "login") {
+          if (
+            (role === "shipper" && !existingShipper) ||
+            (role === "customer" && !existingCustomer)
+          ) {
+            return done(null, false, {
+              message: "Account not found. Please signup first.",
+            });
+          }
+        }
 
+        // ---------------- Check if user exists ----------------
+        let user = await Model.findOne({ email, providerId: profile.id });
+
+        // ---------------- Create user only on signup ----------------
         if (!user) {
-          return done(null, {
-            redirectUrl: buildRedirect(
-              "/login",
-              "Account not found. Please sign up first."
-            ),
+          if (action === "login") {
+            return done(null, false, {
+              message: "No account found. Please signup first.",
+            });
+          }
+
+          const uniqueId =
+            role === "shipper"
+              ? `HS${Math.floor(1000 + Math.random() * 9000)}`
+              : `HC${Math.floor(1000 + Math.random() * 9000)}`;
+
+          user = new Model({
+            uniqueId,
+            name: profile.displayName || email.split("@")[0],
+            email,
+            provider: "google",
+            providerId: profile.id,
+            profilePicture: profile.photos?.[0]?.value || null,
+            firstName: profile.name?.givenName || null,
+            lastName: profile.name?.familyName || null,
+            locale: profile._json?.locale || null,
+            emailVerified: true,
+            isLogin: true,
+            role,
+            rawProfile: profile._json || {},
+            currentDevice: req.headers["user-agent"] || null,
+            currentLocation: location || undefined,
+            loginHistory: [
+              {
+                deviceId: req.headers["user-agent"] || null,
+                ip: req.ip || null,
+                loginAt: new Date(),
+              },
+            ],
           });
-        }
 
-        /* ===============================
-           ROLE VALIDATION
-        ================================ */
-        if (user.role !== role) {
-          return done(null, {
-            redirectUrl: buildRedirect(
-              "/login",
-              "Please login with correct role"
-            ),
+          await user.save();
+        } else {
+          // ---------------- Update login info ----------------
+          user.isLogin = true;
+          user.currentDevice = req.headers["user-agent"] || user.currentDevice;
+          user.currentLocation = location
+            ? { ...location, updatedAt: new Date() }
+            : user.currentLocation;
+          user.loginHistory.push({
+            deviceId: req.headers["user-agent"] || null,
+            ip: req.ip || null,
+            loginAt: new Date(),
           });
+          await user.save();
         }
 
-        /* ===============================
-           UPDATE USER LOGIN INFO
-        ================================ */
-        user.provider = "google";
-        user.providerId = profile.id;
-        user.isLogin = true;
+        const token = generateToken({ id: user._id, role: user.role });
 
-        user.currentDevice = req.headers["user-agent"] || user.currentDevice;
-
-        if (location) {
-          user.currentLocation = {
-            ...location,
-            updatedAt: new Date(),
-          };
-        }
-
-        user.loginHistory = user.loginHistory || [];
-        user.loginHistory.push({
-          deviceId: req.headers["user-agent"] || null,
-          ip: req.ip || null,
-          loginAt: new Date(),
-        });
-
-        await user.save();
-
-        /* ===============================
-           GENERATE TOKEN
-        ================================ */
-        const token = generateToken({
-          id: user._id,
-          role: user.role,
-        });
-
-        /* ===============================
-           SUCCESS REDIRECT
-        ================================ */
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&id=${user._id}&role=${
@@ -167,23 +142,15 @@ passport.use(
           user.profilePicture || ""
         )}&provider=google&providerId=${profile.id}`;
 
-        return done(null, { redirectUrl });
+        done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
-
-        return done(null, {
-          redirectUrl: buildRedirect(
-            "/login",
-            err.message || "Google login failed"
-          ),
-        });
+        done(null, false, { message: err.message || "Google OAuth failed" });
       }
     }
   )
 );
 
-/* ===============================
-   SERIALIZE / DESERIALIZE
-================================ */
+// ---------------- Serialize/Deserialize ----------------
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));
