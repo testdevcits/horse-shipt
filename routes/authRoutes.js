@@ -4,7 +4,7 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 
 // ------------------------
-// Helper: Safe redirect
+// Helper: Safe redirect with error
 // ------------------------
 const redirectWithError = (res, message) => {
   return res.redirect(
@@ -34,12 +34,7 @@ router.get("/google", (req, res, next) => {
     return redirectWithError(res, "Please specify action (signup or login)");
   }
 
-  const statePayload = {
-    role,
-    action,
-    // optional: location, ip, etc
-  };
-
+  const statePayload = { role, action };
   const state = Buffer.from(JSON.stringify(statePayload)).toString("base64");
 
   passport.authenticate("google", {
@@ -66,10 +61,7 @@ router.get("/google/callback", (req, res, next) => {
         return redirectWithError(res, info?.message || "Authentication failed");
       }
 
-      if (!user.redirectUrl) {
-        return redirectWithError(res, "Login failed. Please try again.");
-      }
-
+      // Redirect success
       return res.redirect(user.redirectUrl);
     } catch (error) {
       console.error("OAuth Callback Error:", error);

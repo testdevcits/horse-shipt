@@ -5,7 +5,6 @@ const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
-
 const getCallbackURL = () =>
   process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
@@ -21,9 +20,7 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // --------------------------
-        // Parse state safely
-        // --------------------------
+        // ---------------- Parse state safely ----------------
         const state = req.query.state;
         if (!state)
           return done(null, false, { message: "Missing state parameter" });
@@ -35,55 +32,35 @@ passport.use(
           return done(null, false, { message: "Invalid state parameter" });
         }
 
-        const { role, action, location } = parsedState;
-
-        if (!role || !["shipper", "customer"].includes(role)) {
-          return done(null, false, { message: "Invalid role selected" });
-        }
-
-        if (!action || !["signup", "login"].includes(action)) {
-          return done(null, false, { message: "Invalid action specified" });
-        }
+        const { role, action } = parsedState;
+        if (!role || !["shipper", "customer"].includes(role))
+          return done(null, false, { message: "Invalid role" });
+        if (!action || !["signup", "login"].includes(action))
+          return done(null, false, { message: "Invalid action" });
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
-
-        const existingShipper = await Shipper.findOne({ email });
-        const existingCustomer = await Customer.findOne({ email });
-
         const Model = getModel(role);
 
-        // ---------------- ACTION LOGIC ----------------
+        // Check if user exists by providerId
+        let user = await Model.findOne({ providerId: profile.id });
+
+        // ---------------- SIGNUP ----------------
         if (action === "signup") {
-          if (
-            (role === "shipper" && existingShipper) ||
-            (role === "customer" && existingCustomer)
-          ) {
+          if (user) {
             return done(null, false, {
               message: "Account already exists. Please login.",
             });
           }
-        } else if (action === "login") {
-          if (
-            (role === "shipper" && !existingShipper) ||
-            (role === "customer" && !existingCustomer)
-          ) {
-            return done(null, false, {
-              message: "Account not found. Please signup first.",
-            });
-          }
-        }
 
-        // ---------------- Check if user exists ----------------
-        let user = await Model.findOne({ email, providerId: profile.id });
-
-        // ---------------- Create user only on signup ----------------
-        if (!user) {
-          if (action === "login") {
+          // Prevent duplicate emails (manual signup)
+          const existingEmailUser = await Model.findOne({ email });
+          if (existingEmailUser) {
             return done(null, false, {
-              message: "No account found. Please signup first.",
+              message: "Email already registered. Please login.",
             });
           }
 
+          // Create new user
           const uniqueId =
             role === "shipper"
               ? `HS${Math.floor(1000 + Math.random() * 9000)}`
@@ -98,13 +75,9 @@ passport.use(
             profilePicture: profile.photos?.[0]?.value || null,
             firstName: profile.name?.givenName || null,
             lastName: profile.name?.familyName || null,
-            locale: profile._json?.locale || null,
             emailVerified: true,
-            isLogin: true,
             role,
-            rawProfile: profile._json || {},
-            currentDevice: req.headers["user-agent"] || null,
-            currentLocation: location || undefined,
+            isLogin: true,
             loginHistory: [
               {
                 deviceId: req.headers["user-agent"] || null,
@@ -115,13 +88,19 @@ passport.use(
           });
 
           await user.save();
-        } else {
-          // ---------------- Update login info ----------------
+        }
+
+        // ---------------- LOGIN ----------------
+        else if (action === "login") {
+          if (!user) {
+            return done(null, false, {
+              message: "No account found. Please signup first.",
+            });
+          }
+
+          // Update login info
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
-          user.currentLocation = location
-            ? { ...location, updatedAt: new Date() }
-            : user.currentLocation;
           user.loginHistory.push({
             deviceId: req.headers["user-agent"] || null,
             ip: req.ip || null,
@@ -130,8 +109,8 @@ passport.use(
           await user.save();
         }
 
+        // ---------------- Generate token & redirect ----------------
         const token = generateToken({ id: user._id, role: user.role });
-
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&id=${user._id}&role=${
