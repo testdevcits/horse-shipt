@@ -20,7 +20,8 @@ exports.getShipperProfile = async (req, res) => {
     const shipper = await Shipper.findById(req.user.id)
       .select(
         "uniqueId name email role firstName lastName locale emailVerified " +
-          "profileImage profilePicture bannerImage currentLocation isLogin accountStatus"
+          "profileImage profilePicture bannerImage currentLocation isLogin accountStatus " +
+          "description mobile"
       )
       .lean();
 
@@ -71,9 +72,9 @@ exports.getShipperProfile = async (req, res) => {
         emailVerified: shipper.emailVerified,
         currentLocation: shipper.currentLocation || null,
         isLogin: shipper.isLogin,
-
         accountStatus: shipper.accountStatus || "ACTIVE",
-
+        description: shipper.description || "",
+        mobile: shipper.mobile || "",
         profileImage: resolvedProfileImage,
         bannerImage: resolvedBannerImage,
       },
