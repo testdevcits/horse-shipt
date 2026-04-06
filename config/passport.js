@@ -19,48 +19,62 @@ passport.use(
       passReqToCallback: true,
     },
     async (req, accessToken, refreshToken, profile, done) => {
+      console.log("=== Google OAuth Callback Triggered ===");
+      console.log("Profile:", profile);
+
       try {
         // ---------------- Parse state safely ----------------
         const state = req.query.state;
-        if (!state)
+        console.log("Raw state:", state);
+
+        if (!state) {
+          console.warn("Missing state parameter");
           return done(null, false, { message: "Missing state parameter" });
+        }
 
         let parsedState;
         try {
           parsedState = JSON.parse(Buffer.from(state, "base64").toString());
+          console.log("Parsed state:", parsedState);
         } catch (e) {
+          console.error("Error parsing state:", e);
           return done(null, false, { message: "Invalid state parameter" });
         }
 
         const { role, action } = parsedState;
-        if (!role || !["shipper", "customer"].includes(role))
+        if (!role || !["shipper", "customer"].includes(role)) {
+          console.warn("Invalid role:", role);
           return done(null, false, { message: "Invalid role" });
-        if (!action || !["signup", "login"].includes(action))
+        }
+        if (!action || !["signup", "login"].includes(action)) {
+          console.warn("Invalid action:", action);
           return done(null, false, { message: "Invalid action" });
+        }
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
         const Model = getModel(role);
 
-        // Check if user exists by providerId
+        console.log(`Checking user existence for providerId: ${profile.id}`);
         let user = await Model.findOne({ providerId: profile.id });
+        console.log("Found user:", user);
 
         // ---------------- SIGNUP ----------------
         if (action === "signup") {
           if (user) {
+            console.warn("Signup attempt but user already exists:", user._id);
             return done(null, false, {
               message: "Account already exists. Please login.",
             });
           }
 
-          // Prevent duplicate emails (manual signup)
           const existingEmailUser = await Model.findOne({ email });
           if (existingEmailUser) {
+            console.warn("Email already registered:", email);
             return done(null, false, {
               message: "Email already registered. Please login.",
             });
           }
 
-          // Create new user
           const uniqueId =
             role === "shipper"
               ? `HS${Math.floor(1000 + Math.random() * 9000)}`
@@ -88,17 +102,18 @@ passport.use(
           });
 
           await user.save();
+          console.log("New user created:", user._id);
         }
 
         // ---------------- LOGIN ----------------
         else if (action === "login") {
           if (!user) {
+            console.warn("Login attempt but user not found");
             return done(null, false, {
               message: "No account found. Please signup first.",
             });
           }
 
-          // Update login info
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
           user.loginHistory.push({
@@ -107,6 +122,7 @@ passport.use(
             loginAt: new Date(),
           });
           await user.save();
+          console.log("User login updated:", user._id);
         }
 
         // ---------------- Generate token & redirect ----------------
@@ -121,6 +137,7 @@ passport.use(
           user.profilePicture || ""
         )}&provider=google&providerId=${profile.id}`;
 
+        console.log("Redirect URL:", redirectUrl);
         done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
@@ -131,5 +148,12 @@ passport.use(
 );
 
 // ---------------- Serialize/Deserialize ----------------
-passport.serializeUser((obj, done) => done(null, obj));
-passport.deserializeUser((obj, done) => done(null, obj));
+passport.serializeUser((obj, done) => {
+  console.log("Serializing user:", obj);
+  done(null, obj);
+});
+
+passport.deserializeUser((obj, done) => {
+  console.log("Deserializing user:", obj);
+  done(null, obj);
+});
