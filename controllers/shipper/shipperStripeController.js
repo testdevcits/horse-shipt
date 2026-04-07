@@ -818,3 +818,28 @@ exports.cancelSubscription = async (req, res) => {
     });
   }
 };
+
+// GET PLAN DETAILS
+exports.getSubscriptionPlan = async (req, res) => {
+  try {
+    const priceId = "price_1TJSIbCVoPk11ijLoFp77l78";
+
+    const price = await stripe.prices.retrieve(priceId, {
+      expand: ["product"],
+    });
+
+    res.json({
+      success: true,
+      data: {
+        priceId: price.id,
+        amount: price.unit_amount / 100,
+        currency: price.currency,
+        interval: price.recurring.interval,
+        productName: price.product.name,
+      },
+    });
+  } catch (error) {
+    console.error("Plan Fetch Error:", error);
+    res.status(500).json({ error: error.message });
+  }
+};

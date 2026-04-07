@@ -131,6 +131,9 @@ const {
   createSetupIntent,
   savePaymentMethod,
   getPaymentStatus,
+  getSubscriptionPlan,
+  createSubscription,
+  cancelSubscription,
 } = require("../../controllers/shipper/shipperStripeController");
 
 // -------- Vehicles --------
@@ -355,9 +358,17 @@ router.get("/chat/customers", shipperAuth, getCustomersForChat);
 router.put("/reviews/google-link", shipperAuth, updateGoogleReviewLink);
 router.get("/reviews/google-link", shipperAuth, getGoogleReviewLink);
 
+// ================= STRIPE ACCOUNT =================
 router.post("/stripe/create-account", shipperAuth, createStripeAccount);
 router.post("/stripe/onboarding", shipperAuth, createOnboardingLink);
 router.get("/stripe/status", shipperAuth, checkStripeStatus);
+
+// ================= SUBSCRIPTION =================
+router.get("/stripe/subscription-plan", shipperAuth, getSubscriptionPlan);
+
+router.post("/stripe/subscription/create", shipperAuth, createSubscription);
+
+router.post("/stripe/subscription/cancel", shipperAuth, cancelSubscription);
 
 // ====================================================
 // SHIPPER Delivered ROUTES
