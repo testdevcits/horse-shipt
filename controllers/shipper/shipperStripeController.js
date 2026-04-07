@@ -6,6 +6,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const Shipper = require("../../models/shipper/shipperModel");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const subscriptionModel = require("../../models/shipper/subscriptionModel");
 
 // ==========================================================
 // GET PLATFORM COUNTRY
@@ -233,7 +234,7 @@ exports.stripeWebhook = async (req, res) => {
         break;
 
       // =====================================================
-      // PAYMENT SUCCESS
+      // PAYMENT SUCCESS (SHIPMENT)
       // =====================================================
       case "payment_intent.succeeded":
         {
@@ -253,7 +254,7 @@ exports.stripeWebhook = async (req, res) => {
         break;
 
       // =====================================================
-      // PAYMENT FAILED
+      // PAYMENT FAILED (SHIPMENT)
       // =====================================================
       case "payment_intent.payment_failed":
         {
@@ -276,13 +277,12 @@ exports.stripeWebhook = async (req, res) => {
       case "charge.succeeded":
         {
           const charge = data;
-
           console.log("Charge succeeded:", charge.id);
         }
         break;
 
       // =====================================================
-      // TRANSFER CREATED (SHIPPER PAYMENT)
+      // TRANSFER CREATED
       // =====================================================
       case "transfer.created":
         {
@@ -301,13 +301,131 @@ exports.stripeWebhook = async (req, res) => {
         break;
 
       // =====================================================
-      // PAYOUT COMPLETED (BANK TRANSFER TO SHIPPER)
+      // PAYOUT COMPLETED
       // =====================================================
       case "payout.paid":
         {
           const payout = data;
-
           console.log("Payout completed:", payout.id);
+        }
+        break;
+
+      // =====================================================
+      // SUBSCRIPTION CREATED / UPDATED
+      // =====================================================
+      case "customer.subscription.created":
+      case "customer.subscription.updated":
+        {
+          const subscription = data;
+
+          const SubscriptionModel = require("../../models/subscription/subscriptionModel");
+
+          const existingSub = await SubscriptionModel.findOne({
+            stripeSubscriptionId: subscription.id,
+          });
+
+          if (existingSub) {
+            existingSub.status = subscription.status;
+
+            existingSub.currentPeriodStart = new Date(
+              subscription.current_period_start * 1000
+            );
+
+            existingSub.currentPeriodEnd = new Date(
+              subscription.current_period_end * 1000
+            );
+
+            existingSub.cancelAtPeriodEnd = subscription.cancel_at_period_end;
+
+            await existingSub.save();
+
+            console.log("Subscription updated:", subscription.id);
+          }
+        }
+        break;
+
+      // =====================================================
+      // SUBSCRIPTION CANCELED
+      // =====================================================
+      case "customer.subscription.deleted":
+        {
+          const subscription = data;
+
+          const SubscriptionModel = require("../../models/subscription/subscriptionModel");
+
+          const existingSub = await SubscriptionModel.findOne({
+            stripeSubscriptionId: subscription.id,
+          });
+
+          if (existingSub) {
+            existingSub.status = "canceled";
+            await existingSub.save();
+
+            console.log("Subscription canceled:", subscription.id);
+          }
+        }
+        break;
+
+      // =====================================================
+      // SUBSCRIPTION PAYMENT SUCCESS
+      // =====================================================
+      case "invoice.paid":
+        {
+          const invoice = data;
+
+          const SubscriptionModel = require("../../models/subscription/subscriptionModel");
+
+          const sub = await SubscriptionModel.findOne({
+            stripeSubscriptionId: invoice.subscription,
+          });
+
+          if (sub) {
+            sub.status = "active";
+            sub.lastPaymentDate = new Date();
+
+            if (invoice.lines?.data?.length > 0) {
+              sub.nextBillingDate = new Date(
+                invoice.lines.data[0].period.end * 1000
+              );
+            }
+
+            await sub.save();
+
+            console.log("Subscription payment success:", sub._id);
+          }
+        }
+        break;
+
+      // =====================================================
+      // SUBSCRIPTION PAYMENT FAILED
+      // =====================================================
+      case "invoice.payment_failed":
+        {
+          const invoice = data;
+
+          const SubscriptionModel = require("../../models/subscription/subscriptionModel");
+
+          const sub = await SubscriptionModel.findOne({
+            stripeSubscriptionId: invoice.subscription,
+          });
+
+          if (sub) {
+            sub.status = "past_due";
+            await sub.save();
+
+            // Restrict shipper
+            const shipper = await Shipper.findById(sub.shipperId);
+
+            if (shipper) {
+              shipper.accountStatus = "RESTRICTED";
+              shipper.lastPaymentFailure = new Date();
+              shipper.paymentFailureReason = "Subscription payment failed";
+
+              await shipper.save();
+            }
+
+            console.log("Subscription payment failed:", sub._id);
+          }
         }
         break;
 
@@ -502,6 +620,197 @@ exports.getPaymentStatus = async (req, res) => {
     });
   } catch (error) {
     console.error("Payment Status Error:", error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
+
+exports.createSubscription = async (req, res) => {
+  try {
+    const { withTrial = true } = req.body;
+
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper || !shipper.stripeCustomerId || !shipper.paymentMethodId) {
+      return res.status(400).json({
+        success: false,
+        message: "Customer or card not found",
+      });
+    }
+
+    // Check if already subscribed
+    const existingSub = await subscriptionModel.findOne({
+      shipperId: shipper._id,
+      status: { $in: ["active", "trialing", "past_due"] },
+    });
+
+    if (existingSub) {
+      return res.status(400).json({
+        success: false,
+        message: "Subscription already exists",
+      });
+    }
+
+    // ============================
+    // CREATE SUBSCRIPTION
+    // ============================
+    const subscriptionData = {
+      customer: shipper.stripeCustomerId,
+
+      items: [
+        {
+          price: "price_1TJSIbCVoPk11ijLoFp77l78",
+        },
+      ],
+
+      default_payment_method: shipper.paymentMethodId,
+
+      expand: ["items.data.price"],
+
+      metadata: {
+        shipperId: shipper._id.toString(),
+        email: shipper.email,
+        plan: "Horse Shipt Premium",
+      },
+    };
+
+    // Trial condition
+    if (withTrial) {
+      subscriptionData.trial_period_days = 30;
+    }
+
+    const subscription = await stripe.subscriptions.create(subscriptionData);
+
+    const price = subscription.items.data[0].price;
+
+    // ============================
+    // SAVE IN DB (Subscription Model)
+    // ============================
+    const newSubscription = await Subscription.create({
+      shipperId: shipper._id,
+
+      stripeCustomerId: shipper.stripeCustomerId,
+      stripeSubscriptionId: subscription.id,
+      stripePriceId: price.id,
+
+      planName: "Horse Shipt Premium",
+
+      amount: price.unit_amount / 100,
+      currency: price.currency,
+      interval: price.recurring.interval,
+
+      status: subscription.status,
+
+      trialStart: subscription.trial_start
+        ? new Date(subscription.trial_start * 1000)
+        : null,
+
+      trialEnd: subscription.trial_end
+        ? new Date(subscription.trial_end * 1000)
+        : null,
+
+      currentPeriodStart: new Date(subscription.current_period_start * 1000),
+
+      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+
+      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+    });
+
+    res.json({
+      success: true,
+      message: "Subscription created",
+      data: {
+        status: newSubscription.status,
+        trialEnd: newSubscription.trialEnd,
+      },
+    });
+  } catch (error) {
+    console.error("[SUBSCRIPTION ERROR]", error);
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// ==========================================================
+// CANCEL SUBSCRIPTION
+// ==========================================================
+exports.cancelSubscription = async (req, res) => {
+  try {
+    const { cancelImmediately = false, reason = "User requested" } = req.body;
+
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
+      });
+    }
+
+    const subscription = await subscriptionModel.findOne({
+      shipperId: shipper._id,
+      status: { $in: ["active", "trialing", "past_due"] },
+    });
+
+    if (!subscription) {
+      return res.status(404).json({
+        success: false,
+        message: "No active subscription found",
+      });
+    }
+
+    // already cancel check
+    if (subscription.status === "canceled") {
+      return res.status(400).json({
+        success: false,
+        message: "Subscription already canceled",
+      });
+    }
+
+    let updatedStripeSub;
+
+    // ============================
+    // CANCEL LOGIC
+    // ============================
+    if (cancelImmediately) {
+      updatedStripeSub = await stripe.subscriptions.del(
+        subscription.stripeSubscriptionId
+      );
+
+      subscription.status = "canceled"; // immediate update
+    } else {
+      updatedStripeSub = await stripe.subscriptions.update(
+        subscription.stripeSubscriptionId,
+        {
+          cancel_at_period_end: true,
+        }
+      );
+    }
+
+    // ============================
+    // UPDATE DB
+    // ============================
+    subscription.cancelAtPeriodEnd = !cancelImmediately;
+    subscription.canceledAt = new Date();
+    subscription.cancelReason = reason;
+
+    await subscription.save();
+
+    res.json({
+      success: true,
+      message: cancelImmediately
+        ? "Subscription canceled immediately"
+        : "Subscription will cancel at period end",
+      data: {
+        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+        status: subscription.status,
+        canceledAt: subscription.canceledAt,
+      },
+    });
+  } catch (error) {
+    console.error("[CANCEL SUBSCRIPTION ERROR]", error);
 
     res.status(500).json({
       success: false,
