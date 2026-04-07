@@ -134,6 +134,7 @@ const {
   getSubscriptionPlan,
   createSubscription,
   cancelSubscription,
+  getShipperSubscriptionStatus,
 } = require("../../controllers/shipper/shipperStripeController");
 
 // -------- Vehicles --------
@@ -369,6 +370,12 @@ router.get("/stripe/subscription-plan", shipperAuth, getSubscriptionPlan);
 router.post("/stripe/subscription/create", shipperAuth, createSubscription);
 
 router.post("/stripe/subscription/cancel", shipperAuth, cancelSubscription);
+
+router.get(
+  "/stripe/subscription/status",
+  shipperAuth,
+  getShipperSubscriptionStatus
+);
 
 // ====================================================
 // SHIPPER Delivered ROUTES

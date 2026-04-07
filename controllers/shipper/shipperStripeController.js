@@ -1010,3 +1010,111 @@ exports.getSubscriptionPlan = async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 };
+
+// GET CURRENT SHIPPER SUBSCRIPTION STATUS
+exports.getShipperSubscriptionStatus = async (req, res) => {
+  try {
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper || !shipper.stripeCustomerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipper not found or Stripe customer missing",
+      });
+    }
+
+    // =======================
+    // FETCH SUBSCRIPTIONS FROM STRIPE
+    // =======================
+    const subscriptions = await stripe.subscriptions.list({
+      customer: shipper.stripeCustomerId,
+      status: "all", // trialing, active, canceled, past_due etc.
+      expand: ["data.items.data.price"],
+    });
+
+    const currentSub = subscriptions.data.find((sub) =>
+      ["trialing", "active"].includes(sub.status)
+    );
+
+    if (!currentSub) {
+      return res.json({
+        success: true,
+        trialActive: false,
+        message: "No active or trial subscription found",
+      });
+    }
+
+    // =======================
+    // TRIAL REMAINING DAYS
+    // =======================
+    let remainingTrialDays = 0;
+    if (currentSub.status === "trialing" && currentSub.trial_end) {
+      const now = Math.floor(Date.now() / 1000);
+      remainingTrialDays = Math.ceil(
+        (currentSub.trial_end - now) / (60 * 60 * 24)
+      );
+    }
+
+    // =======================
+    // UPDATE DB (OPTIONAL SYNC)
+    // =======================
+    const price = currentSub.items.data[0].price;
+    const currentPeriodStart = currentSub.current_period_start
+      ? new Date(currentSub.current_period_start * 1000)
+      : currentSub.trial_start
+      ? new Date(currentSub.trial_start * 1000)
+      : null;
+
+    const currentPeriodEnd = currentSub.current_period_end
+      ? new Date(currentSub.current_period_end * 1000)
+      : currentSub.trial_end
+      ? new Date(currentSub.trial_end * 1000)
+      : null;
+
+    await subscriptionModel.findOneAndUpdate(
+      { stripeSubscriptionId: currentSub.id },
+      {
+        shipperId: shipper._id,
+        stripeCustomerId: shipper.stripeCustomerId,
+        stripeSubscriptionId: currentSub.id,
+        stripePriceId: price.id,
+        planName: "Horse Shipt Premium",
+        amount: price.unit_amount / 100,
+        currency: price.currency,
+        interval: price.recurring.interval,
+        status: currentSub.status,
+        trialStart: currentSub.trial_start
+          ? new Date(currentSub.trial_start * 1000)
+          : null,
+        trialEnd: currentSub.trial_end
+          ? new Date(currentSub.trial_end * 1000)
+          : null,
+        currentPeriodStart,
+        currentPeriodEnd,
+        cancelAtPeriodEnd: currentSub.cancel_at_period_end,
+      },
+      { upsert: true, new: true }
+    );
+
+    // =======================
+    // RESPONSE TO FRONTEND
+    // =======================
+    res.json({
+      success: true,
+      trialActive: currentSub.status === "trialing",
+      status: currentSub.status,
+      remainingTrialDays,
+      trialEnd: currentSub.trial_end
+        ? new Date(currentSub.trial_end * 1000)
+        : null,
+      currentPeriodStart,
+      currentPeriodEnd,
+    });
+  } catch (error) {
+    console.error("Get Shipper Subscription Error:", error);
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
+  }
+};
