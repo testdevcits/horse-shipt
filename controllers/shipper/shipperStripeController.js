@@ -629,25 +629,44 @@ exports.getPaymentStatus = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
+  console.log("=== CREATE SUBSCRIPTION API HIT ===");
+
   try {
     const { withTrial = true } = req.body;
+    console.log("Request Body:", req.body);
 
+    // ============================
+    // FETCH SHIPPER
+    // ============================
     const shipper = await Shipper.findById(req.user.id);
 
+    console.log("Shipper Found:", {
+      id: shipper?._id,
+      email: shipper?.email,
+      stripeCustomerId: shipper?.stripeCustomerId,
+      paymentMethodId: shipper?.paymentMethodId,
+    });
+
     if (!shipper || !shipper.stripeCustomerId || !shipper.paymentMethodId) {
+      console.log("Missing customer or payment method");
       return res.status(400).json({
         success: false,
         message: "Customer or card not found",
       });
     }
 
-    // Check if already subscribed
+    // ============================
+    // CHECK EXISTING SUBSCRIPTION
+    // ============================
     const existingSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
       status: { $in: ["active", "trialing", "past_due"] },
     });
 
+    console.log("Existing Subscription:", existingSub);
+
     if (existingSub) {
+      console.log("Subscription already exists");
       return res.status(400).json({
         success: false,
         message: "Subscription already exists",
@@ -655,21 +674,17 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // CREATE SUBSCRIPTION
+    // CREATE SUBSCRIPTION (STRIPE)
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
-
       items: [
         {
           price: "price_1TJSIbCVoPk11ijLoFp77l78",
         },
       ],
-
       default_payment_method: shipper.paymentMethodId,
-
       expand: ["items.data.price"],
-
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
@@ -677,31 +692,35 @@ exports.createSubscription = async (req, res) => {
       },
     };
 
-    // Trial condition
     if (withTrial) {
       subscriptionData.trial_period_days = 30;
+      console.log("Trial enabled (30 days)");
     }
 
+    console.log("Creating Stripe subscription...");
     const subscription = await stripe.subscriptions.create(subscriptionData);
+
+    console.log("Stripe Subscription Created:", {
+      id: subscription.id,
+      status: subscription.status,
+    });
 
     const price = subscription.items.data[0].price;
 
     // ============================
-    // SAVE IN DB (Subscription Model)
+    // SAVE IN DB
     // ============================
-    const newSubscription = await Subscription.create({
-      shipperId: shipper._id,
+    console.log("Saving subscription in DB...");
 
+    const newSubscription = await subscriptionModel.create({
+      shipperId: shipper._id,
       stripeCustomerId: shipper.stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: price.id,
-
       planName: "Horse Shipt Premium",
-
       amount: price.unit_amount / 100,
       currency: price.currency,
       interval: price.recurring.interval,
-
       status: subscription.status,
 
       trialStart: subscription.trial_start
@@ -713,23 +732,36 @@ exports.createSubscription = async (req, res) => {
         : null,
 
       currentPeriodStart: new Date(subscription.current_period_start * 1000),
-
       currentPeriodEnd: new Date(subscription.current_period_end * 1000),
 
       cancelAtPeriodEnd: subscription.cancel_at_period_end,
     });
 
+    console.log("Subscription saved in DB:", newSubscription._id);
+
+    // ============================
+    // RESPONSE
+    // ============================
     res.json({
       success: true,
-      message: "Subscription created",
+      message: "Subscription created successfully",
       data: {
         status: newSubscription.status,
         trialEnd: newSubscription.trialEnd,
       },
     });
   } catch (error) {
-    console.error("[SUBSCRIPTION ERROR]", error);
-    res.status(500).json({ error: error.message });
+    console.error("SUBSCRIPTION ERROR FULL:", error);
+
+    // Stripe specific error logging
+    if (error.raw) {
+      console.error("Stripe Error:", error.raw.message);
+    }
+
+    res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
@@ -737,32 +769,53 @@ exports.createSubscription = async (req, res) => {
 // CANCEL SUBSCRIPTION
 // ==========================================================
 exports.cancelSubscription = async (req, res) => {
+  console.log("=== CANCEL SUBSCRIPTION API HIT ===");
+
   try {
     const { cancelImmediately = false, reason = "User requested" } = req.body;
+    console.log("Request Body:", req.body);
 
+    // ============================
+    // FETCH SHIPPER
+    // ============================
     const shipper = await Shipper.findById(req.user.id);
 
+    console.log("Shipper Found:", {
+      id: shipper?._id,
+      email: shipper?.email,
+    });
+
     if (!shipper) {
+      console.log("Shipper not found");
       return res.status(404).json({
         success: false,
         message: "Shipper not found",
       });
     }
 
+    // ============================
+    // FIND ACTIVE SUBSCRIPTION
+    // ============================
     const subscription = await subscriptionModel.findOne({
       shipperId: shipper._id,
       status: { $in: ["active", "trialing", "past_due"] },
     });
 
+    console.log("Subscription Found:", subscription);
+
     if (!subscription) {
+      console.log("No active subscription found");
       return res.status(404).json({
         success: false,
         message: "No active subscription found",
       });
     }
 
-    // already cancel check
+    // ============================
+    // ALREADY CANCELED CHECK
+    // ============================
     if (subscription.status === "canceled") {
+      console.log("⚠️ Subscription already canceled");
       return res.status(400).json({
         success: false,
         message: "Subscription already canceled",
@@ -774,30 +827,57 @@ exports.cancelSubscription = async (req, res) => {
     // ============================
     // CANCEL LOGIC
     // ============================
+    console.log("Cancel Immediately:", cancelImmediately);
+
     if (cancelImmediately) {
+      console.log("Canceling subscription immediately in Stripe...");
+
       updatedStripeSub = await stripe.subscriptions.del(
         subscription.stripeSubscriptionId
       );
 
-      subscription.status = "canceled"; // immediate update
+      console.log("Stripe Immediate Cancel Response:", {
+        id: updatedStripeSub.id,
+        status: updatedStripeSub.status,
+      });
+
+      subscription.status = "canceled"; // immediate DB update
     } else {
+      console.log("Setting cancel at period end in Stripe...");
+
       updatedStripeSub = await stripe.subscriptions.update(
         subscription.stripeSubscriptionId,
         {
           cancel_at_period_end: true,
         }
       );
+
+      console.log("Stripe Update Response:", {
+        id: updatedStripeSub.id,
+        cancel_at_period_end: updatedStripeSub.cancel_at_period_end,
+      });
     }
 
     // ============================
     // UPDATE DB
     // ============================
+    console.log("Updating subscription in DB...");
+
     subscription.cancelAtPeriodEnd = !cancelImmediately;
     subscription.canceledAt = new Date();
     subscription.cancelReason = reason;
 
     await subscription.save();
 
+    console.log("Subscription updated in DB:", {
+      id: subscription._id,
+      status: subscription.status,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+    });
+
+    // ============================
+    // RESPONSE
+    // ============================
     res.json({
       success: true,
       message: cancelImmediately
@@ -810,7 +890,11 @@ exports.cancelSubscription = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("[CANCEL SUBSCRIPTION ERROR]", error);
+    console.error("CANCEL SUBSCRIPTION ERROR FULL:", error);
+
+    if (error.raw) {
+      console.error("Stripe Error:", error.raw.message);
+    }
 
     res.status(500).json({
       success: false,
