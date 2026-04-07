@@ -718,7 +718,7 @@ exports.createSubscription = async (req, res) => {
       customer: shipper.stripeCustomerId,
       items: [
         {
-          price: "price_1TJSIbCVoPk11ijLoFp77l78",
+          price: "price_1TJYYMCVoPk11ijLlM4ABav8",
         },
       ],
       default_payment_method: shipper.paymentMethodId,
@@ -989,7 +989,7 @@ exports.cancelSubscription = async (req, res) => {
 // GET PLAN DETAILS
 exports.getSubscriptionPlan = async (req, res) => {
   try {
-    const priceId = "price_1TJSIbCVoPk11ijLoFp77l78";
+    const priceId = "price_1TJYYMCVoPk11ijLlM4ABav8";
 
     const price = await stripe.prices.retrieve(priceId, {
       expand: ["product"],
