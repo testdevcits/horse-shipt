@@ -1014,14 +1014,25 @@ exports.getSubscriptionPlan = async (req, res) => {
 // GET CURRENT SHIPPER SUBSCRIPTION STATUS
 exports.getShipperSubscriptionStatus = async (req, res) => {
   try {
+    console.log("=== getShipperSubscriptionStatus triggered ===");
+    console.log("Shipper ID from token:", req.user.id);
+
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper || !shipper.stripeCustomerId) {
+      console.log("Shipper not found or missing Stripe Customer ID");
       return res.status(400).json({
         success: false,
         message: "Shipper not found or Stripe customer missing",
       });
     }
+
+    console.log(
+      "Shipper found:",
+      shipper._id,
+      "StripeCustomerId:",
+      shipper.stripeCustomerId
+    );
 
     // =======================
     // FETCH SUBSCRIPTIONS FROM STRIPE
@@ -1032,17 +1043,30 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       expand: ["data.items.data.price"],
     });
 
+    console.log(
+      "Subscriptions fetched from Stripe:",
+      subscriptions.data.length
+    );
+
     const currentSub = subscriptions.data.find((sub) =>
       ["trialing", "active"].includes(sub.status)
     );
 
     if (!currentSub) {
+      console.log("No active or trial subscription found for this shipper");
       return res.json({
         success: true,
         trialActive: false,
         message: "No active or trial subscription found",
       });
     }
+
+    console.log(
+      "Current subscription found:",
+      currentSub.id,
+      "Status:",
+      currentSub.status
+    );
 
     // =======================
     // TRIAL REMAINING DAYS
@@ -1053,6 +1077,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       remainingTrialDays = Math.ceil(
         (currentSub.trial_end - now) / (60 * 60 * 24)
       );
+      console.log("Trial is active, remaining days:", remainingTrialDays);
     }
 
     // =======================
@@ -1070,6 +1095,8 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       : currentSub.trial_end
       ? new Date(currentSub.trial_end * 1000)
       : null;
+
+    console.log("Updating subscription DB record for:", currentSub.id);
 
     await subscriptionModel.findOneAndUpdate(
       { stripeSubscriptionId: currentSub.id },
@@ -1096,6 +1123,8 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       { upsert: true, new: true }
     );
 
+    console.log("Subscription DB updated successfully");
+
     // =======================
     // RESPONSE TO FRONTEND
     // =======================
@@ -1109,6 +1138,12 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         : null,
       currentPeriodStart,
       currentPeriodEnd,
+    });
+
+    console.log("Response sent to frontend:", {
+      trialActive: currentSub.status === "trialing",
+      status: currentSub.status,
+      remainingTrialDays,
     });
   } catch (error) {
     console.error("Get Shipper Subscription Error:", error);
