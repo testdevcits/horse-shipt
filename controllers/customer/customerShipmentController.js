@@ -6,6 +6,7 @@ const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const webpush = require("web-push");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
+const sharp = require("sharp");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, type = "photo") => {
@@ -56,6 +57,23 @@ const deleteFromCloudinary = async (public_id) => {
     console.log("[DELETE SUCCESS]");
   } catch (err) {
     console.error("[DELETE ERROR]", err);
+  }
+};
+
+// helper functions
+const processImage = async (file) => {
+  try {
+    return await sharp(file.buffer)
+      .resize({
+        width: 1024,
+        height: 768,
+        fit: "inside", // aspect ratio safe
+      })
+      .jpeg({ quality: 70 })
+      .toBuffer();
+  } catch (err) {
+    console.error("Image processing error:", err);
+    return file.buffer;
   }
 };
 
@@ -151,29 +169,51 @@ exports.createShipment = async (req, res) => {
         documents: {},
       };
 
+      // ===== PHOTO (always optimize) =====
       if (fileMap[`horses[${i}][photo]`]) {
-        horseObj.photo = await uploadToCloudinary(
-          fileMap[`horses[${i}][photo]`],
-          "photo"
-        );
+        const file = fileMap[`horses[${i}][photo]`];
+
+        if (file.buffer) {
+          file.buffer = await processImage(file);
+        }
+
+        horseObj.photo = await uploadToCloudinary(file, "photo");
       }
+
+      // ===== COGGINS =====
       if (fileMap[`horses[${i}][cogins]`]) {
-        horseObj.documents.coggins = await uploadToCloudinary(
-          fileMap[`horses[${i}][cogins]`],
-          "document"
-        );
+        const file = fileMap[`horses[${i}][cogins]`];
+
+        if (file.buffer && isImage(file)) {
+          file.buffer = await processImage(file);
+        }
+
+        horseObj.documents.coggins = await uploadToCloudinary(file, "document");
       }
+
+      // ===== HEALTH CERTIFICATE =====
       if (fileMap[`horses[${i}][healthCertificate]`]) {
+        const file = fileMap[`horses[${i}][healthCertificate]`];
+
+        if (file.buffer && isImage(file)) {
+          file.buffer = await processImage(file);
+        }
+
         horseObj.documents.healthCertificate = await uploadToCloudinary(
-          fileMap[`horses[${i}][healthCertificate]`],
+          file,
           "document"
         );
       }
+
+      // ===== OTHER DOCUMENTS =====
       if (fileMap[`horses[${i}][otherDocuments]`]) {
-        horseObj.documents.other = await uploadToCloudinary(
-          fileMap[`horses[${i}][otherDocuments]`],
-          "document"
-        );
+        const file = fileMap[`horses[${i}][otherDocuments]`];
+
+        if (file.buffer && isImage(file)) {
+          file.buffer = await processImage(file);
+        }
+
+        horseObj.documents.other = await uploadToCloudinary(file, "document");
       }
 
       horses.push(horseObj);
@@ -192,37 +232,22 @@ exports.createShipment = async (req, res) => {
 
     const shipment = new CustomerShipment({
       customer: customerId,
-
       pickupLocation,
-      pickupCoords: {
-        latitude: pickupLat,
-        longitude: pickupLng,
-      },
+      pickupCoords: { latitude: pickupLat, longitude: pickupLng },
       pickupTimeOption,
       pickupDate,
-
       deliveryLocation,
-      deliveryCoords: {
-        latitude: deliveryLat,
-        longitude: deliveryLng,
-      },
+      deliveryCoords: { latitude: deliveryLat, longitude: deliveryLng },
       deliveryTimeOption,
       deliveryDate,
-
       numberOfHorses,
       additionalInfo: additionalInfo || "",
       horses,
       publish: publish === "true" || publish === true,
       status: "pending",
-
       recipientEmail: normalizedEmail,
       recipientUser: recipientUser ? recipientUser._id : null,
-
-      // Optional: initial location
-      currentLocation: {
-        latitude: pickupLat,
-        longitude: pickupLng,
-      },
+      currentLocation: { latitude: pickupLat, longitude: pickupLng },
     });
 
     await shipment.save();

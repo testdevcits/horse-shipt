@@ -36,6 +36,7 @@
     "pdfkit": "^0.17.2",
     "pusher": "^5.2.0",
     "pusher-js": "^8.4.0",
+    "sharp": "^0.34.5",
     "socket.io": "^4.8.3",
     "streamifier": "^0.1.1",
     "stripe": "^20.4.0",
