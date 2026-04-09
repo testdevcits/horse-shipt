@@ -62,35 +62,27 @@ const deleteFromCloudinary = async (public_id) => {
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-// ================= HELPERS =================
-
-// check image
 const isImage = (file) => {
   return file.mimetype && file.mimetype.startsWith("image/");
 };
 
-// safe size (MB)
-const getFileSizeMB = (file) => {
-  if (file.buffer) return (file.buffer.length / 1024 / 1024).toFixed(2);
-  if (file.size) return (file.size / 1024 / 1024).toFixed(2);
-  return "0.00";
-};
-
-// safe size (bytes)
 const getFileSizeBytes = (file) => {
   if (file.buffer) return file.buffer.length;
   if (file.size) return file.size;
   return 0;
 };
 
-// helper functions
+// Image processing (client requirement applied)
 const processImage = async (file) => {
   try {
+    if (!file.buffer) return file.buffer;
+
     return await sharp(file.buffer)
       .resize({
         width: 1024,
         height: 768,
-        fit: "inside", // aspect ratio safe
+        fit: "inside", // maintain aspect ratio
+        withoutEnlargement: true, // don't upscale small images
       })
       .jpeg({ quality: 70 })
       .toBuffer();
@@ -125,19 +117,6 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 // ============================================================
 exports.createShipment = async (req, res) => {
   try {
-    // ===== DEBUG LOGS =====
-    console.log("===== REQUEST BODY =====");
-    console.log(req.body);
-
-    console.log("===== REQUEST FILES =====");
-    console.log(
-      (req.files || []).map((f) => ({
-        field: f.fieldname,
-        name: f.originalname,
-        type: f.mimetype,
-      }))
-    );
-
     const customerId = req.user._id;
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
 
@@ -177,58 +156,43 @@ exports.createShipment = async (req, res) => {
         documents: {},
       };
 
-      // ================= COMMON FILE HANDLER =================
-      const handleFile = async (field, type, label) => {
+      // ===== FILE HANDLER =====
+      const handleFile = async (field, type) => {
         const key = `horses[${i}][${field}]`;
         if (!fileMap[key]) return null;
 
         const file = fileMap[key];
 
-        const sizeMB = getFileSizeMB(file);
-        const sizeBytes = getFileSizeBytes(file);
-
-        console.log(`[${label} BEFORE] ${file.originalname}: ${sizeMB} MB`);
-
         // size validation
-        if (sizeBytes > MAX_FILE_SIZE) {
-          throw new Error(`${label} too large (Max 5MB)`);
+        if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
+          throw new Error(`${field} too large (Max 5MB)`);
         }
 
-        // compress ONLY images
+        // ensure buffer (for diskStorage)
+        if (!file.buffer && file.path) {
+          const fs = require("fs");
+          file.buffer = fs.readFileSync(file.path);
+        }
+
+        // compress images
         if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
-
-          console.log(
-            `[${label} AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(
-              2
-            )} MB`
-          );
         }
 
         return await uploadToCloudinary(file, type);
       };
 
-      // ===== PHOTO =====
-      horseObj.photo = await handleFile("photo", "photo", "PHOTO");
+      // ===== FILES =====
+      horseObj.photo = await handleFile("photo", "photo");
 
-      // ===== DOCUMENTS =====
-      horseObj.documents.coggins = await handleFile(
-        "cogins",
-        "document",
-        "COGGINS"
-      );
+      horseObj.documents.coggins = await handleFile("cogins", "document");
 
       horseObj.documents.healthCertificate = await handleFile(
         "healthCertificate",
-        "document",
-        "HEALTH"
+        "document"
       );
 
-      horseObj.documents.other = await handleFile(
-        "otherDocuments",
-        "document",
-        "OTHER"
-      );
+      horseObj.documents.other = await handleFile("otherDocuments", "document");
 
       horses.push(horseObj);
     }
@@ -282,7 +246,6 @@ exports.createShipment = async (req, res) => {
 
     await shipment.save();
 
-    // ===== SHIPMENT CODE =====
     if (!shipment.shipmentCode) {
       const year = new Date().getFullYear();
       const shortId = shipment._id.toString().slice(-6).toUpperCase();
@@ -290,12 +253,11 @@ exports.createShipment = async (req, res) => {
       await shipment.save();
     }
 
-    // ===== RESPONSE =====
-    res.status(201).json({ success: true, shipment });
+    return res.status(201).json({ success: true, shipment });
   } catch (err) {
     console.error("[CREATE SHIPMENT ERROR]", err);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       message: err.message || "Server Error",
     });
