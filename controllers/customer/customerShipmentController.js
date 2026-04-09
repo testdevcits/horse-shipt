@@ -60,27 +60,37 @@ const deleteFromCloudinary = async (public_id) => {
   }
 };
 
-// helper functions
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
-// helper: check image
+// ================= HELPERS =================
+
+// check image
 const isImage = (file) => {
   return file.mimetype && file.mimetype.startsWith("image/");
 };
 
-// helper: get size
-const getSizeMB = (buffer) => {
-  return (buffer.length / 1024 / 1024).toFixed(2);
+// safe size (MB)
+const getFileSizeMB = (file) => {
+  if (file.buffer) return (file.buffer.length / 1024 / 1024).toFixed(2);
+  if (file.size) return (file.size / 1024 / 1024).toFixed(2);
+  return "0.00";
 };
 
-// image process
+// safe size (bytes)
+const getFileSizeBytes = (file) => {
+  if (file.buffer) return file.buffer.length;
+  if (file.size) return file.size;
+  return 0;
+};
+
+// helper functions
 const processImage = async (file) => {
   try {
     return await sharp(file.buffer)
       .resize({
         width: 1024,
         height: 768,
-        fit: "inside",
+        fit: "inside", // aspect ratio safe
       })
       .jpeg({ quality: 70 })
       .toBuffer();
@@ -115,6 +125,7 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 // ============================================================
 exports.createShipment = async (req, res) => {
   try {
+    // ===== DEBUG LOGS =====
     console.log("===== REQUEST BODY =====");
     console.log(req.body);
 
@@ -136,11 +147,13 @@ exports.createShipment = async (req, res) => {
         .json({ success: false, message: "Invalid numberOfHorses" });
     }
 
+    // ===== FILE MAP =====
     const fileMap = {};
     (req.files || []).forEach((file) => {
       fileMap[file.fieldname] = file;
     });
 
+    // ===== HORSE DATA =====
     let horseData = req.body.horses
       ? Array.isArray(req.body.horses)
         ? req.body.horses
@@ -157,6 +170,8 @@ exports.createShipment = async (req, res) => {
         barnName: h.barnName || "",
         breed: h.breed || "",
         colour: h.colour || "",
+        age: h.age || null,
+        sex: h.sex || "",
         generalInfo: h.generalInfo || "",
         requestedStallSize: h.stallType || "Box",
         documents: {},
@@ -169,20 +184,25 @@ exports.createShipment = async (req, res) => {
 
         const file = fileMap[key];
 
-        console.log(
-          `[${label} BEFORE] ${file.originalname}: ${getSizeMB(file.buffer)} MB`
-        );
+        const sizeMB = getFileSizeMB(file);
+        const sizeBytes = getFileSizeBytes(file);
 
-        // ❌ size check
-        if (file.buffer.length > MAX_FILE_SIZE) {
+        console.log(`[${label} BEFORE] ${file.originalname}: ${sizeMB} MB`);
+
+        // size validation
+        if (sizeBytes > MAX_FILE_SIZE) {
           throw new Error(`${label} too large (Max 5MB)`);
         }
 
-        // ✅ compress ONLY images
-        if (isImage(file)) {
+        // compress ONLY images
+        if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
 
-          console.log(`[${label} AFTER] ${getSizeMB(file.buffer)} MB`);
+          console.log(
+            `[${label} AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(
+              2
+            )} MB`
+          );
         }
 
         return await uploadToCloudinary(file, type);
@@ -213,16 +233,67 @@ exports.createShipment = async (req, res) => {
       horses.push(horseObj);
     }
 
+    // ===== EMAIL =====
+    const normalizedEmail = req.body.recipientEmail
+      ? req.body.recipientEmail.toLowerCase().trim()
+      : null;
+
+    let recipientUser = null;
+    if (normalizedEmail) {
+      recipientUser = await Customer.findOne({
+        email: normalizedEmail,
+      });
+    }
+
+    // ===== CREATE SHIPMENT =====
     const shipment = new CustomerShipment({
       customer: customerId,
+      pickupLocation: req.body.pickupLocation,
+      pickupCoords: {
+        latitude: parseFloat(req.body.pickupLat),
+        longitude: parseFloat(req.body.pickupLng),
+      },
+      pickupTimeOption: req.body.pickupTimeOption,
+      pickupDate: req.body.pickupDate,
+
+      deliveryLocation: req.body.deliveryLocation,
+      deliveryCoords: {
+        latitude: parseFloat(req.body.deliveryLat),
+        longitude: parseFloat(req.body.deliveryLng),
+      },
+      deliveryTimeOption: req.body.deliveryTimeOption,
+      deliveryDate: req.body.deliveryDate,
+
+      numberOfHorses,
+      additionalInfo: req.body.additionalInfo || "",
       horses,
+
+      publish: req.body.publish === "true" || req.body.publish === true,
+      status: "pending",
+
+      recipientEmail: normalizedEmail,
+      recipientUser: recipientUser ? recipientUser._id : null,
+
+      currentLocation: {
+        latitude: parseFloat(req.body.pickupLat),
+        longitude: parseFloat(req.body.pickupLng),
+      },
     });
 
     await shipment.save();
 
+    // ===== SHIPMENT CODE =====
+    if (!shipment.shipmentCode) {
+      const year = new Date().getFullYear();
+      const shortId = shipment._id.toString().slice(-6).toUpperCase();
+      shipment.shipmentCode = `HS-SHIP-${year}-${shortId}`;
+      await shipment.save();
+    }
+
+    // ===== RESPONSE =====
     res.status(201).json({ success: true, shipment });
   } catch (err) {
-    console.error("[CREATE SHIPMENT ERROR]", err.message);
+    console.error("[CREATE SHIPMENT ERROR]", err);
 
     res.status(500).json({
       success: false,
