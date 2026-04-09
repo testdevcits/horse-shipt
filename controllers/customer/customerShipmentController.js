@@ -163,18 +163,15 @@ exports.createShipment = async (req, res) => {
 
         const file = fileMap[key];
 
-        // size validation
         if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
           throw new Error(`${field} too large (Max 5MB)`);
         }
 
-        // ensure buffer (for diskStorage)
         if (!file.buffer && file.path) {
           const fs = require("fs");
           file.buffer = fs.readFileSync(file.path);
         }
 
-        // compress images
         if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
         }
@@ -184,14 +181,11 @@ exports.createShipment = async (req, res) => {
 
       // ===== FILES =====
       horseObj.photo = await handleFile("photo", "photo");
-
       horseObj.documents.coggins = await handleFile("cogins", "document");
-
       horseObj.documents.healthCertificate = await handleFile(
         "healthCertificate",
         "document"
       );
-
       horseObj.documents.other = await handleFile("otherDocuments", "document");
 
       horses.push(horseObj);
@@ -209,16 +203,37 @@ exports.createShipment = async (req, res) => {
       });
     }
 
+    // ===== DATE RANGE VALIDATION =====
+    if (!req.body.pickupStartDate || !req.body.pickupEndDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Pickup date range required",
+      });
+    }
+
+    if (!req.body.deliveryStartDate || !req.body.deliveryEndDate) {
+      return res.status(400).json({
+        success: false,
+        message: "Delivery date range required",
+      });
+    }
+
     // ===== CREATE SHIPMENT =====
     const shipment = new CustomerShipment({
       customer: customerId,
+
       pickupLocation: req.body.pickupLocation,
       pickupCoords: {
         latitude: parseFloat(req.body.pickupLat),
         longitude: parseFloat(req.body.pickupLng),
       },
       pickupTimeOption: req.body.pickupTimeOption,
-      pickupDate: req.body.pickupDate,
+
+      // DATE RANGE
+      pickupDateRange: {
+        start: new Date(req.body.pickupStartDate),
+        end: new Date(req.body.pickupEndDate),
+      },
 
       deliveryLocation: req.body.deliveryLocation,
       deliveryCoords: {
@@ -226,7 +241,12 @@ exports.createShipment = async (req, res) => {
         longitude: parseFloat(req.body.deliveryLng),
       },
       deliveryTimeOption: req.body.deliveryTimeOption,
-      deliveryDate: req.body.deliveryDate,
+
+      // DATE RANGE
+      deliveryDateRange: {
+        start: new Date(req.body.deliveryStartDate),
+        end: new Date(req.body.deliveryEndDate),
+      },
 
       numberOfHorses,
       additionalInfo: req.body.additionalInfo || "",
@@ -246,6 +266,7 @@ exports.createShipment = async (req, res) => {
 
     await shipment.save();
 
+    // ===== GENERATE CODE =====
     if (!shipment.shipmentCode) {
       const year = new Date().getFullYear();
       const shortId = shipment._id.toString().slice(-6).toUpperCase();
@@ -253,7 +274,10 @@ exports.createShipment = async (req, res) => {
       await shipment.save();
     }
 
-    return res.status(201).json({ success: true, shipment });
+    return res.status(201).json({
+      success: true,
+      shipment,
+    });
   } catch (err) {
     console.error("[CREATE SHIPMENT ERROR]", err);
 

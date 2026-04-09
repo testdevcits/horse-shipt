@@ -115,8 +115,11 @@ const shipmentSchema = new mongoose.Schema(
     },
 
     pickupTimeOption: { type: String, required: true },
-    pickupDate: { type: Date, required: true },
 
+    pickupDateRange: {
+      start: { type: Date, required: true },
+      end: { type: Date, required: true },
+    },
     // ---------------- Delivery ----------------
     deliveryLocation: { type: String, required: true },
 
@@ -126,8 +129,10 @@ const shipmentSchema = new mongoose.Schema(
     },
 
     deliveryTimeOption: { type: String, required: true },
-    deliveryDate: { type: Date, required: true },
-
+    deliveryDateRange: {
+      start: { type: Date, required: true },
+      end: { type: Date, required: true },
+    },
     // ---------------- Horses ----------------
     numberOfHorses: {
       type: Number,
