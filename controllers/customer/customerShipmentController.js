@@ -86,14 +86,30 @@ const getFileSizeBytes = (file) => {
 // helper functions
 const processImage = async (file) => {
   try {
-    return await sharp(file.buffer)
+    const beforeSize = file.buffer.length;
+
+    console.log(`[SHARP BEFORE] ${(beforeSize / 1024 / 1024).toFixed(2)} MB`);
+
+    const processedBuffer = await sharp(file.buffer)
       .resize({
         width: 1024,
         height: 768,
-        fit: "inside", // aspect ratio safe
+        fit: "inside",
       })
       .jpeg({ quality: 70 })
       .toBuffer();
+
+    const afterSize = processedBuffer.length;
+
+    console.log(`[SHARP AFTER] ${(afterSize / 1024 / 1024).toFixed(2)} MB`);
+
+    console.log(
+      `[COMPRESSION SAVED] ${((beforeSize - afterSize) / 1024 / 1024).toFixed(
+        2
+      )} MB`
+    );
+
+    return processedBuffer;
   } catch (err) {
     console.error("Image processing error:", err);
     return file.buffer;
@@ -187,9 +203,9 @@ exports.createShipment = async (req, res) => {
         const sizeMB = getFileSizeMB(file);
         const sizeBytes = getFileSizeBytes(file);
 
-        console.log(`[${label} BEFORE] ${file.originalname}: ${sizeMB} MB`);
+        console.log(`[${label} ORIGINAL] ${file.originalname}: ${sizeMB} MB`);
 
-        // size validation
+        // size validation before compression
         if (sizeBytes > MAX_FILE_SIZE) {
           throw new Error(`${label} too large (Max 5MB)`);
         }
@@ -197,13 +213,12 @@ exports.createShipment = async (req, res) => {
         // compress ONLY images
         if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
-
-          console.log(
-            `[${label} AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(
-              2
-            )} MB`
-          );
         }
+
+        // final size after compression
+        console.log(
+          `[${label} FINAL] ${(file.buffer.length / 1024 / 1024).toFixed(2)} MB`
+        );
 
         return await uploadToCloudinary(file, type);
       };
