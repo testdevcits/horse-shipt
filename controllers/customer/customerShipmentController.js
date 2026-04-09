@@ -100,6 +100,8 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 // ============================================================
 // ===================== CREATE SHIPMENT ======================
 // ============================================================
+
+const MAX_FILE_SIZE = 5 * 1024 * 1024;
 exports.createShipment = async (req, res) => {
   try {
     const customerId = req.user._id;
@@ -169,12 +171,35 @@ exports.createShipment = async (req, res) => {
         documents: {},
       };
 
-      // ===== PHOTO (always optimize) =====
+      // ===== PHOTO =====
       if (fileMap[`horses[${i}][photo]`]) {
         const file = fileMap[`horses[${i}][photo]`];
 
+        console.log(
+          `[PHOTO BEFORE] ${file.originalname}: ${(
+            file.size /
+            1024 /
+            1024
+          ).toFixed(2)} MB`
+        );
+
+        if (file.size > MAX_FILE_SIZE) {
+          return res.status(400).json({
+            success: false,
+            message: `Photo too large (Max 5MB allowed)`,
+          });
+        }
+
         if (file.buffer) {
           file.buffer = await processImage(file);
+
+          console.log(
+            `[PHOTO AFTER] ${file.originalname}: ${(
+              file.buffer.length /
+              1024 /
+              1024
+            ).toFixed(2)} MB`
+          );
         }
 
         horseObj.photo = await uploadToCloudinary(file, "photo");
@@ -184,8 +209,29 @@ exports.createShipment = async (req, res) => {
       if (fileMap[`horses[${i}][cogins]`]) {
         const file = fileMap[`horses[${i}][cogins]`];
 
+        console.log(
+          `[COGGINS BEFORE] ${file.originalname}: ${(
+            file.size /
+            1024 /
+            1024
+          ).toFixed(2)} MB`
+        );
+
+        if (file.size > MAX_FILE_SIZE) {
+          return res.status(400).json({
+            success: false,
+            message: `Coggins file too large (Max 5MB allowed)`,
+          });
+        }
+
         if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
+
+          console.log(
+            `[COGGINS AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(
+              2
+            )} MB`
+          );
         }
 
         horseObj.documents.coggins = await uploadToCloudinary(file, "document");
@@ -195,8 +241,27 @@ exports.createShipment = async (req, res) => {
       if (fileMap[`horses[${i}][healthCertificate]`]) {
         const file = fileMap[`horses[${i}][healthCertificate]`];
 
+        console.log(
+          `[HEALTH BEFORE] ${file.originalname}: ${(
+            file.size /
+            1024 /
+            1024
+          ).toFixed(2)} MB`
+        );
+
+        if (file.size > MAX_FILE_SIZE) {
+          return res.status(400).json({
+            success: false,
+            message: `Health certificate too large (Max 5MB allowed)`,
+          });
+        }
+
         if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
+
+          console.log(
+            `[HEALTH AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(2)} MB`
+          );
         }
 
         horseObj.documents.healthCertificate = await uploadToCloudinary(
@@ -209,8 +274,27 @@ exports.createShipment = async (req, res) => {
       if (fileMap[`horses[${i}][otherDocuments]`]) {
         const file = fileMap[`horses[${i}][otherDocuments]`];
 
+        console.log(
+          `[OTHER BEFORE] ${file.originalname}: ${(
+            file.size /
+            1024 /
+            1024
+          ).toFixed(2)} MB`
+        );
+
+        if (file.size > MAX_FILE_SIZE) {
+          return res.status(400).json({
+            success: false,
+            message: `Other document too large (Max 5MB allowed)`,
+          });
+        }
+
         if (file.buffer && isImage(file)) {
           file.buffer = await processImage(file);
+
+          console.log(
+            `[OTHER AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(2)} MB`
+          );
         }
 
         horseObj.documents.other = await uploadToCloudinary(file, "document");
