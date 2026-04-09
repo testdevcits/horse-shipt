@@ -61,13 +61,26 @@ const deleteFromCloudinary = async (public_id) => {
 };
 
 // helper functions
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+
+// helper: check image
+const isImage = (file) => {
+  return file.mimetype && file.mimetype.startsWith("image/");
+};
+
+// helper: get size
+const getSizeMB = (buffer) => {
+  return (buffer.length / 1024 / 1024).toFixed(2);
+};
+
+// image process
 const processImage = async (file) => {
   try {
     return await sharp(file.buffer)
       .resize({
         width: 1024,
         height: 768,
-        fit: "inside", // aspect ratio safe
+        fit: "inside",
       })
       .jpeg({ quality: 70 })
       .toBuffer();
@@ -100,10 +113,20 @@ exports.fetchShipmentById = async (shipmentId, userId) => {
 // ============================================================
 // ===================== CREATE SHIPMENT ======================
 // ============================================================
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
 exports.createShipment = async (req, res) => {
   try {
+    console.log("===== REQUEST BODY =====");
+    console.log(req.body);
+
+    console.log("===== REQUEST FILES =====");
+    console.log(
+      (req.files || []).map((f) => ({
+        field: f.fieldname,
+        name: f.originalname,
+        type: f.mimetype,
+      }))
+    );
+
     const customerId = req.user._id;
     const numberOfHorses = parseInt(req.body.numberOfHorses || "0", 10);
 
@@ -111,35 +134,6 @@ exports.createShipment = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Invalid numberOfHorses" });
-    }
-
-    const {
-      pickupLocation,
-      pickupTimeOption,
-      pickupDate,
-      deliveryLocation,
-      deliveryTimeOption,
-      deliveryDate,
-      additionalInfo,
-      publish,
-      recipientEmail,
-    } = req.body;
-
-    const pickupLat = parseFloat(req.body.pickupLat);
-    const pickupLng = parseFloat(req.body.pickupLng);
-    const deliveryLat = parseFloat(req.body.deliveryLat);
-    const deliveryLng = parseFloat(req.body.deliveryLng);
-
-    if (
-      isNaN(pickupLat) ||
-      isNaN(pickupLng) ||
-      isNaN(deliveryLat) ||
-      isNaN(deliveryLng)
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Pickup and Delivery coordinates are required",
-      });
     }
 
     const fileMap = {};
@@ -162,191 +156,78 @@ exports.createShipment = async (req, res) => {
         registeredName: h.registeredName || "",
         barnName: h.barnName || "",
         breed: h.breed || "",
-        otherBreed: h.otherBreed || "",
         colour: h.colour || "",
-        age: h.age || null,
-        sex: h.sex || "",
         generalInfo: h.generalInfo || "",
         requestedStallSize: h.stallType || "Box",
         documents: {},
       };
 
+      // ================= COMMON FILE HANDLER =================
+      const handleFile = async (field, type, label) => {
+        const key = `horses[${i}][${field}]`;
+        if (!fileMap[key]) return null;
+
+        const file = fileMap[key];
+
+        console.log(
+          `[${label} BEFORE] ${file.originalname}: ${getSizeMB(file.buffer)} MB`
+        );
+
+        // ❌ size check
+        if (file.buffer.length > MAX_FILE_SIZE) {
+          throw new Error(`${label} too large (Max 5MB)`);
+        }
+
+        // ✅ compress ONLY images
+        if (isImage(file)) {
+          file.buffer = await processImage(file);
+
+          console.log(`[${label} AFTER] ${getSizeMB(file.buffer)} MB`);
+        }
+
+        return await uploadToCloudinary(file, type);
+      };
+
       // ===== PHOTO =====
-      if (fileMap[`horses[${i}][photo]`]) {
-        const file = fileMap[`horses[${i}][photo]`];
+      horseObj.photo = await handleFile("photo", "photo", "PHOTO");
 
-        console.log(
-          `[PHOTO BEFORE] ${file.originalname}: ${(
-            file.size /
-            1024 /
-            1024
-          ).toFixed(2)} MB`
-        );
+      // ===== DOCUMENTS =====
+      horseObj.documents.coggins = await handleFile(
+        "cogins",
+        "document",
+        "COGGINS"
+      );
 
-        if (file.size > MAX_FILE_SIZE) {
-          return res.status(400).json({
-            success: false,
-            message: `Photo too large (Max 5MB allowed)`,
-          });
-        }
+      horseObj.documents.healthCertificate = await handleFile(
+        "healthCertificate",
+        "document",
+        "HEALTH"
+      );
 
-        if (file.buffer) {
-          file.buffer = await processImage(file);
-
-          console.log(
-            `[PHOTO AFTER] ${file.originalname}: ${(
-              file.buffer.length /
-              1024 /
-              1024
-            ).toFixed(2)} MB`
-          );
-        }
-
-        horseObj.photo = await uploadToCloudinary(file, "photo");
-      }
-
-      // ===== COGGINS =====
-      if (fileMap[`horses[${i}][cogins]`]) {
-        const file = fileMap[`horses[${i}][cogins]`];
-
-        console.log(
-          `[COGGINS BEFORE] ${file.originalname}: ${(
-            file.size /
-            1024 /
-            1024
-          ).toFixed(2)} MB`
-        );
-
-        if (file.size > MAX_FILE_SIZE) {
-          return res.status(400).json({
-            success: false,
-            message: `Coggins file too large (Max 5MB allowed)`,
-          });
-        }
-
-        if (file.buffer && isImage(file)) {
-          file.buffer = await processImage(file);
-
-          console.log(
-            `[COGGINS AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(
-              2
-            )} MB`
-          );
-        }
-
-        horseObj.documents.coggins = await uploadToCloudinary(file, "document");
-      }
-
-      // ===== HEALTH CERTIFICATE =====
-      if (fileMap[`horses[${i}][healthCertificate]`]) {
-        const file = fileMap[`horses[${i}][healthCertificate]`];
-
-        console.log(
-          `[HEALTH BEFORE] ${file.originalname}: ${(
-            file.size /
-            1024 /
-            1024
-          ).toFixed(2)} MB`
-        );
-
-        if (file.size > MAX_FILE_SIZE) {
-          return res.status(400).json({
-            success: false,
-            message: `Health certificate too large (Max 5MB allowed)`,
-          });
-        }
-
-        if (file.buffer && isImage(file)) {
-          file.buffer = await processImage(file);
-
-          console.log(
-            `[HEALTH AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(2)} MB`
-          );
-        }
-
-        horseObj.documents.healthCertificate = await uploadToCloudinary(
-          file,
-          "document"
-        );
-      }
-
-      // ===== OTHER DOCUMENTS =====
-      if (fileMap[`horses[${i}][otherDocuments]`]) {
-        const file = fileMap[`horses[${i}][otherDocuments]`];
-
-        console.log(
-          `[OTHER BEFORE] ${file.originalname}: ${(
-            file.size /
-            1024 /
-            1024
-          ).toFixed(2)} MB`
-        );
-
-        if (file.size > MAX_FILE_SIZE) {
-          return res.status(400).json({
-            success: false,
-            message: `Other document too large (Max 5MB allowed)`,
-          });
-        }
-
-        if (file.buffer && isImage(file)) {
-          file.buffer = await processImage(file);
-
-          console.log(
-            `[OTHER AFTER] ${(file.buffer.length / 1024 / 1024).toFixed(2)} MB`
-          );
-        }
-
-        horseObj.documents.other = await uploadToCloudinary(file, "document");
-      }
+      horseObj.documents.other = await handleFile(
+        "otherDocuments",
+        "document",
+        "OTHER"
+      );
 
       horses.push(horseObj);
     }
 
-    const normalizedEmail = recipientEmail
-      ? recipientEmail.toLowerCase().trim()
-      : null;
-
-    let recipientUser = null;
-    if (normalizedEmail) {
-      recipientUser = await Customer.findOne({
-        email: normalizedEmail,
-      });
-    }
-
     const shipment = new CustomerShipment({
       customer: customerId,
-      pickupLocation,
-      pickupCoords: { latitude: pickupLat, longitude: pickupLng },
-      pickupTimeOption,
-      pickupDate,
-      deliveryLocation,
-      deliveryCoords: { latitude: deliveryLat, longitude: deliveryLng },
-      deliveryTimeOption,
-      deliveryDate,
-      numberOfHorses,
-      additionalInfo: additionalInfo || "",
       horses,
-      publish: publish === "true" || publish === true,
-      status: "pending",
-      recipientEmail: normalizedEmail,
-      recipientUser: recipientUser ? recipientUser._id : null,
-      currentLocation: { latitude: pickupLat, longitude: pickupLng },
     });
 
     await shipment.save();
 
-    if (!shipment.shipmentCode) {
-      const year = new Date().getFullYear();
-      const shortId = shipment._id.toString().slice(-6).toUpperCase();
-      shipment.shipmentCode = `HS-SHIP-${year}-${shortId}`;
-      await shipment.save();
-    }
-
     res.status(201).json({ success: true, shipment });
   } catch (err) {
-    console.error("[CREATE SHIPMENT ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    console.error("[CREATE SHIPMENT ERROR]", err.message);
+
+    res.status(500).json({
+      success: false,
+      message: err.message || "Server Error",
+    });
   }
 };
 
