@@ -27,7 +27,11 @@ const subscriptionSchema = new mongoose.Schema(
       type: String,
       default: "Horse Shipt Premium",
     },
-
+    planType: {
+      type: String,
+      enum: ["monthly", "annual"],
+      default: "monthly",
+    },
     amount: Number,
     currency: { type: String, default: "usd" },
     interval: String,
@@ -63,6 +67,8 @@ const subscriptionSchema = new mongoose.Schema(
 
     canceledAt: Date,
     cancelReason: String,
+
+    cancelScheduledAt: Date,
 
     // ============================
     // FAILURE TRACKING
