@@ -985,13 +985,24 @@ exports.cancelSubscription = async (req, res) => {
 // GET PLAN DETAILS
 exports.getSubscriptionPlan = async (req, res) => {
   try {
+    console.log("========== GET SUBSCRIPTION PLAN API ==========");
+
     // ============================
     // CONFIG (ENV)
     // ============================
     const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
     const ANNUAL_PRICE_ID = process.env.STRIPE_ANNUAL_PRICE_ID;
 
+    console.log("ENV CHECK:");
+    console.log("MONTHLY_PRICE_ID:", MONTHLY_PRICE_ID);
+    console.log("ANNUAL_PRICE_ID:", ANNUAL_PRICE_ID);
+    console.log(
+      "STRIPE KEY TYPE:",
+      process.env.STRIPE_SECRET_KEY?.startsWith("sk_live") ? "LIVE" : "TEST"
+    );
+
     if (!MONTHLY_PRICE_ID) {
+      console.error("Monthly price ID missing in ENV");
       return res.status(500).json({
         success: false,
         message: "Monthly price ID not configured",
@@ -1002,18 +1013,48 @@ exports.getSubscriptionPlan = async (req, res) => {
     // OPTIONAL: ADMIN SETTINGS (DB)
     // ============================
     let pricingSettings = null;
+
     try {
-      pricingSettings = await PricingSettings.findOne(); // optional
+      pricingSettings = await PricingSettings.findOne();
+
+      if (pricingSettings) {
+        console.log("PricingSettings found:", pricingSettings);
+      } else {
+        console.warn("No PricingSettings found, using Stripe values");
+      }
     } catch (err) {
-      console.log("PricingSettings not found, using Stripe values");
+      console.error("PricingSettings fetch error:", err.message);
     }
 
     // ============================
     // FETCH MONTHLY PLAN
     // ============================
-    const monthlyPrice = await stripe.prices.retrieve(MONTHLY_PRICE_ID, {
-      expand: ["product"],
-    });
+    console.log("Fetching MONTHLY price from Stripe...");
+
+    let monthlyPrice;
+
+    try {
+      monthlyPrice = await stripe.prices.retrieve(MONTHLY_PRICE_ID, {
+        expand: ["product"],
+      });
+
+      console.log("Monthly price fetched from Stripe:", {
+        id: monthlyPrice.id,
+        amount: monthlyPrice.unit_amount,
+        currency: monthlyPrice.currency,
+        interval: monthlyPrice.recurring?.interval,
+        product: monthlyPrice.product?.name,
+      });
+    } catch (err) {
+      console.error("Stripe MONTHLY price error:");
+      console.error("Price ID used:", MONTHLY_PRICE_ID);
+      console.error(err);
+
+      return res.status(500).json({
+        success: false,
+        message: "Invalid Monthly Price ID in Stripe",
+      });
+    }
 
     const monthly = {
       priceId: monthlyPrice.id,
@@ -1021,10 +1062,7 @@ exports.getSubscriptionPlan = async (req, res) => {
       currency: monthlyPrice.currency,
       interval: monthlyPrice.recurring.interval,
       productName: monthlyPrice.product.name,
-
-      // CLIENT REQUIREMENT
       label: "Introductory Price",
-
       planType: "monthly",
     };
 
@@ -1034,42 +1072,68 @@ exports.getSubscriptionPlan = async (req, res) => {
     let annual = null;
 
     if (ANNUAL_PRICE_ID) {
-      const annualPrice = await stripe.prices.retrieve(ANNUAL_PRICE_ID, {
-        expand: ["product"],
-      });
+      console.log("Fetching ANNUAL price from Stripe...");
 
-      annual = {
-        priceId: annualPrice.id,
-        amount: pricingSettings?.annualFee || annualPrice.unit_amount / 100,
-        currency: annualPrice.currency,
-        interval: annualPrice.recurring.interval,
-        productName: annualPrice.product.name,
-        planType: "annual",
-      };
+      try {
+        const annualPrice = await stripe.prices.retrieve(ANNUAL_PRICE_ID, {
+          expand: ["product"],
+        });
+
+        console.log("Annual price fetched:", {
+          id: annualPrice.id,
+          amount: annualPrice.unit_amount,
+          currency: annualPrice.currency,
+          interval: annualPrice.recurring?.interval,
+          product: annualPrice.product?.name,
+        });
+
+        annual = {
+          priceId: annualPrice.id,
+          amount: pricingSettings?.annualFee || annualPrice.unit_amount / 100,
+          currency: annualPrice.currency,
+          interval: annualPrice.recurring.interval,
+          productName: annualPrice.product.name,
+          planType: "annual",
+        };
+      } catch (err) {
+        console.error("Stripe ANNUAL price error:");
+        console.error("Price ID used:", ANNUAL_PRICE_ID);
+        console.error(err);
+
+        // NOTE: annual fail ho jaye to bhi monthly return kare
+        annual = null;
+      }
+    } else {
+      console.warn("⚠️ ANNUAL_PRICE_ID not provided");
     }
 
     // ============================
-    // TOGGLE CONTROL (CLIENT NEED)
+    // TOGGLE CONTROL
     // ============================
     const showAnnualPlan = pricingSettings?.showAnnualPlan ?? false;
+
+    console.log("SHOW ANNUAL PLAN:", showAnnualPlan);
 
     // ============================
     // RESPONSE
     // ============================
+    const responseData = {
+      monthly,
+      annual: showAnnualPlan ? annual : null,
+      showAnnualPlan,
+      trialDays: 30,
+      currency: monthly.currency,
+    };
+
+    console.log("FINAL RESPONSE:", responseData);
+    console.log("========== END ==========\n");
+
     return res.json({
       success: true,
-      data: {
-        monthly,
-        annual: showAnnualPlan ? annual : null,
-        showAnnualPlan,
-
-        // extra helpful info
-        trialDays: 30,
-        currency: monthly.currency,
-      },
+      data: responseData,
     });
   } catch (error) {
-    console.error("Plan Fetch Error:", error);
+    console.error("Plan Fetch Error (GLOBAL):", error);
 
     return res.status(500).json({
       success: false,
