@@ -238,6 +238,11 @@ exports.getQuotesByShipment = async (req, res) => {
     const { shipmentId } = req.params;
     const customerId = req.user._id;
 
+    // Pagination params
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
+
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customer",
       "name email"
@@ -260,15 +265,25 @@ exports.getQuotesByShipment = async (req, res) => {
       });
     }
 
+    // Total count
+    const totalQuotes = await ShipmentQuote.countDocuments({
+      shipment: shipmentId,
+    });
+
+    // Paginated data
     const quotes = await ShipmentQuote.find({ shipment: shipmentId })
       .populate("shipper", "name email phone companyName")
       .populate("vehicle")
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
 
     return res.status(200).json({
       success: true,
       shipmentId,
-      totalQuotes: quotes.length,
+      totalQuotes,
+      currentPage: page,
+      totalPages: Math.ceil(totalQuotes / limit),
       quotes,
     });
   } catch (error) {
