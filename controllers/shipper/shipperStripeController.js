@@ -1090,7 +1090,7 @@ exports.getSubscriptionPlan = async (req, res) => {
   }
 };
 
-// GET CURRENT SHIPPER SUBSCRIPTION STATUS
+// GET CURRENT SHIPPER SUBSCRIPTION
 exports.getShipperSubscriptionStatus = async (req, res) => {
   try {
     console.log("=== getShipperSubscriptionStatus triggered ===");
