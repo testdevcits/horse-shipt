@@ -3,6 +3,7 @@ const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
@@ -21,10 +22,8 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // --------------------------
-        // Parse state safely
-        // --------------------------
         const state = req.query.state;
+
         if (!state) return done(new Error("Missing state parameter"), null);
 
         let parsedState;
@@ -43,9 +42,9 @@ passport.use(
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // Prevent duplicates across roles
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
+
         if (
           (role === "shipper" && existingCustomer) ||
           (role === "customer" && existingShipper)
@@ -58,9 +57,12 @@ passport.use(
 
         const Model = getModel(role);
 
-        // Check if user exists
-        let user = await Model.findOne({ email, providerId: profile.id });
+        let user = await Model.findOne({
+          email,
+          providerId: profile.id,
+        });
 
+        // ---------------- CREATE NEW USER ----------------
         if (!user) {
           const uniqueId =
             role === "shipper"
@@ -92,25 +94,45 @@ passport.use(
             ],
           });
 
+          // ---------------- STRIPE CUSTOMER CREATE ----------------
+          const customer = await stripe.customers.create({
+            email: user.email,
+            name: user.name,
+          });
+
+          user.stripeCustomerId = customer.id;
+
           await user.save();
         } else {
-          // Update login info
+          // ---------------- UPDATE LOGIN INFO ----------------
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
+
           user.currentLocation = location
             ? { ...location, updatedAt: new Date() }
             : user.currentLocation;
+
           user.loginHistory.push({
             deviceId: req.headers["user-agent"] || null,
             ip: req.ip || null,
             loginAt: new Date(),
           });
+
+          // ---------------- STRIPE BACKFILL (IMPORTANT) ----------------
+          if (!user.stripeCustomerId) {
+            const customer = await stripe.customers.create({
+              email: user.email,
+              name: user.name,
+            });
+
+            user.stripeCustomerId = customer.id;
+          }
+
           await user.save();
         }
 
         const token = generateToken({ id: user._id, role: user.role });
 
-        // Pass redirect URL
         const redirectUrl = `${
           process.env.FRONTEND_URL
         }/oauth-success?token=${token}&id=${user._id}&role=${
@@ -124,7 +146,6 @@ passport.use(
         done(null, { redirectUrl });
       } catch (err) {
         console.error("Google OAuth Error:", err);
-        // Pass error message to frontend
         done(new Error(err.message || "Google OAuth failed"), null);
       }
     }

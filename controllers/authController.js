@@ -2,7 +2,7 @@ const bcrypt = require("bcryptjs");
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
-
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ----------------- Utility Functions -----------------
 const getModel = (role) => {
   if (role === "shipper") return Shipper;
@@ -40,23 +40,31 @@ exports.signup = async (req, res) => {
       deviceId,
     } = req.body;
 
-    if (!role || !email)
-      return res
-        .status(400)
-        .json({ success: false, errors: ["Role and email are required"] });
+    if (!role || !email) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Role and email are required"],
+      });
+    }
 
     const Model = getModel(role);
-    if (!Model)
-      return res.status(400).json({ success: false, errors: ["Invalid role"] });
+    if (!Model) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Invalid role"],
+      });
+    }
 
-    // Prevent duplicate emails
+    // ---------------- CHECK DUPLICATE EMAIL ----------------
     const existingShipper = await Shipper.findOne({ email });
     const existingCustomer = await Customer.findOne({ email });
-    if (existingShipper || existingCustomer)
+
+    if (existingShipper || existingCustomer) {
       return res.status(409).json({
         success: false,
         errors: ["Email already registered with another account/role"],
       });
+    }
 
     const uniqueId = await generateUniqueId(role);
 
@@ -66,8 +74,8 @@ exports.signup = async (req, res) => {
       email,
       role,
       provider,
-      emailVerified: provider === "google" ? true : false,
-      isLogin: provider === "google" ? true : false,
+      emailVerified: provider === "google",
+      isLogin: provider === "google",
       isActive: true,
       currentDevice: deviceId || null,
       currentLocation: location || undefined,
@@ -77,16 +85,18 @@ exports.signup = async (req, res) => {
           : [],
     };
 
-    // For local accounts, just assign plain password. Schema pre-save will hash it
+    // ---------------- PASSWORD ----------------
     if (provider === "local") {
-      if (!password)
-        return res
-          .status(400)
-          .json({ success: false, errors: ["Password is required"] });
+      if (!password) {
+        return res.status(400).json({
+          success: false,
+          errors: ["Password is required"],
+        });
+      }
       userData.password = password;
     }
 
-    // Google OAuth handling
+    // ---------------- GOOGLE PROFILE ----------------
     if (provider === "google" && profile) {
       userData.providerId = profile.sub;
       userData.profilePicture = profile.picture || null;
@@ -96,17 +106,31 @@ exports.signup = async (req, res) => {
       userData.rawProfile = profile;
     }
 
+    // ---------------- CREATE USER ----------------
     const user = new Model(userData);
+
+    // ---------------- CREATE STRIPE CUSTOMER (AUTO) ----------------
+    const customer = await stripe.customers.create({
+      email: user.email,
+      name: user.name,
+    });
+
+    user.stripeCustomerId = customer.id;
+
     await user.save();
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    res
-      .status(201)
-      .json({ success: true, data: { ...user.toObject(), token } });
+    return res.status(201).json({
+      success: true,
+      data: { ...user.toObject(), token },
+    });
   } catch (err) {
     console.error("[SIGNUP ERROR]", err);
-    res.status(500).json({ success: false, errors: ["Server Error"] });
+    return res.status(500).json({
+      success: false,
+      errors: ["Server Error"],
+    });
   }
 };
 
@@ -116,40 +140,54 @@ exports.login = async (req, res) => {
     const { role, email, password, provider, profile, deviceId, location } =
       req.body;
 
-    if (!role || !email)
-      return res
-        .status(400)
-        .json({ success: false, errors: ["Role and email are required"] });
-
-    const Model = getModel(role);
-    if (!Model)
-      return res.status(400).json({ success: false, errors: ["Invalid role"] });
-
-    const user = await Model.findOne({ email });
-    if (!user)
-      return res
-        .status(401)
-        .json({ success: false, errors: ["Invalid credentials"] });
-
-    // Google login
-    if (provider === "google" && profile) {
-      if (user.providerId !== profile.sub)
-        return res
-          .status(401)
-          .json({ success: false, errors: ["Google account mismatch"] });
-    } else {
-      // Local login — compare password
-      const isMatch = await user.matchPassword(password);
-      if (!isMatch)
-        return res
-          .status(401)
-          .json({ success: false, errors: ["Invalid credentials"] });
+    if (!role || !email) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Role and email are required"],
+      });
     }
 
-    // Update login info
+    const Model = getModel(role);
+    if (!Model) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Invalid role"],
+      });
+    }
+
+    const user = await Model.findOne({ email });
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        errors: ["Invalid credentials"],
+      });
+    }
+
+    // ---------------- GOOGLE LOGIN ----------------
+    if (provider === "google" && profile) {
+      if (user.providerId !== profile.sub) {
+        return res.status(401).json({
+          success: false,
+          errors: ["Google account mismatch"],
+        });
+      }
+    } else {
+      // ---------------- LOCAL LOGIN ----------------
+      const isMatch = await user.matchPassword(password);
+      if (!isMatch) {
+        return res.status(401).json({
+          success: false,
+          errors: ["Invalid credentials"],
+        });
+      }
+    }
+
+    // ---------------- UPDATE LOGIN INFO ----------------
     user.isLogin = true;
     user.currentDevice = deviceId || user.currentDevice;
     user.currentLocation = location || user.currentLocation;
+
     user.loginHistory.push({
       deviceId: deviceId || null,
       ip: req.ip,
@@ -160,12 +198,16 @@ exports.login = async (req, res) => {
 
     const token = generateToken({ id: user._id, role: user.role });
 
-    res
-      .status(200)
-      .json({ success: true, data: { ...user.toObject(), token } });
+    return res.status(200).json({
+      success: true,
+      data: { ...user.toObject(), token },
+    });
   } catch (err) {
     console.error("[LOGIN ERROR]", err);
-    res.status(500).json({ success: false, errors: ["Server Error"] });
+    return res.status(500).json({
+      success: false,
+      errors: ["Server Error"],
+    });
   }
 };
 
