@@ -552,31 +552,50 @@ exports.createStripeCustomer = async (req, res) => {
 // ==========================================================
 exports.createSetupIntent = async (req, res) => {
   try {
-    const shipper = await Shipper.findById(req.user.id);
+    const shipper = req.user;
 
-    if (!shipper || !shipper.stripeCustomerId) {
-      return res.status(400).json({
+    // ---------------- CHECK SHIPPER ----------------
+    if (!shipper) {
+      return res.status(404).json({
         success: false,
-        message: "Stripe customer not found",
+        message: "Shipper not found",
       });
     }
 
+    // ---------------- ENSURE STRIPE CUSTOMER ----------------
+    let stripeCustomerId = shipper.stripeCustomerId;
+
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: shipper.email,
+        name: shipper.name,
+      });
+
+      stripeCustomerId = customer.id;
+
+      // save to DB
+      shipper.stripeCustomerId = stripeCustomerId;
+      await shipper.save();
+    }
+
+    // ---------------- CREATE SETUP INTENT ----------------
     const setupIntent = await stripe.setupIntents.create({
-      customer: shipper.stripeCustomerId,
+      customer: stripeCustomerId,
       payment_method_types: ["card"],
     });
 
     console.log("SetupIntent created:", setupIntent.id);
 
-    res.json({
+    return res.json({
       success: true,
       clientSecret: setupIntent.client_secret,
     });
   } catch (error) {
     console.error("SetupIntent Error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
+      message: "Failed to create SetupIntent",
       error: error.message,
     });
   }
