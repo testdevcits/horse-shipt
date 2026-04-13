@@ -624,14 +624,19 @@ exports.getCustomerStripePayments = async (req, res) => {
       ),
     ];
 
-    // ---------------- FETCH SHIPPERS ----------------
+    // ---------------- FETCH SHIPPERS (WITH IMAGE) ----------------
     const shippers = await Shipper.find({
       _id: { $in: shipperIds },
-    }).select("name email");
+    }).select("name email mobile profileImage");
 
     const shipperMap = {};
     shippers.forEach((s) => {
-      shipperMap[s._id.toString()] = s.name;
+      shipperMap[s._id.toString()] = {
+        name: s.name,
+        email: s.email,
+        mobile: s.mobile,
+        profileImage: s.profileImage?.url || null,
+      };
     });
 
     // ---------------- FETCH QUOTES + SHIPMENT ----------------
@@ -655,8 +660,9 @@ exports.getCustomerStripePayments = async (req, res) => {
 
       const metadata = charge.metadata || {};
       const quote = quoteMap[metadata.quoteId];
-
       const shipment = quote?.shipment;
+
+      const shipper = shipperMap[metadata.shipperId] || {};
 
       return {
         transactionId: charge.id,
@@ -695,15 +701,16 @@ exports.getCustomerStripePayments = async (req, res) => {
           hour12: true,
         }),
 
-        // ---------------- META ----------------
-        quoteId: metadata.quoteId,
-        shipmentId: metadata.shipmentId,
-        shipperId: metadata.shipperId,
+        // ---------------- SHIPPER WITH IMAGE ----------------
+        shipper: {
+          id: metadata.shipperId,
+          name: shipper.name || "Unknown Shipper",
+          email: shipper.email || "N/A",
+          mobile: shipper.mobile || "N/A",
+          profileImage: shipper.profileImage || null,
+        },
 
-        // ---------------- SHIPPER ----------------
-        shipperName: shipperMap[metadata.shipperId] || "Unknown Shipper",
-
-        // ---------------- CUSTOMER FIX ----------------
+        // ---------------- CUSTOMER ----------------
         customerEmail:
           charge.billing_details?.email || metadata.customerEmail || null,
 
@@ -715,7 +722,7 @@ exports.getCustomerStripePayments = async (req, res) => {
         cardBrand: charge.payment_method_details?.card?.brand,
         last4: charge.payment_method_details?.card?.last4,
 
-        // ---------------- SHIPMENT DETAILS ----------------
+        // ---------------- SHIPMENT ----------------
         pickupLocation: shipment?.pickupLocation || shipment?.origin || "N/A",
 
         deliveryLocation:
