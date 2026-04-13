@@ -593,3 +593,54 @@ exports.cancelQuote = async (req, res) => {
     });
   }
 };
+
+exports.getCustomerPayments = async (req, res) => {
+  try {
+    const customerId = req.user._id;
+
+    const payments = await ShipmentQuote.aggregate([
+      {
+        $lookup: {
+          from: "customershipments",
+          localField: "shipment",
+          foreignField: "_id",
+          as: "shipment",
+        },
+      },
+      { $unwind: "$shipment" },
+
+      {
+        $match: {
+          "shipment.customer": customerId,
+          stripePaymentIntentId: { $exists: true },
+        },
+      },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "shipper",
+          foreignField: "_id",
+          as: "shipper",
+        },
+      },
+      { $unwind: { path: "$shipper", preserveNullAndEmptyArrays: true } },
+
+      { $sort: { createdAt: -1 } },
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      total: payments.length,
+      payments,
+    });
+  } catch (error) {
+    console.error("getCustomerPayments error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch payments",
+      error: error.message,
+    });
+  }
+};
