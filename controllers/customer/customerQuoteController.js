@@ -611,27 +611,52 @@ exports.getCustomerStripePayments = async (req, res) => {
         charge.metadata?.customerEmail === customerEmail
     );
 
-    // ---------------- GET UNIQUE SHIPPER IDS ----------------
+    // ---------------- GET UNIQUE IDS ----------------
     const shipperIds = [
       ...new Set(
         customerCharges.map((c) => c.metadata?.shipperId).filter(Boolean)
       ),
     ];
 
-    // ---------------- FETCH SHIPPERS FROM DB ----------------
+    const quoteIds = [
+      ...new Set(
+        customerCharges.map((c) => c.metadata?.quoteId).filter(Boolean)
+      ),
+    ];
+
+    // ---------------- FETCH SHIPPERS ----------------
     const shippers = await Shipper.find({
       _id: { $in: shipperIds },
     }).select("name email");
 
-    // ---------------- CREATE SHIPPER MAP ----------------
     const shipperMap = {};
     shippers.forEach((s) => {
       shipperMap[s._id.toString()] = s.name;
     });
 
+    // ---------------- FETCH QUOTES + SHIPMENT ----------------
+    const quotes = await ShipmentQuote.find({
+      _id: { $in: quoteIds },
+    })
+      .populate({
+        path: "shipment",
+        select: "pickupLocation deliveryLocation origin destination",
+      })
+      .select("shipment");
+
+    const quoteMap = {};
+    quotes.forEach((q) => {
+      quoteMap[q._id.toString()] = q;
+    });
+
     // ---------------- FORMAT RESPONSE ----------------
     const formatted = customerCharges.map((charge) => {
       const createdDate = new Date(charge.created * 1000);
+
+      const metadata = charge.metadata || {};
+      const quote = quoteMap[metadata.quoteId];
+
+      const shipment = quote?.shipment;
 
       return {
         transactionId: charge.id,
@@ -670,19 +695,31 @@ exports.getCustomerStripePayments = async (req, res) => {
           hour12: true,
         }),
 
-        quoteId: charge.metadata?.quoteId,
-        shipmentId: charge.metadata?.shipmentId,
-        shipperId: charge.metadata?.shipperId,
+        // ---------------- META ----------------
+        quoteId: metadata.quoteId,
+        shipmentId: metadata.shipmentId,
+        shipperId: metadata.shipperId,
 
-        shipperName:
-          shipperMap[charge.metadata?.shipperId] || "Unknown Shipper",
+        // ---------------- SHIPPER ----------------
+        shipperName: shipperMap[metadata.shipperId] || "Unknown Shipper",
 
-        customerEmail: charge.billing_details?.email,
-        customerName: charge.billing_details?.name,
+        // ---------------- CUSTOMER FIX ----------------
+        customerEmail:
+          charge.billing_details?.email || metadata.customerEmail || null,
 
+        customerName:
+          charge.billing_details?.name || metadata.customerName || "N/A",
+
+        // ---------------- CARD ----------------
         paymentMethod: charge.payment_method_details?.type,
         cardBrand: charge.payment_method_details?.card?.brand,
         last4: charge.payment_method_details?.card?.last4,
+
+        // ---------------- SHIPMENT DETAILS ----------------
+        pickupLocation: shipment?.pickupLocation || shipment?.origin || "N/A",
+
+        deliveryLocation:
+          shipment?.deliveryLocation || shipment?.destination || "N/A",
       };
     });
 
