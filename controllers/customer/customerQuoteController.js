@@ -594,52 +594,46 @@ exports.cancelQuote = async (req, res) => {
   }
 };
 
-exports.getCustomerPayments = async (req, res) => {
+exports.getCustomerStripePayments = async (req, res) => {
   try {
-    const customerId = req.user._id;
+    const customerEmail = req.user.email;
 
-    const payments = await ShipmentQuote.aggregate([
-      {
-        $lookup: {
-          from: "customershipments",
-          localField: "shipment",
-          foreignField: "_id",
-          as: "shipment",
-        },
-      },
-      { $unwind: "$shipment" },
+    const paymentIntents = await stripe.paymentIntents.list({
+      limit: 20,
+    });
 
-      {
-        $match: {
-          "shipment.customer": customerId,
-          stripePaymentIntentId: { $exists: true },
-        },
-      },
+    // ---------------- FILTER CUSTOMER PAYMENTS ----------------
+    const customerPayments = paymentIntents.data.filter(
+      (pi) => pi.metadata?.customerEmail === customerEmail
+    );
 
-      {
-        $lookup: {
-          from: "users",
-          localField: "shipper",
-          foreignField: "_id",
-          as: "shipper",
-        },
-      },
-      { $unwind: { path: "$shipper", preserveNullAndEmptyArrays: true } },
+    // ---------------- FORMAT RESPONSE ----------------
+    const formattedPayments = customerPayments.map((pi) => ({
+      paymentIntentId: pi.id,
+      amount: pi.amount / 100,
+      currency: pi.currency,
+      status: pi.status,
 
-      { $sort: { createdAt: -1 } },
-    ]);
+      receiptEmail: pi.receipt_email,
+
+      createdAt: new Date(pi.created * 1000),
+
+      // optional metadata
+      quoteId: pi.metadata?.quoteId,
+      shipmentId: pi.metadata?.shipmentId,
+    }));
 
     return res.status(200).json({
       success: true,
-      total: payments.length,
-      payments,
+      total: formattedPayments.length,
+      payments: formattedPayments,
     });
   } catch (error) {
-    console.error("getCustomerPayments error:", error);
+    console.error("Stripe payments error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch payments",
+      message: "Failed to fetch Stripe payments",
       error: error.message,
     });
   }

@@ -56,7 +56,7 @@ const {
   acceptQuoteWithSignature,
   createPaymentIntent,
   cancelQuote,
-  getCustomerPayments,
+  getCustomerStripePayments,
 } = require("../../controllers/customer/customerQuoteController");
 
 const {
@@ -211,7 +211,7 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
-router.get("/payments", customerAuth, getCustomerPayments);
+router.get("/payments", customerAuth, getCustomerStripePayments);
 
 // ====================================================
 // PAYMENT (QUOTE PAYMENT)
