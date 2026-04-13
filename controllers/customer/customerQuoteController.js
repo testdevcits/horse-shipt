@@ -598,42 +598,117 @@ exports.getCustomerStripePayments = async (req, res) => {
   try {
     const customerEmail = req.user.email;
 
-    const paymentIntents = await stripe.paymentIntents.list({
+    // ---------------- GET STRIPE CHARGES ----------------
+    const charges = await stripe.charges.list({
       limit: 20,
     });
 
     // ---------------- FILTER CUSTOMER PAYMENTS ----------------
-    const customerPayments = paymentIntents.data.filter(
-      (pi) => pi.metadata?.customerEmail === customerEmail
+    const customerCharges = charges.data.filter(
+      (charge) =>
+        charge.billing_details?.email === customerEmail ||
+        charge.metadata?.customerEmail === customerEmail
     );
 
+    // ---------------- GET UNIQUE SHIPPER IDS ----------------
+    const shipperIds = [
+      ...new Set(
+        customerCharges.map((c) => c.metadata?.shipperId).filter(Boolean)
+      ),
+    ];
+
+    // ---------------- FETCH SHIPPERS FROM DB ----------------
+    const shippers = await User.find({
+      _id: { $in: shipperIds },
+    }).select("name email");
+
+    // ---------------- CREATE SHIPPER MAP ----------------
+    const shipperMap = {};
+    shippers.forEach((s) => {
+      shipperMap[s._id.toString()] = s.name;
+    });
+
     // ---------------- FORMAT RESPONSE ----------------
-    const formattedPayments = customerPayments.map((pi) => ({
-      paymentIntentId: pi.id,
-      amount: pi.amount / 100,
-      currency: pi.currency,
-      status: pi.status,
+    const formatted = customerCharges.map((charge) => {
+      const createdDateUTC = new Date(charge.created * 1000);
 
-      receiptEmail: pi.receipt_email,
+      // Convert to IST (Asia/Kolkata)
+      const createdDate = new Date(
+        createdDateUTC.toLocaleString("en-US", {
+          timeZone: "Asia/Kolkata",
+        })
+      );
 
-      createdAt: new Date(pi.created * 1000),
+      return {
+        transactionId: charge.id,
 
-      // optional metadata
-      quoteId: pi.metadata?.quoteId,
-      shipmentId: pi.metadata?.shipmentId,
-    }));
+        amount: charge.amount / 100,
+        currency: charge.currency,
 
+        status: charge.status, // succeeded / pending / failed
+        paid: charge.paid,
+
+        receiptUrl: charge.receipt_url,
+
+        // RAW DATE
+        createdAt: createdDate,
+
+        // FORMATTED DATE
+        paymentDate: createdDate.toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
+
+        // FORMATTED TIME
+        paymentTime: createdDate.toLocaleTimeString("en-IN", {
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+
+        // COMBINED (BEST FOR UI)
+        paymentDateTime: createdDate.toLocaleString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+
+        // METADATA
+        quoteId: charge.metadata?.quoteId,
+        shipmentId: charge.metadata?.shipmentId,
+        shipperId: charge.metadata?.shipperId,
+
+        // SHIPPER NAME (MAPPED)
+        shipperName:
+          shipperMap[charge.metadata?.shipperId] || "Unknown Shipper",
+
+        // CUSTOMER INFO
+        customerEmail: charge.billing_details?.email,
+        customerName: charge.billing_details?.name,
+
+        // PAYMENT METHOD DETAILS
+        paymentMethod: charge.payment_method_details?.type,
+        cardBrand: charge.payment_method_details?.card?.brand,
+        last4: charge.payment_method_details?.card?.last4,
+      };
+    });
+
+    // ---------------- RESPONSE ----------------
     return res.status(200).json({
       success: true,
-      total: formattedPayments.length,
-      payments: formattedPayments,
+      total: formatted.length,
+      payments: formatted,
     });
   } catch (error) {
     console.error("Stripe payments error:", error);
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch Stripe payments",
+      message: "Failed to fetch transactions",
       error: error.message,
     });
   }
