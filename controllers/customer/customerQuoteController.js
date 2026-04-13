@@ -4,6 +4,7 @@ const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
+const Shipper = require("../../models/shipper/shipperModel");
 
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
@@ -618,7 +619,7 @@ exports.getCustomerStripePayments = async (req, res) => {
     ];
 
     // ---------------- FETCH SHIPPERS FROM DB ----------------
-    const shippers = await User.find({
+    const shippers = await Shipper.find({
       _id: { $in: shipperIds },
     }).select("name email");
 
@@ -630,14 +631,7 @@ exports.getCustomerStripePayments = async (req, res) => {
 
     // ---------------- FORMAT RESPONSE ----------------
     const formatted = customerCharges.map((charge) => {
-      const createdDateUTC = new Date(charge.created * 1000);
-
-      // Convert to IST (Asia/Kolkata)
-      const createdDate = new Date(
-        createdDateUTC.toLocaleString("en-US", {
-          timeZone: "Asia/Kolkata",
-        })
-      );
+      const createdDate = new Date(charge.created * 1000);
 
       return {
         transactionId: charge.id,
@@ -645,30 +639,29 @@ exports.getCustomerStripePayments = async (req, res) => {
         amount: charge.amount / 100,
         currency: charge.currency,
 
-        status: charge.status, // succeeded / pending / failed
+        status: charge.status,
         paid: charge.paid,
 
         receiptUrl: charge.receipt_url,
 
-        // RAW DATE
         createdAt: createdDate,
 
-        // FORMATTED DATE
-        paymentDate: createdDate.toLocaleDateString("en-IN", {
+        paymentDate: createdDate.toLocaleDateString("en-US", {
+          timeZone: "America/New_York",
           day: "2-digit",
           month: "short",
           year: "numeric",
         }),
 
-        // FORMATTED TIME
-        paymentTime: createdDate.toLocaleTimeString("en-IN", {
+        paymentTime: createdDate.toLocaleTimeString("en-US", {
+          timeZone: "America/New_York",
           hour: "2-digit",
           minute: "2-digit",
           hour12: true,
         }),
 
-        // COMBINED (BEST FOR UI)
-        paymentDateTime: createdDate.toLocaleString("en-IN", {
+        paymentDateTime: createdDate.toLocaleString("en-US", {
+          timeZone: "America/New_York",
           day: "2-digit",
           month: "short",
           year: "numeric",
@@ -677,20 +670,16 @@ exports.getCustomerStripePayments = async (req, res) => {
           hour12: true,
         }),
 
-        // METADATA
         quoteId: charge.metadata?.quoteId,
         shipmentId: charge.metadata?.shipmentId,
         shipperId: charge.metadata?.shipperId,
 
-        // SHIPPER NAME (MAPPED)
         shipperName:
           shipperMap[charge.metadata?.shipperId] || "Unknown Shipper",
 
-        // CUSTOMER INFO
         customerEmail: charge.billing_details?.email,
         customerName: charge.billing_details?.name,
 
-        // PAYMENT METHOD DETAILS
         paymentMethod: charge.payment_method_details?.type,
         cardBrand: charge.payment_method_details?.card?.brand,
         last4: charge.payment_method_details?.card?.last4,
