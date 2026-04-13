@@ -679,26 +679,20 @@ exports.getPaymentStatus = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
-  console.log("=== CREATE SUBSCRIPTION API HIT ===");
+  console.log("=== CREATE SUBSCRIPTION (DAILY ONLY) ===");
 
   try {
-    const { withTrial = true, planType = "monthly" } = req.body;
+    const { withTrial = true } = req.body;
 
     // ============================
-    // PRICE CONFIG
+    // DAILY PRICE ONLY
     // ============================
-    const PRICES = {
-      monthly: process.env.STRIPE_MONTHLY_PRICE_ID,
-      annual: process.env.STRIPE_ANNUAL_PRICE_ID,
-      daily: process.env.STRIPE_DAILY_PRICE_ID,
-    };
+    const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
 
-    const selectedPriceId = PRICES[planType];
-
-    if (!selectedPriceId) {
+    if (!DAILY_PRICE_ID) {
       return res.status(400).json({
         success: false,
-        message: "Invalid plan type",
+        message: "Daily price ID not configured",
       });
     }
 
@@ -741,31 +735,25 @@ exports.createSubscription = async (req, res) => {
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
-      items: [{ price: selectedPriceId }],
+      items: [{ price: DAILY_PRICE_ID }],
       default_payment_method: shipper.paymentMethodId,
       expand: ["items.data.price"],
 
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
-        plan: planType,
+        plan: "daily",
       },
     };
 
     // ============================
-    // TRIAL LOGIC (UPDATED → 1 DAY SUPPORT)
+    // TRIAL LOGIC (1 DAY ONLY)
     // ============================
-    const TRIAL_DAYS_MAP = {
-      monthly: 1,
-      annual: 0,
-      daily: 0,
-    };
+    const TRIAL_DAYS = 1;
 
-    const trialDays = TRIAL_DAYS_MAP[planType];
-
-    if (withTrial && trialDays > 0 && !shipper.hasUsedTrial) {
-      subscriptionData.trial_period_days = trialDays;
-      console.log(`Trial Applied (${trialDays} day(s))`);
+    if (withTrial && !shipper.hasUsedTrial) {
+      subscriptionData.trial_period_days = TRIAL_DAYS;
+      console.log(`Trial Applied (${TRIAL_DAYS} day)`);
     }
 
     // ============================
@@ -800,16 +788,11 @@ exports.createSubscription = async (req, res) => {
       stripeSubscriptionId: subscription.id,
       stripePriceId: price.id,
 
-      planName:
-        planType === "annual"
-          ? "Shipper Pro Access (Annual)"
-          : planType === "daily"
-          ? "Shipper Test Plan (Daily)"
-          : "Shipper Pro Access (Monthly)",
+      planName: "Shipper Daily Plan",
 
       amount: price.unit_amount / 100,
       currency: price.currency,
-      interval: price.recurring?.interval || planType,
+      interval: "day",
 
       status: subscription.status,
 
@@ -840,9 +823,9 @@ exports.createSubscription = async (req, res) => {
     // ============================
     return res.json({
       success: true,
-      message: "Subscription created successfully",
+      message: "Daily subscription created successfully",
       data: {
-        planType,
+        planType: "daily",
         subscriptionId: newSubscription._id,
         stripeSubscriptionId: subscription.id,
         status: newSubscription.status,
@@ -894,11 +877,15 @@ exports.cancelSubscription = async (req, res) => {
     }
 
     // ============================
-    // FETCH LATEST FROM STRIPE
+    // GET STRIPE SUB
     // ============================
     const stripeSub = await stripe.subscriptions.retrieve(
       subscription.stripeSubscriptionId
     );
+
+    // ============================
+    // IF ALREADY CANCELED
+    // ============================
     if (stripeSub.status === "canceled") {
       subscription.status = "canceled";
       subscription.cancelAtPeriodEnd = false;
@@ -921,18 +908,27 @@ exports.cancelSubscription = async (req, res) => {
     let updatedStripeSub;
 
     // ============================
+    // TRIAL CHECK (IMPORTANT FIX)
+    // ============================
+    const isTrial = stripeSub.status === "trialing";
+
+    // ============================
     // CANCEL LOGIC
     // ============================
-    if (cancelImmediately) {
-      console.log("Canceling immediately...");
+
+    if (cancelImmediately && isTrial) {
+      // TRIAL → can cancel instantly
+      console.log("Canceling TRIAL immediately...");
 
       updatedStripeSub = await stripe.subscriptions.del(
         subscription.stripeSubscriptionId
       );
+
       subscription.status = "canceled";
       subscription.cancelAtPeriodEnd = false;
-    } else {
-      console.log("Cancel at period end...");
+    } else if (cancelImmediately && !isTrial) {
+      // PAID → still cancel but KEEP ACCESS till period end
+      console.log("Cancel request on PAID subscription (ending at period end)");
 
       updatedStripeSub = await stripe.subscriptions.update(
         subscription.stripeSubscriptionId,
@@ -940,12 +936,26 @@ exports.cancelSubscription = async (req, res) => {
           cancel_at_period_end: true,
         }
       );
+
+      subscription.status = stripeSub.status; // still active
+      subscription.cancelAtPeriodEnd = true;
+    } else {
+      // DEFAULT → cancel at period end
+      console.log("Cancel at period end");
+
+      updatedStripeSub = await stripe.subscriptions.update(
+        subscription.stripeSubscriptionId,
+        {
+          cancel_at_period_end: true,
+        }
+      );
+
       subscription.cancelAtPeriodEnd = true;
       subscription.status = stripeSub.status;
     }
 
     // ============================
-    // DATE HANDLING
+    // CANCEL TIME HANDLING
     // ============================
     let canceledAt = new Date();
 
@@ -953,13 +963,13 @@ exports.cancelSubscription = async (req, res) => {
       canceledAt = new Date(updatedStripeSub.canceled_at * 1000);
     }
 
-    // ============================
-    // UPDATE DB
-    // ============================
     subscription.canceledAt = canceledAt;
     subscription.cancelReason = reason;
 
-    // Important: store end date for UI
+    // ============================
+    // IMPORTANT: ACCESS LOGIC
+    // ============================
+    // KEEP ACCESS UNTIL PERIOD END (VERY IMPORTANT FOR PAID USERS)
     if (updatedStripeSub?.current_period_end) {
       subscription.currentPeriodEnd = new Date(
         updatedStripeSub.current_period_end * 1000
@@ -973,15 +983,20 @@ exports.cancelSubscription = async (req, res) => {
     // ============================
     return res.json({
       success: true,
-      message: cancelImmediately
-        ? "Subscription canceled immediately"
-        : "Subscription will remain active until period end",
+      message: isTrial
+        ? "Trial subscription canceled"
+        : cancelImmediately
+        ? "Subscription canceled (access valid till period end)"
+        : "Subscription will end at billing period",
 
       data: {
         status: subscription.status,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         canceledAt: subscription.canceledAt,
+
+        // IMPORTANT FOR UI
         accessValidTill: subscription.currentPeriodEnd,
+        isTrial,
       },
     });
   } catch (error) {
@@ -997,18 +1012,13 @@ exports.cancelSubscription = async (req, res) => {
 // GET PLAN DETAILS
 exports.getSubscriptionPlan = async (req, res) => {
   try {
-    console.log("========== GET SUBSCRIPTION PLAN API ==========");
+    console.log("========== GET SUBSCRIPTION PLAN API (DAILY ONLY) ==========");
 
     // ============================
     // ENV PRICE IDS
     // ============================
-    const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
-    const YEARLY_PRICE_ID = process.env.STRIPE_YEARLY_PRICE_ID;
     const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
 
-    console.log("ENV CHECK:");
-    console.log("MONTHLY:", MONTHLY_PRICE_ID);
-    console.log("YEARLY:", YEARLY_PRICE_ID);
     console.log("DAILY:", DAILY_PRICE_ID);
 
     console.log(
@@ -1019,58 +1029,51 @@ exports.getSubscriptionPlan = async (req, res) => {
     // ============================
     // VALIDATION
     // ============================
-    if (!MONTHLY_PRICE_ID) {
+    if (!DAILY_PRICE_ID) {
       return res.status(500).json({
         success: false,
-        message: "Monthly price ID not configured",
+        message: "Daily price ID not configured",
       });
     }
 
     // ============================
-    // FETCH PRICE HELPER
+    // FETCH DAILY PRICE ONLY
     // ============================
-    const fetchPrice = async (priceId, label) => {
-      if (!priceId) return null;
+    let daily;
 
-      try {
-        const price = await stripe.prices.retrieve(priceId, {
-          expand: ["product"],
-        });
+    try {
+      const price = await stripe.prices.retrieve(DAILY_PRICE_ID, {
+        expand: ["product"],
+      });
 
-        return {
-          priceId: price.id,
-          amount: price.unit_amount / 100,
-          currency: price.currency,
-          interval: price.recurring?.interval || null,
-          productName: price.product?.name || "HorseShipt Subscription",
-          label,
-        };
-      } catch (error) {
-        console.error(`Stripe error (${label}):`, error.message);
-        return null;
-      }
-    };
+      daily = {
+        priceId: price.id,
+        amount: price.unit_amount / 100,
+        currency: price.currency,
+        interval: price.recurring?.interval || "day",
+        productName: price.product?.name || "HorseShipt Subscription",
+        label: "Daily Plan",
+        planType: "daily",
+      };
+    } catch (error) {
+      console.error("Stripe DAILY price error:", error.message);
 
-    // ============================
-    // GET ALL PLANS
-    // ============================
-    const monthly = await fetchPrice(MONTHLY_PRICE_ID, "Monthly Plan");
-    const yearly = await fetchPrice(YEARLY_PRICE_ID, "Yearly Plan");
-    const daily = await fetchPrice(DAILY_PRICE_ID, "Daily Test Plan");
+      return res.status(500).json({
+        success: false,
+        message: "Invalid Daily Price ID in Stripe",
+      });
+    }
 
     // ============================
-    // RESPONSE
+    // RESPONSE (ONLY DAILY)
     // ============================
     const responseData = {
-      monthly,
-      yearly,
       daily,
 
-      //  DAY TRIAL
+      // 1 DAY TRIAL (TESTING)
       trialDays: 1,
 
-      currency:
-        monthly?.currency || yearly?.currency || daily?.currency || "usd",
+      currency: daily.currency,
     };
 
     console.log("FINAL RESPONSE:", responseData);
@@ -1093,7 +1096,7 @@ exports.getSubscriptionPlan = async (req, res) => {
 // GET CURRENT SHIPPER SUBSCRIPTION
 exports.getShipperSubscriptionStatus = async (req, res) => {
   try {
-    console.log("=== getShipperSubscriptionStatus triggered ===");
+    console.log("=== getShipperSubscriptionStatus (DAILY ONLY) ===");
 
     const shipper = await Shipper.findById(req.user.id);
 
@@ -1136,17 +1139,9 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     const price = currentSub.items.data[0].price;
 
     // =======================
-    // PLAN DETECTION (IMPROVED)
+    // PLAN TYPE (ONLY DAILY)
     // =======================
-    const interval = price.recurring?.interval;
-
-    let planType = "monthly";
-
-    if (interval === "year") {
-      planType = "annual";
-    } else if (interval === "day") {
-      planType = "daily";
-    }
+    const planType = "daily";
 
     // =======================
     // DATE HANDLING
@@ -1164,7 +1159,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       : null;
 
     // =======================
-    // TRIAL CALCULATION (1 DAY READY)
+    // TRIAL CALCULATION (1 DAY SUPPORT)
     // =======================
     let remainingTrialDays = 0;
     let trialActive = false;
@@ -1197,16 +1192,11 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         stripeSubscriptionId: currentSub.id,
         stripePriceId: price.id,
 
-        planName:
-          planType === "annual"
-            ? "Shipper Pro Access (Annual)"
-            : planType === "daily"
-            ? "Shipper Test Plan (Daily)"
-            : "Shipper Pro Access (Monthly)",
+        planName: "Shipper Daily Plan",
 
         amount: price.unit_amount / 100,
         currency: price.currency,
-        interval: price.recurring?.interval || null,
+        interval: "day",
 
         status: currentSub.status,
 
@@ -1234,7 +1224,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
 
       hasSubscription: true,
       status: currentSub.status,
-      planType,
+      planType: "daily",
 
       hasAccess,
 
