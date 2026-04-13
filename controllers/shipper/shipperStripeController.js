@@ -685,11 +685,12 @@ exports.createSubscription = async (req, res) => {
     const { withTrial = true, planType = "monthly" } = req.body;
 
     // ============================
-    // CONFIG (ENV BASED)
+    // PRICE CONFIG
     // ============================
     const PRICES = {
       monthly: process.env.STRIPE_MONTHLY_PRICE_ID,
       annual: process.env.STRIPE_ANNUAL_PRICE_ID,
+      daily: process.env.STRIPE_DAILY_PRICE_ID,
     };
 
     const selectedPriceId = PRICES[planType];
@@ -736,7 +737,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // PREPARE SUBSCRIPTION DATA
+    // BUILD SUBSCRIPTION DATA
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
@@ -747,16 +748,24 @@ exports.createSubscription = async (req, res) => {
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
-        plan: planType === "annual" ? "Annual Plan" : "Monthly Plan",
+        plan: planType,
       },
     };
 
     // ============================
-    // TRIAL LOGIC
+    // TRIAL LOGIC (UPDATED → 1 DAY SUPPORT)
     // ============================
-    if (withTrial && !shipper.hasUsedTrial && planType === "monthly") {
-      subscriptionData.trial_period_days = 30;
-      console.log("Trial Applied (30 days)");
+    const TRIAL_DAYS_MAP = {
+      monthly: 1,
+      annual: 0,
+      daily: 0,
+    };
+
+    const trialDays = TRIAL_DAYS_MAP[planType];
+
+    if (withTrial && trialDays > 0 && !shipper.hasUsedTrial) {
+      subscriptionData.trial_period_days = trialDays;
+      console.log(`Trial Applied (${trialDays} day(s))`);
     }
 
     // ============================
@@ -794,11 +803,13 @@ exports.createSubscription = async (req, res) => {
       planName:
         planType === "annual"
           ? "Shipper Pro Access (Annual)"
+          : planType === "daily"
+          ? "Shipper Test Plan (Daily)"
           : "Shipper Pro Access (Monthly)",
 
       amount: price.unit_amount / 100,
       currency: price.currency,
-      interval: price.recurring.interval,
+      interval: price.recurring?.interval || planType,
 
       status: subscription.status,
 
@@ -833,6 +844,7 @@ exports.createSubscription = async (req, res) => {
       data: {
         planType,
         subscriptionId: newSubscription._id,
+        stripeSubscriptionId: subscription.id,
         status: newSubscription.status,
         trialEnd: newSubscription.trialEnd,
         currentPeriodEnd: newSubscription.currentPeriodEnd,
@@ -988,19 +1000,26 @@ exports.getSubscriptionPlan = async (req, res) => {
     console.log("========== GET SUBSCRIPTION PLAN API ==========");
 
     // ============================
-    // CONFIG (ENV)
+    // ENV PRICE IDS
     // ============================
     const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
+    const YEARLY_PRICE_ID = process.env.STRIPE_YEARLY_PRICE_ID;
+    const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
 
     console.log("ENV CHECK:");
-    console.log("MONTHLY_PRICE_ID:", MONTHLY_PRICE_ID);
+    console.log("MONTHLY:", MONTHLY_PRICE_ID);
+    console.log("YEARLY:", YEARLY_PRICE_ID);
+    console.log("DAILY:", DAILY_PRICE_ID);
+
     console.log(
-      "STRIPE KEY TYPE:",
+      "STRIPE MODE:",
       process.env.STRIPE_SECRET_KEY?.startsWith("sk_live") ? "LIVE" : "TEST"
     );
 
+    // ============================
+    // VALIDATION
+    // ============================
     if (!MONTHLY_PRICE_ID) {
-      console.error("Monthly price ID missing in ENV");
       return res.status(500).json({
         success: false,
         message: "Monthly price ID not configured",
@@ -1008,53 +1027,50 @@ exports.getSubscriptionPlan = async (req, res) => {
     }
 
     // ============================
-    // FETCH MONTHLY PLAN
+    // FETCH PRICE HELPER
     // ============================
-    console.log("➡️ Fetching MONTHLY price from Stripe...");
+    const fetchPrice = async (priceId, label) => {
+      if (!priceId) return null;
 
-    let monthlyPrice;
+      try {
+        const price = await stripe.prices.retrieve(priceId, {
+          expand: ["product"],
+        });
 
-    try {
-      monthlyPrice = await stripe.prices.retrieve(MONTHLY_PRICE_ID, {
-        expand: ["product"],
-      });
-
-      console.log("Monthly price fetched:", {
-        id: monthlyPrice.id,
-        amount: monthlyPrice.unit_amount,
-        currency: monthlyPrice.currency,
-        interval: monthlyPrice.recurring?.interval,
-        product: monthlyPrice.product?.name,
-      });
-    } catch (err) {
-      console.error("Stripe MONTHLY price error:");
-      console.error("Price ID used:", MONTHLY_PRICE_ID);
-      console.error(err);
-
-      return res.status(500).json({
-        success: false,
-        message: "Invalid Monthly Price ID in Stripe",
-      });
-    }
-
-    const monthly = {
-      priceId: monthlyPrice.id,
-      amount: monthlyPrice.unit_amount / 100,
-      currency: monthlyPrice.currency,
-      interval: monthlyPrice.recurring.interval,
-      productName: monthlyPrice.product.name,
-      label: "Introductory Price",
-      planType: "monthly",
+        return {
+          priceId: price.id,
+          amount: price.unit_amount / 100,
+          currency: price.currency,
+          interval: price.recurring?.interval || null,
+          productName: price.product?.name || "HorseShipt Subscription",
+          label,
+        };
+      } catch (error) {
+        console.error(`Stripe error (${label}):`, error.message);
+        return null;
+      }
     };
 
     // ============================
-    // RESPONSE (ONLY MONTHLY)
+    // GET ALL PLANS
+    // ============================
+    const monthly = await fetchPrice(MONTHLY_PRICE_ID, "Monthly Plan");
+    const yearly = await fetchPrice(YEARLY_PRICE_ID, "Yearly Plan");
+    const daily = await fetchPrice(DAILY_PRICE_ID, "Daily Test Plan");
+
+    // ============================
+    // RESPONSE
     // ============================
     const responseData = {
       monthly,
-      annual: null,
-      trialDays: 30,
-      currency: monthly.currency,
+      yearly,
+      daily,
+
+      //  DAY TRIAL
+      trialDays: 1,
+
+      currency:
+        monthly?.currency || yearly?.currency || daily?.currency || "usd",
     };
 
     console.log("FINAL RESPONSE:", responseData);
@@ -1065,7 +1081,7 @@ exports.getSubscriptionPlan = async (req, res) => {
       data: responseData,
     });
   } catch (error) {
-    console.error("Plan Fetch Error (GLOBAL):", error);
+    console.error("Subscription Plan Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -1098,7 +1114,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     });
 
     // =======================
-    // FIND CURRENT SUBSCRIPTION
+    // FIND ACTIVE/TRIAL SUB
     // =======================
     const currentSub = subscriptions.data.find((sub) =>
       ["trialing", "active", "past_due"].includes(sub.status)
@@ -1110,15 +1126,27 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         hasSubscription: false,
         status: "none",
         message: "No active subscription",
+
+        // UI HELPERS
+        hasAccess: false,
+        needsSubscription: true,
       });
     }
 
     const price = currentSub.items.data[0].price;
 
     // =======================
-    // PLAN TYPE DETECTION
+    // PLAN DETECTION (IMPROVED)
     // =======================
-    const planType = price.recurring.interval === "year" ? "annual" : "monthly";
+    const interval = price.recurring?.interval;
+
+    let planType = "monthly";
+
+    if (interval === "year") {
+      planType = "annual";
+    } else if (interval === "day") {
+      planType = "daily";
+    }
 
     // =======================
     // DATE HANDLING
@@ -1136,18 +1164,20 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       : null;
 
     // =======================
-    // TRIAL CALCULATION
+    // TRIAL CALCULATION (1 DAY READY)
     // =======================
     let remainingTrialDays = 0;
     let trialActive = false;
 
     if (currentSub.status === "trialing" && currentSub.trial_end) {
       const now = Math.floor(Date.now() / 1000);
+
       remainingTrialDays = Math.max(
         0,
         Math.ceil((currentSub.trial_end - now) / (60 * 60 * 24))
       );
-      trialActive = true;
+
+      trialActive = remainingTrialDays > 0;
     }
 
     // =======================
@@ -1157,7 +1187,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       currentSub.status === "active" || currentSub.status === "trialing";
 
     // =======================
-    // SYNC DB
+    // SYNC DATABASE
     // =======================
     await subscriptionModel.findOneAndUpdate(
       { stripeSubscriptionId: currentSub.id },
@@ -1170,11 +1200,13 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         planName:
           planType === "annual"
             ? "Shipper Pro Access (Annual)"
+            : planType === "daily"
+            ? "Shipper Test Plan (Daily)"
             : "Shipper Pro Access (Monthly)",
 
         amount: price.unit_amount / 100,
         currency: price.currency,
-        interval: price.recurring.interval,
+        interval: price.recurring?.interval || null,
 
         status: currentSub.status,
 
@@ -1201,10 +1233,10 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       success: true,
 
       hasSubscription: true,
-      hasAccess,
-
       status: currentSub.status,
       planType,
+
+      hasAccess,
 
       trialActive,
       remainingTrialDays,
@@ -1217,6 +1249,12 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       currentPeriodEnd,
 
       cancelAtPeriodEnd: currentSub.cancel_at_period_end,
+
+      // FRONTEND HELPERS
+      isTrialing: currentSub.status === "trialing",
+      isActive: currentSub.status === "active",
+      isPastDue: currentSub.status === "past_due",
+      needsRenewal: currentSub.status === "past_due",
     });
   } catch (error) {
     console.error("Get Subscription Status Error:", error);
