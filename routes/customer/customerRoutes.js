@@ -12,7 +12,6 @@ const upload = require("../../middleware/uploadMiddleware");
 const {
   addOrUpdatePayment,
   getPaymentByUser,
-  getAllPayments,
   togglePaymentStatus,
   getPaymentById,
   requestOtp,
@@ -93,7 +92,6 @@ const {
 router.post("/payment", customerAuth, addOrUpdatePayment);
 router.get("/payment", customerAuth, getPaymentByUser);
 router.get("/payment/:id", customerAuth, getPaymentById);
-router.get("/payments", customerAuth, getAllPayments);
 router.patch("/payment/:id/toggle", customerAuth, togglePaymentStatus);
 router.post("/payment/request-otp", customerAuth, requestOtp);
 router.post("/payment/verify-otp", customerAuth, verifyOtp);
