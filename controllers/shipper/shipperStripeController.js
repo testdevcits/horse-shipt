@@ -1274,3 +1274,101 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     });
   }
 };
+
+exports.getBillingHistory = async (req, res) => {
+  try {
+    console.log("=== GET BILLING HISTORY (INVOICE + TRANSACTIONS) ===");
+
+    const shipper = await Shipper.findById(req.user.id);
+
+    if (!shipper || !shipper.stripeCustomerId) {
+      return res.status(400).json({
+        success: false,
+        message: "Shipper or Stripe customer not found",
+      });
+    }
+
+    // ============================
+    // PARALLEL CALLS (FAST ⚡)
+    // ============================
+    const [invoices, charges] = await Promise.all([
+      stripe.invoices.list({
+        customer: shipper.stripeCustomerId,
+        limit: 20,
+      }),
+      stripe.charges.list({
+        customer: shipper.stripeCustomerId,
+        limit: 20,
+      }),
+    ]);
+
+    // ============================
+    // FORMAT INVOICES
+    // ============================
+    const formattedInvoices = invoices.data.map((inv) => ({
+      type: "invoice",
+
+      id: inv.id,
+      amount: inv.amount_paid / 100,
+      currency: inv.currency,
+
+      status: inv.status,
+      billingReason: inv.billing_reason,
+
+      createdAt: new Date(inv.created * 1000),
+      periodStart: inv.period_start ? new Date(inv.period_start * 1000) : null,
+      periodEnd: inv.period_end ? new Date(inv.period_end * 1000) : null,
+
+      paid: inv.paid,
+      paidAt: inv.status_transitions?.paid_at
+        ? new Date(inv.status_transitions.paid_at * 1000)
+        : null,
+
+      invoicePdf: inv.invoice_pdf,
+      hostedInvoiceUrl: inv.hosted_invoice_url,
+    }));
+
+    // ============================
+    // FORMAT CHARGES (TRANSACTIONS)
+    // ============================
+    const formattedCharges = charges.data.map((ch) => ({
+      type: "transaction",
+
+      id: ch.id,
+      amount: ch.amount / 100,
+      currency: ch.currency,
+
+      status: ch.status, // succeeded, pending, failed
+      paid: ch.paid,
+      refunded: ch.refunded,
+
+      createdAt: new Date(ch.created * 1000),
+
+      receiptUrl: ch.receipt_url,
+
+      paymentMethod: ch.payment_method_details?.type,
+      cardBrand: ch.payment_method_details?.card?.brand,
+      last4: ch.payment_method_details?.card?.last4,
+    }));
+
+    // ============================
+    // MERGE + SORT (LATEST FIRST)
+    // ============================
+    const combined = [...formattedInvoices, ...formattedCharges].sort(
+      (a, b) => b.createdAt - a.createdAt
+    );
+
+    return res.json({
+      success: true,
+      count: combined.length,
+      data: combined,
+    });
+  } catch (error) {
+    console.error("Billing History Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

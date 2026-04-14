@@ -135,6 +135,7 @@ const {
   createSubscription,
   cancelSubscription,
   getShipperSubscriptionStatus,
+  getBillingHistory,
 } = require("../../controllers/shipper/shipperStripeController");
 
 // -------- Vehicles --------
@@ -376,6 +377,8 @@ router.get(
   shipperAuth,
   getShipperSubscriptionStatus
 );
+
+router.get("/stripe/subscription/invoices", shipperAuth, getBillingHistory);
 
 // ====================================================
 // SHIPPER Delivered ROUTES
