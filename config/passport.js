@@ -5,7 +5,7 @@ const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
-const { generateUniqueId } = require("../controllers/authController");
+const generateUniqueId = require("../utils/generateUniqueId");
 
 // ---------------- HELPER ----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
