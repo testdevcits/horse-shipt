@@ -14,6 +14,11 @@ const getCallbackURL = () =>
 
 const ensureStripeCustomer = async (user) => {
   try {
+    if (!user || !user.email) {
+      console.error("Invalid user passed to Stripe helper");
+      return;
+    }
+
     if (user.stripeCustomerId) return;
 
     const existingCustomers = await stripe.customers.list({
