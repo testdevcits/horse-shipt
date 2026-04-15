@@ -9,17 +9,37 @@ exports.updateProfile = async (req, res) => {
   try {
     const user = req.user;
 
-    const { firstName, lastName, mobile, description, locale } = req.body;
+    let { firstName, lastName, mobile, description, locale } = req.body;
+
+    console.log("=====================================");
+    console.log("[UPDATE PROFILE] Start", { userId: user._id, mobile });
 
     // -------------------------
-    // VALIDATION
+    // MOBILE NORMALIZATION
     // -------------------------
-
-    // Mobile validation (India standard)
     if (mobile) {
+      console.log("[MOBILE RAW INPUT]", mobile);
+
+      // remove spaces
+      mobile = mobile.toString().trim();
+
+      // remove +91
+      if (mobile.startsWith("+91")) {
+        mobile = mobile.slice(3);
+      }
+
+      // remove 91 (without +)
+      if (mobile.length === 12 && mobile.startsWith("91")) {
+        mobile = mobile.slice(2);
+      }
+
+      console.log("[MOBILE NORMALIZED]", mobile);
+
+      // validate final number
       const mobileRegex = /^[6-9]\d{9}$/;
 
       if (!mobileRegex.test(mobile)) {
+        console.log("[ERROR] Invalid mobile after normalization");
         return res.status(400).json({
           success: false,
           message: "Invalid mobile number",
@@ -29,7 +49,9 @@ exports.updateProfile = async (req, res) => {
       user.mobile = mobile;
     }
 
-    // Name validation
+    // -------------------------
+    // NAME VALIDATION
+    // -------------------------
     if (firstName && firstName.length < 2) {
       return res.status(400).json({
         success: false,
@@ -61,7 +83,7 @@ exports.updateProfile = async (req, res) => {
     }
 
     // -------------------------
-    // LOCATION (SAFE UPDATE)
+    // LOCATION
     // -------------------------
     if (locale) {
       user.locale = {
@@ -81,27 +103,36 @@ exports.updateProfile = async (req, res) => {
     // PROFILE IMAGE
     // -------------------------
     if (req.file) {
+      console.log("[PROFILE IMAGE UPDATE]");
+
       if (user.profilePicture) {
         const oldPath = path.join(__dirname, "../../", user.profilePicture);
-        if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+        if (fs.existsSync(oldPath)) {
+          fs.unlinkSync(oldPath);
+          console.log("[OLD IMAGE REMOVED]");
+        }
       }
 
       user.profilePicture = `uploads/profilePictures/${req.file.filename}`;
     }
 
     // -------------------------
-    // SAVE (IMPORTANT)
+    // SAVE
     // -------------------------
     await user.save();
 
-    res.status(200).json({
+    console.log("[PROFILE UPDATED SUCCESSFULLY]");
+    console.log("=====================================");
+
+    return res.status(200).json({
       success: true,
       data: user,
       message: "Shipper profile updated successfully",
     });
   } catch (err) {
-    console.error("[SHIPPER PROFILE UPDATE] Error:", err);
-    res.status(500).json({
+    console.error("[SHIPPER PROFILE UPDATE ERROR]:", err);
+
+    return res.status(500).json({
       success: false,
       message: "Server Error",
     });
