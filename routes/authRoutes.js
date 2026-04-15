@@ -5,73 +5,70 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 
 // ------------------------
-// Helper: Safe redirect with error
+// Dynamic redirect
 // ------------------------
-const redirectWithError = (res, message) => {
+const redirectWithError = (res, message, action = "login") => {
+  const path = action === "signup" ? "signup" : "login";
+
   return res.redirect(
-    `${process.env.FRONTEND_URL}/login?error=${encodeURIComponent(message)}`
+    `${process.env.FRONTEND_URL}/${path}?error=${encodeURIComponent(message)}`
   );
 };
 
-// ------------------------
-// Local signup/login/logout
 // ------------------------
 router.post("/signup", authController.signup);
 router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
 // ------------------------
-// Google OAuth - Step 1
+// Google start
 // ------------------------
 router.get("/google", (req, res, next) => {
   const { role } = req.query;
-
   const action = req.query.action || "login";
 
-  // Validate role
-  if (!role || !["shipper", "customer"].includes(role)) {
-    return redirectWithError(res, "Please select a valid role");
+  if (!["shipper", "customer"].includes(role)) {
+    return redirectWithError(res, "Invalid role", action);
   }
 
-  // Validate action
-  if (!["signup", "login"].includes(action)) {
-    return redirectWithError(res, "Invalid action type");
-  }
-
-  const statePayload = { role, action };
-  const state = Buffer.from(JSON.stringify(statePayload)).toString("base64");
+  const state = Buffer.from(JSON.stringify({ role, action })).toString(
+    "base64"
+  );
 
   passport.authenticate("google", {
     scope: ["profile", "email"],
     state,
-
     prompt: "select_account",
   })(req, res, next);
 });
 
 // ------------------------
-// Google OAuth - Step 2 (Callback)
+// Google callback
 // ------------------------
 router.get("/google/callback", (req, res, next) => {
   passport.authenticate("google", (err, user, info) => {
+    let action = "login";
+
     try {
-      if (err) {
-        console.error("OAuth Error:", err);
-        return redirectWithError(
-          res,
-          err.message || "Google authentication failed"
-        );
-      }
+      const parsed = JSON.parse(
+        Buffer.from(req.query.state, "base64").toString()
+      );
+      action = parsed.action || "login";
+    } catch {}
 
-      if (!user) {
-        return redirectWithError(res, info?.message || "Authentication failed");
-      }
-
-      return res.redirect(user.redirectUrl);
-    } catch (error) {
-      console.error("OAuth Callback Error:", error);
-      return redirectWithError(res, "Something went wrong");
+    if (err) {
+      return redirectWithError(res, err.message, action);
     }
+
+    if (!user) {
+      return redirectWithError(
+        res,
+        info?.message || "Authentication failed",
+        action
+      );
+    }
+
+    return res.redirect(user.redirectUrl);
   })(req, res, next);
 });
 

@@ -13,41 +13,29 @@ const getCallbackURL = () =>
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
 // ============================
-// STRIPE SAFE HANDLER
+// STRIPE HELPER
 // ============================
 const ensureStripeCustomer = async (user) => {
   try {
-    // Safety check
-    if (!user || !user.email) {
-      console.error("Invalid user passed to Stripe helper");
-      return;
-    }
-
-    // Already exists → skip
+    if (!user || !user.email) return;
     if (user.stripeCustomerId) return;
 
-    console.log("Ensuring Stripe customer for:", user.email);
-
-    // Check existing in Stripe
-    const existingCustomers = await stripe.customers.list({
+    const existing = await stripe.customers.list({
       email: user.email,
       limit: 1,
     });
 
-    if (existingCustomers.data.length > 0) {
-      user.stripeCustomerId = existingCustomers.data[0].id;
-      console.log("Existing Stripe customer reused");
+    if (existing.data.length > 0) {
+      user.stripeCustomerId = existing.data[0].id;
     } else {
       const customer = await stripe.customers.create({
         email: user.email,
         name: user.name,
       });
-
       user.stripeCustomerId = customer.id;
-      console.log("New Stripe customer created:", customer.id);
     }
-  } catch (error) {
-    console.error("Stripe Customer Error:", error.message);
+  } catch (err) {
+    console.error("Stripe Error:", err.message);
   }
 };
 
@@ -61,41 +49,40 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // NOTE:
-        // accessToken / refreshToken not used (only login purpose)
-
         const state = req.query.state;
-
         if (!state) return done(new Error("Missing state parameter"), null);
 
         let parsedState;
         try {
           parsedState = JSON.parse(Buffer.from(state, "base64").toString());
-        } catch (e) {
+        } catch {
           return done(new Error("Invalid state parameter"), null);
         }
 
         const role = parsedState.role;
-        const location = parsedState.location;
+        const action = parsedState.action || "login";
 
-        if (!role || !["shipper", "customer"].includes(role)) {
+        if (!["shipper", "customer"].includes(role)) {
           return done(new Error("Invalid role selected"), null);
         }
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
-        // ============================
-        // ROLE VALIDATION
-        // ============================
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
 
-        if (
-          (role === "shipper" && existingCustomer) ||
-          (role === "customer" && existingShipper)
-        ) {
+        if (role === "shipper" && existingCustomer) {
           return done(
-            new Error("Email already registered with another role"),
+            new Error(
+              "This email is registered as customer. Use correct role."
+            ),
+            null
+          );
+        }
+
+        if (role === "customer" && existingShipper) {
+          return done(
+            new Error("This email is registered as shipper. Use correct role."),
             null
           );
         }
@@ -107,64 +94,35 @@ passport.use(
           providerId: profile.id,
         });
 
-        // ============================
-        // CREATE NEW USER
-        // ============================
         if (!user) {
-          const uniqueId =
-            role === "shipper"
-              ? `HS${Math.floor(1000 + Math.random() * 9000)}`
-              : `HC${Math.floor(1000 + Math.random() * 9000)}`;
+          if (action === "login") {
+            return done(
+              new Error("No account found. Please sign up first."),
+              null
+            );
+          }
 
           user = new Model({
-            uniqueId,
-            name: profile.displayName || email.split("@")[0],
+            name: profile.displayName,
             email,
             provider: "google",
             providerId: profile.id,
-            profilePicture: profile.photos?.[0]?.value || null,
-            firstName: profile.name?.givenName || null,
-            lastName: profile.name?.familyName || null,
-            locale: profile._json?.locale || null,
-            emailVerified: true,
-            isLogin: true,
             role,
-            rawProfile: profile._json || {},
-            currentDevice: req.headers["user-agent"] || null,
-            currentLocation: location || undefined,
-            loginHistory: [
-              {
-                deviceId: req.headers["user-agent"] || null,
-                ip: req.ip || null,
-                loginAt: new Date(),
-              },
-            ],
+            isLogin: true,
           });
 
-          // Stripe create only if needed
-          if (!user.stripeCustomerId) {
-            await ensureStripeCustomer(user);
-          }
-
+          await ensureStripeCustomer(user);
           await user.save();
         } else {
-          // ============================
-          // UPDATE EXISTING USER
-          // ============================
+          if (action === "signup") {
+            return done(
+              new Error("Account already exists. Please login."),
+              null
+            );
+          }
+
           user.isLogin = true;
-          user.currentDevice = req.headers["user-agent"] || user.currentDevice;
 
-          user.currentLocation = location
-            ? { ...location, updatedAt: new Date() }
-            : user.currentLocation;
-
-          user.loginHistory.push({
-            deviceId: req.headers["user-agent"] || null,
-            ip: req.ip || null,
-            loginAt: new Date(),
-          });
-
-          // Backfill Stripe if missing
           if (!user.stripeCustomerId) {
             await ensureStripeCustomer(user);
           }
@@ -172,30 +130,17 @@ passport.use(
           await user.save();
         }
 
-        // ============================
-        // GENERATE TOKEN
-        // ============================
         const token = generateToken({ id: user._id, role: user.role });
 
-        const redirectUrl = `${
-          process.env.FRONTEND_URL
-        }/oauth-success?token=${token}&id=${user._id}&role=${
-          user.role
-        }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
-          user.email
-        )}&photo=${encodeURIComponent(
-          user.profilePicture || ""
-        )}&provider=google&providerId=${profile.id}`;
+        const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${token}`;
 
         done(null, { redirectUrl });
       } catch (err) {
-        console.error("Google OAuth Error:", err);
         done(new Error(err.message || "Google OAuth failed"), null);
       }
     }
   )
 );
 
-// ---------------- Serialize / Deserialize ----------------
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));
