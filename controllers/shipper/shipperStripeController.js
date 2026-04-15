@@ -983,6 +983,31 @@ exports.cancelSubscription = async (req, res) => {
 };
 
 // GET PLAN DETAILS
+
+// ============================
+// HELPERS (TOP pe add kar)
+// ============================
+const formatToUSDateTime = (timestamp) => {
+  if (!timestamp) return null;
+
+  return new Date(timestamp * 1000).toLocaleString("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
+const toISO = (timestamp) => {
+  if (!timestamp) return null;
+  return new Date(timestamp * 1000).toISOString();
+};
+
+// ============================
+// UPDATED FUNCTION
+// ============================
 exports.getSubscriptionPlan = async (req, res) => {
   try {
     console.log("========== GET SUBSCRIPTION PLAN + NEXT BILLING ==========");
@@ -1034,7 +1059,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     let subscriptionEndDate = null;
 
     // ============================
-    // GET SUB FROM DB (IMPORTANT)
+    // GET SUB FROM DB
     // ============================
     const dbSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
@@ -1057,24 +1082,36 @@ exports.getSubscriptionPlan = async (req, res) => {
       cancelAtPeriodEnd = sub.cancel_at_period_end;
 
       // ============================
-      // NEXT BILLING DATE (UTC)
+      // NEXT BILLING DATE
       // ============================
-      if (sub.current_period_end) {
-        nextBillingDate = new Date(sub.current_period_end * 1000).toISOString();
-      } else if (sub.trial_end) {
-        nextBillingDate = new Date(sub.trial_end * 1000).toISOString();
+      const rawNext = sub.current_period_end || sub.trial_end || null;
+
+      if (rawNext) {
+        nextBillingDate = {
+          iso: toISO(rawNext), // ✅ DB safe
+          us: formatToUSDateTime(rawNext), // 🔥 UI correct (15 date)
+        };
       }
 
       // ============================
       // END DATE (CANCELLED CASE)
       // ============================
       if (sub.cancel_at_period_end) {
-        if (sub.current_period_end) {
-          subscriptionEndDate = new Date(
-            sub.current_period_end * 1000
-          ).toISOString();
-        } else if (dbSub?.currentPeriodEnd) {
-          subscriptionEndDate = new Date(dbSub.currentPeriodEnd).toISOString();
+        const rawEnd = sub.current_period_end || dbSub?.currentPeriodEnd;
+
+        if (rawEnd) {
+          subscriptionEndDate = {
+            iso:
+              typeof rawEnd === "number"
+                ? toISO(rawEnd)
+                : new Date(rawEnd).toISOString(),
+            us:
+              typeof rawEnd === "number"
+                ? formatToUSDateTime(rawEnd)
+                : new Date(rawEnd).toLocaleString("en-US", {
+                    timeZone: "America/New_York",
+                  }),
+          };
         }
       }
 
@@ -1082,7 +1119,10 @@ exports.getSubscriptionPlan = async (req, res) => {
       // FULLY CANCELED
       // ============================
       if (sub.status === "canceled" && sub.canceled_at) {
-        subscriptionEndDate = new Date(sub.canceled_at * 1000).toISOString();
+        subscriptionEndDate = {
+          iso: toISO(sub.canceled_at),
+          us: formatToUSDateTime(sub.canceled_at),
+        };
       }
     }
 
@@ -1097,7 +1137,7 @@ exports.getSubscriptionPlan = async (req, res) => {
         currency: daily.currency,
 
         subscriptionStatus,
-        nextBillingDate,
+        nextBillingDate, // 🔥 अब yaha correct USA date milega
 
         cancelAtPeriodEnd,
         subscriptionEndDate,
