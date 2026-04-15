@@ -698,14 +698,11 @@ exports.getPaymentStatus = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
-  console.log("=== CREATE SUBSCRIPTION (DAILY ONLY) ===");
+  console.log("=== CREATE SUBSCRIPTION (DAILY ONLY - NO AUTO CANCEL) ===");
 
   try {
     const { withTrial = true } = req.body;
 
-    // ============================
-    // DAILY PRICE ONLY
-    // ============================
     const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
 
     if (!DAILY_PRICE_ID) {
@@ -758,6 +755,8 @@ exports.createSubscription = async (req, res) => {
       default_payment_method: shipper.paymentMethodId,
       expand: ["items.data.price"],
 
+      cancel_at_period_end: false,
+
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
@@ -766,7 +765,7 @@ exports.createSubscription = async (req, res) => {
     };
 
     // ============================
-    // TRIAL LOGIC (1 DAY ONLY)
+    // TRIAL LOGIC
     // ============================
     const TRIAL_DAYS = 1;
 
@@ -779,6 +778,11 @@ exports.createSubscription = async (req, res) => {
     // CREATE SUBSCRIPTION
     // ============================
     const subscription = await stripe.subscriptions.create(subscriptionData);
+
+    await stripe.subscriptions.update(subscription.id, {
+      cancel_at_period_end: false,
+      cancel_at: null,
+    });
 
     const price = subscription.items.data[0].price;
 
@@ -826,7 +830,7 @@ exports.createSubscription = async (req, res) => {
       currentPeriodStart,
       currentPeriodEnd,
 
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
+      cancelAtPeriodEnd: false,
     });
 
     // ============================
@@ -836,6 +840,12 @@ exports.createSubscription = async (req, res) => {
       shipper.hasUsedTrial = true;
       await shipper.save();
     }
+
+    // ============================
+    // DEBUG LOG (OPTIONAL)
+    // ============================
+    console.log("cancel_at:", subscription.cancel_at);
+    console.log("cancel_at_period_end:", subscription.cancel_at_period_end);
 
     // ============================
     // RESPONSE
@@ -865,11 +875,12 @@ exports.createSubscription = async (req, res) => {
 // =========================================================
 // CANCEL SUBSCRIPTION
 // =========================================================
+
 exports.cancelSubscription = async (req, res) => {
   console.log("=== CANCEL SUBSCRIPTION API HIT ===");
 
   try {
-    const { cancelImmediately = false, reason = "User requested" } = req.body;
+    const { reason = "User requested" } = req.body;
 
     const shipper = await Shipper.findById(req.user.id);
 
@@ -880,9 +891,6 @@ exports.cancelSubscription = async (req, res) => {
       });
     }
 
-    // ============================
-    // FIND ACTIVE SUBSCRIPTION
-    // ============================
     const subscription = await subscriptionModel.findOne({
       shipperId: shipper._id,
       status: { $in: ["active", "trialing", "past_due"] },
@@ -895,9 +903,6 @@ exports.cancelSubscription = async (req, res) => {
       });
     }
 
-    // ============================
-    // GET STRIPE SUB
-    // ============================
     const stripeSub = await stripe.subscriptions.retrieve(
       subscription.stripeSubscriptionId
     );
@@ -924,20 +929,15 @@ exports.cancelSubscription = async (req, res) => {
       });
     }
 
+    const isTrial = stripeSub.status === "trialing";
     let updatedStripeSub;
 
     // ============================
-    // TRIAL CHECK (IMPORTANT FIX)
-    // ============================
-    const isTrial = stripeSub.status === "trialing";
-
-    // ============================
-    // CANCEL LOGIC
+    // FINAL LOGIC
     // ============================
 
-    if (cancelImmediately && isTrial) {
-      // TRIAL → can cancel instantly
-      console.log("Canceling TRIAL immediately...");
+    if (isTrial) {
+      console.log("Canceling trial immediately");
 
       updatedStripeSub = await stripe.subscriptions.del(
         subscription.stripeSubscriptionId
@@ -945,9 +945,8 @@ exports.cancelSubscription = async (req, res) => {
 
       subscription.status = "canceled";
       subscription.cancelAtPeriodEnd = false;
-    } else if (cancelImmediately && !isTrial) {
-      // PAID → still cancel but KEEP ACCESS till period end
-      console.log("Cancel request on PAID subscription (ending at period end)");
+    } else {
+      console.log("Paid subscription → cancel at period end");
 
       updatedStripeSub = await stripe.subscriptions.update(
         subscription.stripeSubscriptionId,
@@ -958,23 +957,10 @@ exports.cancelSubscription = async (req, res) => {
 
       subscription.status = stripeSub.status; // still active
       subscription.cancelAtPeriodEnd = true;
-    } else {
-      // DEFAULT → cancel at period end
-      console.log("Cancel at period end");
-
-      updatedStripeSub = await stripe.subscriptions.update(
-        subscription.stripeSubscriptionId,
-        {
-          cancel_at_period_end: true,
-        }
-      );
-
-      subscription.cancelAtPeriodEnd = true;
-      subscription.status = stripeSub.status;
     }
 
     // ============================
-    // CANCEL TIME HANDLING
+    // DATES
     // ============================
     let canceledAt = new Date();
 
@@ -985,10 +971,6 @@ exports.cancelSubscription = async (req, res) => {
     subscription.canceledAt = canceledAt;
     subscription.cancelReason = reason;
 
-    // ============================
-    // IMPORTANT: ACCESS LOGIC
-    // ============================
-    // KEEP ACCESS UNTIL PERIOD END (VERY IMPORTANT FOR PAID USERS)
     if (updatedStripeSub?.current_period_end) {
       subscription.currentPeriodEnd = new Date(
         updatedStripeSub.current_period_end * 1000
@@ -1003,17 +985,14 @@ exports.cancelSubscription = async (req, res) => {
     return res.json({
       success: true,
       message: isTrial
-        ? "Trial subscription canceled"
-        : cancelImmediately
-        ? "Subscription canceled (access valid till period end)"
-        : "Subscription will end at billing period",
+        ? "Trial canceled immediately"
+        : "Subscription canceled. Access valid till billing period end",
 
       data: {
         status: subscription.status,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         canceledAt: subscription.canceledAt,
 
-        // IMPORTANT FOR UI
         accessValidTill: subscription.currentPeriodEnd,
         isTrial,
       },
@@ -1031,23 +1010,10 @@ exports.cancelSubscription = async (req, res) => {
 // GET PLAN DETAILS
 exports.getSubscriptionPlan = async (req, res) => {
   try {
-    console.log("========== GET SUBSCRIPTION PLAN API (DAILY ONLY) ==========");
+    console.log("========== GET SUBSCRIPTION PLAN + NEXT BILLING ==========");
 
-    // ============================
-    // ENV PRICE IDS
-    // ============================
     const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
 
-    console.log("DAILY:", DAILY_PRICE_ID);
-
-    console.log(
-      "STRIPE MODE:",
-      process.env.STRIPE_SECRET_KEY?.startsWith("sk_live") ? "LIVE" : "TEST"
-    );
-
-    // ============================
-    // VALIDATION
-    // ============================
     if (!DAILY_PRICE_ID) {
       return res.status(500).json({
         success: false,
@@ -1056,51 +1022,69 @@ exports.getSubscriptionPlan = async (req, res) => {
     }
 
     // ============================
-    // FETCH DAILY PRICE ONLY
+    // GET USER
     // ============================
-    let daily;
+    const shipper = await Shipper.findById(req.user.id);
 
-    try {
-      const price = await stripe.prices.retrieve(DAILY_PRICE_ID, {
-        expand: ["product"],
-      });
-
-      daily = {
-        priceId: price.id,
-        amount: price.unit_amount / 100,
-        currency: price.currency,
-        interval: price.recurring?.interval || "day",
-        productName: price.product?.name || "HorseShipt Subscription",
-        label: "Daily Plan",
-        planType: "daily",
-      };
-    } catch (error) {
-      console.error("Stripe DAILY price error:", error.message);
-
-      return res.status(500).json({
+    if (!shipper || !shipper.stripeCustomerId) {
+      return res.status(400).json({
         success: false,
-        message: "Invalid Daily Price ID in Stripe",
+        message: "Shipper or Stripe customer not found",
       });
     }
 
     // ============================
-    // RESPONSE (ONLY DAILY)
+    // FETCH PRICE
     // ============================
-    const responseData = {
-      daily,
+    const price = await stripe.prices.retrieve(DAILY_PRICE_ID, {
+      expand: ["product"],
+    });
 
-      // 1 DAY TRIAL (TESTING)
-      trialDays: 1,
-
-      currency: daily.currency,
+    const daily = {
+      priceId: price.id,
+      amount: price.unit_amount / 100,
+      currency: price.currency,
+      interval: price.recurring?.interval || "day",
+      productName: price.product?.name || "Subscription",
+      label: "Daily Plan",
+      planType: "daily",
     };
 
-    console.log("FINAL RESPONSE:", responseData);
-    console.log("========== END ==========\n");
+    // ============================
+    // FETCH ACTIVE SUBSCRIPTION
+    // ============================
+    let nextBillingDate = null;
+    let subscriptionStatus = null;
 
+    const subscriptions = await stripe.subscriptions.list({
+      customer: shipper.stripeCustomerId,
+      status: "all",
+      limit: 1,
+    });
+
+    if (subscriptions.data.length > 0) {
+      const sub = subscriptions.data[0];
+
+      subscriptionStatus = sub.status;
+
+      if (sub.current_period_end) {
+        nextBillingDate = new Date(sub.current_period_end * 1000);
+      }
+    }
+
+    // ============================
+    // RESPONSE
+    // ============================
     return res.json({
       success: true,
-      data: responseData,
+      data: {
+        daily,
+        trialDays: 1,
+        currency: daily.currency,
+
+        subscriptionStatus,
+        nextBillingDate,
+      },
     });
   } catch (error) {
     console.error("Subscription Plan Error:", error);
