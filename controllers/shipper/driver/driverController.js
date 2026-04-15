@@ -533,168 +533,92 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
+    console.log("=====================================");
+    console.log("[DRIVER VERIFY OTP] Start", { shipmentId, otp });
+
     // ---------------- GET SHIPMENT ----------------
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
+      console.log("[ERROR] Shipment not found");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
 
+    console.log("[SHIPMENT FOUND]", shipment._id);
+
     const loggedDriverId = req.driver?._id?.toString();
 
-    // ---------------- GET ACCEPTED QUOTE ----------------
+    // ---------------- GET QUOTE ----------------
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
     }).populate("shipper");
 
     if (!quote) {
+      console.log("[ERROR] Quote not found");
       return res.status(404).json({
         success: false,
         message: "Accepted quote not found",
       });
     }
 
-    // ---------------- DRIVER VALIDATION ----------------
     const assignedDriverId = quote.assignedDriver?.toString();
 
-    // DEBUG LOGS (VERY IMPORTANT)
     console.log("===== DRIVER VERIFY DEBUG =====");
     console.log("Logged Driver:", loggedDriverId);
     console.log("Assigned Driver:", assignedDriverId);
     console.log("================================");
 
     if (!assignedDriverId || assignedDriverId !== loggedDriverId) {
+      console.log("[ERROR] Unauthorized driver");
       return res.status(403).json({
         success: false,
         message: "Unauthorized driver",
       });
     }
 
-    // ---------------- DELIVERY STATUS ----------------
+    // ---------------- VALIDATION ----------------
     if (shipment.deliveryOtpVerified) {
+      console.log("[ERROR] Already delivered");
       return res.status(400).json({
         success: false,
         message: "Already delivered",
       });
     }
 
-    // ---------------- OTP VALIDATION ----------------
     if (!otp || shipment.deliveryOtp !== String(otp)) {
+      console.log("[ERROR] Invalid OTP");
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
       });
     }
 
-    // ---------------- OTP EXPIRY ----------------
     if (
       !shipment.deliveryOtpExpires ||
       shipment.deliveryOtpExpires < new Date()
     ) {
+      console.log("[ERROR] OTP expired");
       return res.status(400).json({
         success: false,
         message: "OTP expired",
       });
     }
 
-    // ---------------- PAYMENT CHECK ----------------
     if (quote.paymentStatus !== "paid") {
+      console.log("[ERROR] Payment not done");
       return res.status(400).json({
         success: false,
         message: "Payment not completed yet",
       });
     }
 
-    if (quote.payoutStatus === "transferred") {
-      return res.status(400).json({
-        success: false,
-        message: "Payout already processed",
-      });
-    }
+    console.log("[OTP VERIFIED SUCCESSFULLY]");
 
-    // ============================================
-    // STRIPE
-    // ============================================
-
-    const paymentIntent = await stripe.paymentIntents.retrieve(
-      quote.stripePaymentIntentId
-    );
-
-    const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
-
-    const balanceTx = await stripe.balanceTransactions.retrieve(
-      charge.balance_transaction
-    );
-
-    const grossCents = paymentIntent.amount;
-    const stripeFeeCents = balanceTx.fee;
-    const netAfterStripeCents = grossCents - stripeFeeCents;
-
-    // ============================================
-    // PLATFORM SETTINGS
-    // ============================================
-
-    const settings = await platformSettings.findOne();
-
-    const platformPercent = settings?.platformFeePercent || 0;
-    const platformFlat = settings?.platformFeeFlat || 0;
-
-    const platformFeePercentCents = Math.round(
-      netAfterStripeCents * (platformPercent / 100)
-    );
-
-    const platformFeeFlatCents = Math.round(platformFlat * 100);
-
-    const platformFeeTotalCents =
-      platformFeePercentCents + platformFeeFlatCents;
-
-    const shipperCents = netAfterStripeCents - platformFeeTotalCents;
-
-    if (shipperCents <= 0) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid payout",
-      });
-    }
-
-    // ============================================
-    // TRANSFER
-    // ============================================
-
-    const transfer = await stripe.transfers.create({
-      amount: shipperCents,
-      currency: balanceTx.currency,
-      destination: quote.shipper.stripeAccountId,
-      source_transaction: charge.id,
-      metadata: {
-        shipmentId: shipment._id.toString(),
-        quoteId: quote._id.toString(),
-      },
-    });
-
-    // ============================================
-    // UPDATE QUOTE
-    // ============================================
-
-    quote.stripeTransferId = transfer.id;
-    quote.payoutStatus = "transferred";
-    quote.paymentReleasedAt = new Date();
-
-    quote.grossAmount = grossCents / 100;
-    quote.stripeFee = stripeFeeCents / 100;
-    quote.platformFee = platformFeeTotalCents / 100;
-    quote.netAmount = shipperCents / 100;
-
-    await quote.save();
-
-    // ============================================
-    // UPDATE SHIPMENT
-    // ============================================
-
+    // ================= MARK DELIVERY FIRST =================
     shipment.status = "delivered";
     shipment.deliveredAt = new Date();
     shipment.deliveryOtpVerified = true;
@@ -703,12 +627,106 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
+    console.log("[SHIPMENT DELIVERED]");
+
+    // ================= FREE VEHICLE =================
+    if (quote.vehicle) {
+      console.log("[FREE VEHICLE START]", quote.vehicle);
+
+      const vehicle = await ShipperVehicle.findById(quote.vehicle);
+
+      if (vehicle) {
+        console.log("[VEHICLE BEFORE FREE]", vehicle.currentShipment);
+
+        vehicle.currentShipment = null;
+        vehicle.driverStatus = "AVAILABLE";
+
+        await vehicle.save();
+
+        console.log("[VEHICLE FREED SUCCESS]");
+      } else {
+        console.log("[WARNING] Vehicle not found");
+      }
+    }
+
+    // ================= FREE DRIVER =================
+    if (quote.assignedDriver) {
+      console.log("[FREE DRIVER START]", quote.assignedDriver);
+
+      const driver = await Driver.findById(quote.assignedDriver);
+
+      if (driver) {
+        driver.driverStatus = "available";
+        await driver.save();
+
+        console.log("[DRIVER FREED SUCCESS]");
+      } else {
+        console.log("[WARNING] Driver not found");
+      }
+    }
+
+    // ================= PAYOUT (NON-BLOCKING) =================
+    try {
+      console.log("[STRIPE PAYOUT START]");
+
+      const paymentIntent = await stripe.paymentIntents.retrieve(
+        quote.stripePaymentIntentId
+      );
+
+      const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+
+      const balanceTx = await stripe.balanceTransactions.retrieve(
+        charge.balance_transaction
+      );
+
+      const grossCents = paymentIntent.amount;
+      const stripeFeeCents = balanceTx.fee;
+      const netAfterStripeCents = grossCents - stripeFeeCents;
+
+      const settings = await platformSettings.findOne();
+
+      const platformPercent = settings?.platformFeePercent || 0;
+      const platformFlat = settings?.platformFeeFlat || 0;
+
+      const platformFee =
+        Math.round(netAfterStripeCents * (platformPercent / 100)) +
+        Math.round(platformFlat * 100);
+
+      const shipperCents = netAfterStripeCents - platformFee;
+
+      const transfer = await stripe.transfers.create({
+        amount: shipperCents,
+        currency: balanceTx.currency,
+        destination: quote.shipper.stripeAccountId,
+        source_transaction: charge.id,
+      });
+
+      console.log("[TRANSFER SUCCESS]", transfer.id);
+
+      quote.stripeTransferId = transfer.id;
+      quote.payoutStatus = "transferred";
+      quote.paymentReleasedAt = new Date();
+    } catch (err) {
+      console.log("[TRANSFER FAILED]", err.message);
+
+      quote.payoutStatus = "pending";
+      quote.payoutError = err.message;
+    }
+
+    // ================= FINAL QUOTE =================
+    quote.tripStatus = "completed";
+    await quote.save();
+
+    console.log("[QUOTE UPDATED]");
+    console.log("=====================================");
+
     return res.json({
       success: true,
-      message: "Driver verified delivery & payout sent",
+      message: "Driver verified delivery (vehicle freed)",
     });
   } catch (error) {
-    console.error("DRIVER VERIFY ERROR:", error);
+    console.error("[DRIVER VERIFY ERROR]:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message,
