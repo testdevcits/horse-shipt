@@ -1051,14 +1051,14 @@ exports.getSubscriptionPlan = async (req, res) => {
     };
 
     // ============================
-    // FETCH ACTIVE SUBSCRIPTION
+    // FETCH ACTIVE SUBSCRIPTION ONLY
     // ============================
     let nextBillingDate = null;
     let subscriptionStatus = null;
 
     const subscriptions = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
-      status: "all",
+      status: "active",
       limit: 1,
     });
 
@@ -1069,6 +1069,8 @@ exports.getSubscriptionPlan = async (req, res) => {
 
       if (sub.current_period_end) {
         nextBillingDate = new Date(sub.current_period_end * 1000);
+      } else if (sub.trial_end) {
+        nextBillingDate = new Date(sub.trial_end * 1000);
       }
     }
 
