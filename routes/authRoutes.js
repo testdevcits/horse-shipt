@@ -5,30 +5,36 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 
 // ------------------------
-// Dynamic redirect
+// Clean OAuth Error Redirect
 // ------------------------
-const redirectWithError = (res, message, action = "login") => {
-  const path = action === "signup" ? "signup" : "login";
-
+const redirectOAuthError = (res, message) => {
   return res.redirect(
-    `${process.env.FRONTEND_URL}/${path}?error=${encodeURIComponent(message)}`
+    `${process.env.FRONTEND_URL}/oauth-error?message=${encodeURIComponent(
+      message
+    )}`
   );
 };
 
+// ------------------------
+// Local signup/login/logout
 // ------------------------
 router.post("/signup", authController.signup);
 router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
 // ------------------------
-// Google start
+// Google OAuth - Start
 // ------------------------
 router.get("/google", (req, res, next) => {
   const { role } = req.query;
   const action = req.query.action || "login";
 
   if (!["shipper", "customer"].includes(role)) {
-    return redirectWithError(res, "Invalid role", action);
+    return redirectOAuthError(res, "Please select a valid role");
+  }
+
+  if (!["signup", "login"].includes(action)) {
+    return redirectOAuthError(res, "Invalid action type");
   }
 
   const state = Buffer.from(JSON.stringify({ role, action })).toString(
@@ -43,32 +49,31 @@ router.get("/google", (req, res, next) => {
 });
 
 // ------------------------
-// Google callback
+// Google OAuth - Callback
 // ------------------------
 router.get("/google/callback", (req, res, next) => {
   passport.authenticate("google", (err, user, info) => {
-    let action = "login";
-
     try {
-      const parsed = JSON.parse(
-        Buffer.from(req.query.state, "base64").toString()
-      );
-      action = parsed.action || "login";
-    } catch {}
+      if (err) {
+        console.error("OAuth Error:", err.message);
+        return redirectOAuthError(
+          res,
+          err.message || "Google authentication failed"
+        );
+      }
 
-    if (err) {
-      return redirectWithError(res, err.message, action);
+      if (!user) {
+        return redirectOAuthError(
+          res,
+          info?.message || "Authentication failed"
+        );
+      }
+
+      return res.redirect(user.redirectUrl);
+    } catch (error) {
+      console.error("OAuth Callback Error:", error);
+      return redirectOAuthError(res, "Something went wrong");
     }
-
-    if (!user) {
-      return redirectWithError(
-        res,
-        info?.message || "Authentication failed",
-        action
-      );
-    }
-
-    return res.redirect(user.redirectUrl);
   })(req, res, next);
 });
 
