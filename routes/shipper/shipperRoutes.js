@@ -378,7 +378,11 @@ router.get(
   getShipperSubscriptionStatus
 );
 
-router.get("/stripe/subscription/invoices", shipperAuth, getBillingHistory);
+router.get(
+  "/stripe/subscription/billing/history",
+  shipperAuth,
+  getBillingHistory
+);
 
 // ====================================================
 // SHIPPER Delivered ROUTES

@@ -1277,7 +1277,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
 
 exports.getBillingHistory = async (req, res) => {
   try {
-    console.log("=== GET BILLING HISTORY (INVOICE + TRANSACTIONS) ===");
+    console.log("=== GET BILLING HISTORY (SEPARATED) ===");
 
     const shipper = await Shipper.findById(req.user.id);
 
@@ -1289,25 +1289,29 @@ exports.getBillingHistory = async (req, res) => {
     }
 
     // ============================
-    // PARALLEL CALLS (FAST ⚡)
+    // PARALLEL CALLS ⚡
     // ============================
-    const [invoices, charges] = await Promise.all([
+    const [invoices, charges, payouts] = await Promise.all([
       stripe.invoices.list({
         customer: shipper.stripeCustomerId,
         limit: 20,
       }),
+
       stripe.charges.list({
         customer: shipper.stripeCustomerId,
+        limit: 20,
+      }),
+
+      // ⚠️ payouts require Stripe Connect (account based)
+      stripe.payouts.list({
         limit: 20,
       }),
     ]);
 
     // ============================
-    // FORMAT INVOICES
+    // FORMAT INVOICES (SUBSCRIPTION)
     // ============================
-    const formattedInvoices = invoices.data.map((inv) => ({
-      type: "invoice",
-
+    const subscriptionData = invoices.data.map((inv) => ({
       id: inv.id,
       amount: inv.amount_paid / 100,
       currency: inv.currency,
@@ -1329,16 +1333,14 @@ exports.getBillingHistory = async (req, res) => {
     }));
 
     // ============================
-    // FORMAT CHARGES (TRANSACTIONS)
+    // FORMAT CHARGES (PAYMENTS)
     // ============================
-    const formattedCharges = charges.data.map((ch) => ({
-      type: "transaction",
-
+    const paymentData = charges.data.map((ch) => ({
       id: ch.id,
       amount: ch.amount / 100,
       currency: ch.currency,
 
-      status: ch.status, // succeeded, pending, failed
+      status: ch.status,
       paid: ch.paid,
       refunded: ch.refunded,
 
@@ -1352,16 +1354,32 @@ exports.getBillingHistory = async (req, res) => {
     }));
 
     // ============================
-    // MERGE + SORT (LATEST FIRST)
+    // FORMAT PAYOUTS (BANK TRANSFER)
     // ============================
-    const combined = [...formattedInvoices, ...formattedCharges].sort(
-      (a, b) => b.createdAt - a.createdAt
-    );
+    const payoutData = payouts.data.map((po) => ({
+      id: po.id,
+      amount: po.amount / 100,
+      currency: po.currency,
 
+      status: po.status, // paid, pending, failed
+
+      arrivalDate: new Date(po.arrival_date * 1000),
+      createdAt: new Date(po.created * 1000),
+
+      method: po.method, // standard / instant
+    }));
+
+    // ============================
+    // RESPONSE (SEPARATED)
+    // ============================
     return res.json({
       success: true,
-      count: combined.length,
-      data: combined,
+
+      data: {
+        subscriptions: subscriptionData,
+        payments: paymentData,
+        payouts: payoutData,
+      },
     });
   } catch (error) {
     console.error("Billing History Error:", error);
