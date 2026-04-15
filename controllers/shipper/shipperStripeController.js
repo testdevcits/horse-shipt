@@ -1051,30 +1051,48 @@ exports.getSubscriptionPlan = async (req, res) => {
     };
 
     // ============================
-    // FETCH SUBSCRIPTION
+    // DEFAULT VALUES
     // ============================
     let nextBillingDate = null;
     let subscriptionStatus = null;
     let cancelAtPeriodEnd = false;
     let subscriptionEndDate = null;
 
-    const subscriptions = await stripe.subscriptions.list({
-      customer: shipper.stripeCustomerId,
-      limit: 1,
+    // ============================
+    // GET SUB FROM DB (IMPORTANT)
+    // ============================
+    const dbSub = await subscriptionModel.findOne({
+      shipperId: shipper._id,
+      status: { $in: ["active", "trialing", "past_due"] },
     });
 
-    if (subscriptions.data.length > 0) {
-      const sub = subscriptions.data[0];
+    if (dbSub) {
+      const sub = await stripe.subscriptions.retrieve(
+        dbSub.stripeSubscriptionId
+      );
+
+      console.log("Stripe Sub:", {
+        status: sub.status,
+        cancel_at_period_end: sub.cancel_at_period_end,
+        current_period_end: sub.current_period_end,
+        trial_end: sub.trial_end,
+      });
 
       subscriptionStatus = sub.status;
       cancelAtPeriodEnd = sub.cancel_at_period_end;
 
+      // ============================
+      // NEXT BILLING DATE
+      // ============================
       if (sub.current_period_end) {
         nextBillingDate = new Date(sub.current_period_end * 1000);
       } else if (sub.trial_end) {
         nextBillingDate = new Date(sub.trial_end * 1000);
       }
 
+      // ============================
+      // END DATE (IMPORTANT)
+      // ============================
       if (sub.cancel_at_period_end && sub.current_period_end) {
         subscriptionEndDate = new Date(sub.current_period_end * 1000);
       }
