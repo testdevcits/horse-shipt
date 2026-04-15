@@ -5,6 +5,9 @@ const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
+const { generateUniqueId } = require("../controllers/authController");
+
+// ---------------- HELPER ----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
 const getCallbackURL = () =>
@@ -12,9 +15,7 @@ const getCallbackURL = () =>
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
-// ============================
-// STRIPE HELPER
-// ============================
+// ---------------- STRIPE ----------------
 const ensureStripeCustomer = async (user) => {
   try {
     if (!user || !user.email) return;
@@ -39,6 +40,7 @@ const ensureStripeCustomer = async (user) => {
   }
 };
 
+// ================= GOOGLE STRATEGY =================
 passport.use(
   new GoogleStrategy(
     {
@@ -71,20 +73,13 @@ passport.use(
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
 
+        // ---------------- ROLE CONFLICT ----------------
         if (role === "shipper" && existingCustomer) {
-          return done(
-            new Error(
-              "This email is registered as customer. Use correct role."
-            ),
-            null
-          );
+          return done(new Error("Email already registered as customer"), null);
         }
 
         if (role === "customer" && existingShipper) {
-          return done(
-            new Error("This email is registered as shipper. Use correct role."),
-            null
-          );
+          return done(new Error("Email already registered as shipper"), null);
         }
 
         const Model = getModel(role);
@@ -94,6 +89,7 @@ passport.use(
           providerId: profile.id,
         });
 
+        // ================= SIGNUP =================
         if (!user) {
           if (action === "login") {
             return done(
@@ -102,18 +98,26 @@ passport.use(
             );
           }
 
+          const uniqueId = await generateUniqueId(role);
+
           user = new Model({
+            uniqueId,
             name: profile.displayName,
             email,
             provider: "google",
             providerId: profile.id,
             role,
             isLogin: true,
+            emailVerified: true,
+            profilePicture: profile.photos?.[0]?.value || null,
           });
 
           await ensureStripeCustomer(user);
           await user.save();
-        } else {
+        }
+
+        // ================= LOGIN =================
+        else {
           if (action === "signup") {
             return done(
               new Error("Account already exists. Please login."),
@@ -130,12 +134,17 @@ passport.use(
           await user.save();
         }
 
-        const token = generateToken({ id: user._id, role: user.role });
+        // ================= TOKEN =================
+        const token = generateToken({
+          id: user._id,
+          role: user.role,
+        });
 
         const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${token}`;
 
         done(null, { redirectUrl });
       } catch (err) {
+        console.error("OAuth Error:", err.message);
         done(new Error(err.message || "Google OAuth failed"), null);
       }
     }
