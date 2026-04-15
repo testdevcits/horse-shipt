@@ -33,7 +33,7 @@ router.get("/google", (req, res, next) => {
     return redirectWithError(res, "Please select a valid role");
   }
 
-  // Validate action (safe)
+  // Validate action
   if (!["signup", "login"].includes(action)) {
     return redirectWithError(res, "Invalid action type");
   }
@@ -44,6 +44,8 @@ router.get("/google", (req, res, next) => {
   passport.authenticate("google", {
     scope: ["profile", "email"],
     state,
+
+    prompt: "select_account",
   })(req, res, next);
 });
 
