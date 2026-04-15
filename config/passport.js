@@ -12,15 +12,23 @@ const getCallbackURL = () =>
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
+// ============================
+// STRIPE SAFE HANDLER
+// ============================
 const ensureStripeCustomer = async (user) => {
   try {
+    // Safety check
     if (!user || !user.email) {
       console.error("Invalid user passed to Stripe helper");
       return;
     }
 
+    // Already exists → skip
     if (user.stripeCustomerId) return;
 
+    console.log("Ensuring Stripe customer for:", user.email);
+
+    // Check existing in Stripe
     const existingCustomers = await stripe.customers.list({
       email: user.email,
       limit: 1,
@@ -28,6 +36,7 @@ const ensureStripeCustomer = async (user) => {
 
     if (existingCustomers.data.length > 0) {
       user.stripeCustomerId = existingCustomers.data[0].id;
+      console.log("Existing Stripe customer reused");
     } else {
       const customer = await stripe.customers.create({
         email: user.email,
@@ -35,6 +44,7 @@ const ensureStripeCustomer = async (user) => {
       });
 
       user.stripeCustomerId = customer.id;
+      console.log("New Stripe customer created:", customer.id);
     }
   } catch (error) {
     console.error("Stripe Customer Error:", error.message);
@@ -51,6 +61,9 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
+        // NOTE:
+        // accessToken / refreshToken not used (only login purpose)
+
         const state = req.query.state;
 
         if (!state) return done(new Error("Missing state parameter"), null);
@@ -128,11 +141,15 @@ passport.use(
             ],
           });
 
-          await ensureStripeCustomer(user);
+          // Stripe create only if needed
+          if (!user.stripeCustomerId) {
+            await ensureStripeCustomer(user);
+          }
+
           await user.save();
         } else {
           // ============================
-          // UPDATE USER
+          // UPDATE EXISTING USER
           // ============================
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
@@ -147,7 +164,11 @@ passport.use(
             loginAt: new Date(),
           });
 
-          await ensureStripeCustomer(user);
+          // Backfill Stripe if missing
+          if (!user.stripeCustomerId) {
+            await ensureStripeCustomer(user);
+          }
+
           await user.save();
         }
 
@@ -175,5 +196,6 @@ passport.use(
   )
 );
 
+// ---------------- Serialize / Deserialize ----------------
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));
