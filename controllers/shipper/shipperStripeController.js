@@ -1088,8 +1088,8 @@ exports.getSubscriptionPlan = async (req, res) => {
 
       if (rawNext) {
         nextBillingDate = {
-          iso: toISO(rawNext), // ✅ DB safe
-          us: formatToUSDateTime(rawNext), // 🔥 UI correct (15 date)
+          iso: toISO(rawNext),
+          us: formatToUSDateTime(rawNext),
         };
       }
 
@@ -1137,7 +1137,7 @@ exports.getSubscriptionPlan = async (req, res) => {
         currency: daily.currency,
 
         subscriptionStatus,
-        nextBillingDate, // 🔥 अब yaha correct USA date milega
+        nextBillingDate,
 
         cancelAtPeriodEnd,
         subscriptionEndDate,
