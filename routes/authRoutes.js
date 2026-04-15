@@ -5,18 +5,18 @@ const router = express.Router();
 const authController = require("../controllers/authController");
 
 // ------------------------
-// Clean OAuth Error Redirect
+// OAuth Error Redirect
 // ------------------------
 const redirectOAuthError = (res, message) => {
   return res.redirect(
     `${process.env.FRONTEND_URL}/oauth-error?message=${encodeURIComponent(
-      message
+      message || "Authentication failed"
     )}`
   );
 };
 
 // ------------------------
-// Local signup/login/logout
+// Local auth
 // ------------------------
 router.post("/signup", authController.signup);
 router.post("/login", authController.login);
@@ -56,10 +56,7 @@ router.get("/google/callback", (req, res, next) => {
     try {
       if (err) {
         console.error("OAuth Error:", err.message);
-        return redirectOAuthError(
-          res,
-          err.message || "Google authentication failed"
-        );
+        return redirectOAuthError(res, err.message);
       }
 
       if (!user) {
@@ -67,6 +64,10 @@ router.get("/google/callback", (req, res, next) => {
           res,
           info?.message || "Authentication failed"
         );
+      }
+
+      if (!user.redirectUrl) {
+        return redirectOAuthError(res, "Invalid redirect URL");
       }
 
       return res.redirect(user.redirectUrl);
