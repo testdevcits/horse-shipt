@@ -96,115 +96,184 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
-    console.log("VERIFY DELIVERY OTP START");
+    console.log("=====================================");
+    console.log("[VERIFY DELIVERY OTP] Start", { shipmentId, otp });
 
+    // ============================================
+    // FETCH SHIPMENT
+    // ============================================
     const shipment = await CustomerShipment.findById(shipmentId);
+
     if (!shipment) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
+      console.log("[ERROR] Shipment not found");
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
     }
 
+    console.log("[SHIPMENT FOUND]", {
+      id: shipment._id,
+      status: shipment.status,
+      deliveryOtpVerified: shipment.deliveryOtpVerified,
+    });
+
+    // ============================================
+    // AUTH CHECK
+    // ============================================
     if (shipment.shipper?.toString() !== req.user.id) {
-      return res
-        .status(403)
-        .json({ success: false, message: "Unauthorized action" });
+      console.log("[ERROR] Unauthorized shipper");
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized action",
+      });
     }
 
+    // ============================================
+    // VALIDATION
+    // ============================================
     if (shipment.deliveryOtpVerified) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Shipment already delivered" });
+      console.log("[ERROR] Shipment already delivered");
+      return res.status(400).json({
+        success: false,
+        message: "Shipment already delivered",
+      });
     }
 
     if (shipment.deliveryOtp !== otp) {
-      return res.status(400).json({ success: false, message: "Invalid OTP" });
+      console.log("[ERROR] Invalid OTP", {
+        expected: shipment.deliveryOtp,
+        received: otp,
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      return res.status(400).json({ success: false, message: "OTP expired" });
+      console.log("[ERROR] OTP expired", {
+        expiresAt: shipment.deliveryOtpExpires,
+      });
+      return res.status(400).json({
+        success: false,
+        message: "OTP expired",
+      });
     }
+
+    console.log("[OTP VERIFIED SUCCESSFULLY]");
 
     // ============================================
     // FIND ACCEPTED QUOTE
     // ============================================
-
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
       status: "accepted",
     }).populate("shipper");
+
     if (!quote) {
-      return res
-        .status(404)
-        .json({ success: false, message: "Accepted quote not found" });
+      console.log("[ERROR] Accepted quote not found");
+      return res.status(404).json({
+        success: false,
+        message: "Accepted quote not found",
+      });
     }
 
+    console.log("[QUOTE FOUND]", {
+      quoteId: quote._id,
+      vehicle: quote.vehicle,
+      driver: quote.assignedDriver,
+      paymentStatus: quote.paymentStatus,
+      payoutStatus: quote.payoutStatus,
+    });
+
     if (quote.paymentStatus !== "paid") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Payment not completed yet" });
+      console.log("[ERROR] Payment not completed");
+      return res.status(400).json({
+        success: false,
+        message: "Payment not completed yet",
+      });
     }
 
     if (quote.payoutStatus === "transferred") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Payout already processed" });
+      console.log("[ERROR] Payout already processed");
+      return res.status(400).json({
+        success: false,
+        message: "Payout already processed",
+      });
     }
 
     // ============================================
-    // GET STRIPE PAYMENT DETAILS
+    // STRIPE FETCH
     // ============================================
+    console.log("[STRIPE] Fetching payment intent");
 
     const paymentIntent = await stripe.paymentIntents.retrieve(
       quote.stripePaymentIntentId
     );
+
     const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+
     const balanceTx = await stripe.balanceTransactions.retrieve(
       charge.balance_transaction
     );
 
-    const grossCents = paymentIntent.amount; // in cents
-    const stripeFeeCents = balanceTx.fee; // in cents
+    const grossCents = paymentIntent.amount;
+    const stripeFeeCents = balanceTx.fee;
     const netAfterStripeCents = grossCents - stripeFeeCents;
 
-    console.log("Gross Amount (cents):", grossCents);
-    console.log("Stripe Fee (cents):", stripeFeeCents);
-    console.log("Net after Stripe (cents):", netAfterStripeCents);
+    console.log("[STRIPE DETAILS]", {
+      grossCents,
+      stripeFeeCents,
+      netAfterStripeCents,
+    });
 
     // ============================================
-    // GET PLATFORM SETTINGS
+    // PLATFORM FEES
     // ============================================
-
     const settings = await PlatformSettings.findOne();
+
     const platformPercent = settings?.platformFeePercent || 0;
     const platformFlat = settings?.platformFeeFlat || 0;
 
-    // Platform fee in cents, rounded to nearest cent
     const platformFeePercentCents = Math.round(
       netAfterStripeCents * (platformPercent / 100)
     );
+
     const platformFeeFlatCents = Math.round(platformFlat * 100);
+
     const platformFeeTotalCents =
       platformFeePercentCents + platformFeeFlatCents;
 
-    console.log("Platform Fee (cents):", platformFeeTotalCents);
+    console.log("[PLATFORM FEES]", {
+      platformPercent,
+      platformFlat,
+      platformFeeTotalCents,
+    });
 
     // ============================================
-    // FINAL SHIPPER PAYOUT
+    // FINAL PAYOUT
     // ============================================
-
     const shipperCents = netAfterStripeCents - platformFeeTotalCents;
+
     if (shipperCents <= 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid payout calculation" });
+      console.log("[ERROR] Invalid payout calculation", {
+        shipperCents,
+      });
+      return res.status(400).json({
+        success: false,
+        message: "Invalid payout calculation",
+      });
     }
 
-    console.log("Shipper Payout (cents):", shipperCents);
+    console.log("[FINAL PAYOUT]", {
+      shipperCents,
+    });
 
     // ============================================
     // STRIPE TRANSFER
     // ============================================
+    console.log("[STRIPE] Creating transfer...");
 
     const transfer = await stripe.transfers.create({
       amount: shipperCents,
@@ -217,12 +286,11 @@ exports.verifyDeliveryOtp = async (req, res) => {
       },
     });
 
-    console.log("TRANSFER SUCCESS:", transfer.id);
+    console.log("[TRANSFER SUCCESS]", transfer.id);
 
     // ============================================
     // UPDATE QUOTE
     // ============================================
-
     quote.stripeTransferId = transfer.id;
     quote.payoutStatus = "transferred";
     quote.paymentReleasedAt = new Date();
@@ -232,12 +300,15 @@ exports.verifyDeliveryOtp = async (req, res) => {
     quote.platformFee = platformFeeTotalCents / 100;
     quote.netAmount = shipperCents / 100;
 
+    quote.tripStatus = "completed";
+
     await quote.save();
+
+    console.log("[QUOTE UPDATED]");
 
     // ============================================
     // UPDATE SHIPMENT
     // ============================================
-
     shipment.status = "delivered";
     shipment.deliveredAt = new Date();
     shipment.deliveryOtpVerified = true;
@@ -246,6 +317,50 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
+    console.log("[SHIPMENT MARKED DELIVERED]");
+
+    // ============================================
+    // FREE VEHICLE
+    // ============================================
+    if (quote.vehicle) {
+      console.log("[FREE VEHICLE] Start", quote.vehicle);
+
+      const vehicle = await ShipperVehicle.findById(quote.vehicle);
+
+      if (vehicle) {
+        vehicle.currentShipment = null;
+        vehicle.driverStatus = "AVAILABLE";
+        await vehicle.save();
+
+        console.log("[VEHICLE FREED]");
+      } else {
+        console.log("[WARNING] Vehicle not found");
+      }
+    }
+
+    // ============================================
+    // FREE DRIVER
+    // ============================================
+    if (quote.assignedDriver) {
+      console.log("[FREE DRIVER] Start", quote.assignedDriver);
+
+      const driver = await Driver.findById(quote.assignedDriver);
+
+      if (driver) {
+        driver.driverStatus = "available";
+        await driver.save();
+
+        console.log("[DRIVER FREED]");
+      } else {
+        console.log("[WARNING] Driver not found");
+      }
+    }
+
+    console.log("=====================================");
+
+    // ============================================
+    // RESPONSE
+    // ============================================
     return res.json({
       success: true,
       message: "Delivery verified & payout sent",
@@ -258,8 +373,12 @@ exports.verifyDeliveryOtp = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("VERIFY DELIVERY ERROR:", error);
-    res.status(500).json({ success: false, error: error.message });
+    console.error("[VERIFY DELIVERY ERROR]:", error);
+
+    return res.status(500).json({
+      success: false,
+      error: error.message,
+    });
   }
 };
 
