@@ -12,6 +12,30 @@ const getCallbackURL = () =>
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
+const ensureStripeCustomer = async (user) => {
+  try {
+    if (user.stripeCustomerId) return;
+
+    const existingCustomers = await stripe.customers.list({
+      email: user.email,
+      limit: 1,
+    });
+
+    if (existingCustomers.data.length > 0) {
+      user.stripeCustomerId = existingCustomers.data[0].id;
+    } else {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.name,
+      });
+
+      user.stripeCustomerId = customer.id;
+    }
+  } catch (error) {
+    console.error("Stripe Customer Error:", error.message);
+  }
+};
+
 passport.use(
   new GoogleStrategy(
     {
@@ -42,6 +66,9 @@ passport.use(
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
 
+        // ============================
+        // ROLE VALIDATION
+        // ============================
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });
 
@@ -62,7 +89,9 @@ passport.use(
           providerId: profile.id,
         });
 
-        // ---------------- CREATE NEW USER ----------------
+        // ============================
+        // CREATE NEW USER
+        // ============================
         if (!user) {
           const uniqueId =
             role === "shipper"
@@ -94,17 +123,12 @@ passport.use(
             ],
           });
 
-          // ---------------- STRIPE CUSTOMER CREATE ----------------
-          const customer = await stripe.customers.create({
-            email: user.email,
-            name: user.name,
-          });
-
-          user.stripeCustomerId = customer.id;
-
+          await ensureStripeCustomer(user);
           await user.save();
         } else {
-          // ---------------- UPDATE LOGIN INFO ----------------
+          // ============================
+          // UPDATE USER
+          // ============================
           user.isLogin = true;
           user.currentDevice = req.headers["user-agent"] || user.currentDevice;
 
@@ -118,19 +142,13 @@ passport.use(
             loginAt: new Date(),
           });
 
-          // ---------------- STRIPE BACKFILL (IMPORTANT) ----------------
-          if (!user.stripeCustomerId) {
-            const customer = await stripe.customers.create({
-              email: user.email,
-              name: user.name,
-            });
-
-            user.stripeCustomerId = customer.id;
-          }
-
+          await ensureStripeCustomer(user);
           await user.save();
         }
 
+        // ============================
+        // GENERATE TOKEN
+        // ============================
         const token = generateToken({ id: user._id, role: user.role });
 
         const redirectUrl = `${
@@ -152,6 +170,5 @@ passport.use(
   )
 );
 
-// ---------------- Serialize/Deserialize ----------------
 passport.serializeUser((obj, done) => done(null, obj));
 passport.deserializeUser((obj, done) => done(null, obj));
