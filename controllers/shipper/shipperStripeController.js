@@ -1051,14 +1051,15 @@ exports.getSubscriptionPlan = async (req, res) => {
     };
 
     // ============================
-    // FETCH ACTIVE SUBSCRIPTION ONLY
+    // FETCH SUBSCRIPTION
     // ============================
     let nextBillingDate = null;
     let subscriptionStatus = null;
+    let cancelAtPeriodEnd = false;
+    let subscriptionEndDate = null;
 
     const subscriptions = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
-      status: "active",
       limit: 1,
     });
 
@@ -1066,11 +1067,20 @@ exports.getSubscriptionPlan = async (req, res) => {
       const sub = subscriptions.data[0];
 
       subscriptionStatus = sub.status;
+      cancelAtPeriodEnd = sub.cancel_at_period_end;
 
       if (sub.current_period_end) {
         nextBillingDate = new Date(sub.current_period_end * 1000);
       } else if (sub.trial_end) {
         nextBillingDate = new Date(sub.trial_end * 1000);
+      }
+
+      if (sub.cancel_at_period_end && sub.current_period_end) {
+        subscriptionEndDate = new Date(sub.current_period_end * 1000);
+      }
+
+      if (sub.status === "canceled" && sub.canceled_at) {
+        subscriptionEndDate = new Date(sub.canceled_at * 1000);
       }
     }
 
@@ -1086,6 +1096,9 @@ exports.getSubscriptionPlan = async (req, res) => {
 
         subscriptionStatus,
         nextBillingDate,
+
+        cancelAtPeriodEnd,
+        subscriptionEndDate,
       },
     });
   } catch (error) {
