@@ -1,3 +1,9 @@
+const Shipper = require("../../models/shipper/shipperModel"); // Shipers ka model
+const formatChatUser = require("../../utils/formatChatUser");
+
+/**
+ * Fetch Shippers for Chat
+ */
 exports.getShippersForChat = async (req, res) => {
   try {
     const shippers = await Shipper.find(
