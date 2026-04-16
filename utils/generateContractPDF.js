@@ -14,7 +14,6 @@ async function generateContractPDF({
       const fileName = `Contract_${Date.now()}.pdf`;
       const filePath = path.join(__dirname, "..", "tmp", fileName);
 
-      // Ensure tmp folder exists
       await fs.ensureDir(path.join(__dirname, "..", "tmp"));
 
       const writeStream = fs.createWriteStream(filePath);
