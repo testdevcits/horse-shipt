@@ -1,13 +1,7 @@
-const Shipper = require("../../models/shipper/shipperModel"); // Shipers ka model
-const formatChatUser = require("../../utils/formatChatUser");
-
-/**
- * Fetch Shippers for Chat
- */
 exports.getShippersForChat = async (req, res) => {
   try {
     const shippers = await Shipper.find(
-      { isActive: true }, // sirf active shippers
+      { isActive: true },
       {
         name: 1,
         email: 1,
@@ -17,9 +11,14 @@ exports.getShippersForChat = async (req, res) => {
       }
     ).sort({ updatedAt: -1 });
 
-    const formattedShippers = shippers.map((shipper) =>
-      formatChatUser(shipper, "shipper")
-    );
+    const formattedShippers = shippers.map((shipper) => {
+      const formatted = formatChatUser(shipper, "shipper");
+
+      return {
+        ...formatted,
+        isOnline: Boolean(shipper.isLogin),
+      };
+    });
 
     res.status(200).json({
       success: true,
