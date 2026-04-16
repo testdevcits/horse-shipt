@@ -1024,7 +1024,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     let subscriptionEndDate = null;
 
     // ============================
-    // 🔥 GET LATEST SUB (IMPORTANT FIX)
+    // GET LATEST SUB (IMPORTANT FIX)
     // ============================
     const dbSub = await subscriptionModel
       .findOne({ shipperId: shipper._id })
