@@ -8,6 +8,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const shipperMailSend = require("../../utils/shipperMailSend");
 const shipperSmsSend = require("../../utils/shipperSmsSend");
+const shipperModel = require("../../models/shipper/shipperModel");
 
 /* =========================================================
    GET ALL ASSIGNED SHIPMENTS (FOR SHIPPER DASHBOARD)
@@ -91,11 +92,21 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 exports.getAvailableShipments = async (req, res) => {
   try {
-    const { pickupDistance, dropoffDistance, stallSize, minHorses, lat, lng } =
-      req.query;
+    const {
+      pickupDistance,
+      dropoffDistance,
+      stallSize,
+      minHorses,
+      lat,
+      lng,
+      pickupStart,
+      pickupEnd,
+      deliveryStart,
+      deliveryEnd,
+    } = req.query;
 
     /* ===============================
-       GET SHIPPER LOCATION
+       GET SHIPPER LOCATION (FIXED)
     =================================*/
     let shipperLocation = null;
 
@@ -105,7 +116,7 @@ exports.getAvailableShipments = async (req, res) => {
         lng: Number(lng),
       };
     } else {
-      const shipper = await ShipperShipment.findById(req.user.id);
+      const shipper = await shipperModel.findById(req.user.id);
 
       if (shipper?.currentLocation) {
         shipperLocation = {
@@ -115,36 +126,38 @@ exports.getAvailableShipments = async (req, res) => {
       }
     }
 
-    console.log("Shipper Location:", shipperLocation);
-
     /* ===============================
        CACHE KEY
     =================================*/
-    const cleanQuery = {
-      pickupDistance: pickupDistance || "",
-      dropoffDistance: dropoffDistance || "",
-      stallSize: stallSize || "",
-      minHorses: minHorses || "",
-      lat: lat || "",
-      lng: lng || "",
-    };
-
-    const cacheKey = "shipments_" + JSON.stringify(cleanQuery);
+    const cacheKey =
+      "shipments_" +
+      JSON.stringify({
+        pickupDistance,
+        dropoffDistance,
+        stallSize,
+        minHorses,
+        lat,
+        lng,
+        pickupStart,
+        pickupEnd,
+        deliveryStart,
+        deliveryEnd,
+      });
 
     const cachedData = cache.get(cacheKey);
     if (cachedData) {
-      console.log("CACHE HIT");
       return res.status(200).json({ success: true, shipments: cachedData });
     }
 
-    console.log("CACHE MISS");
-
     /* ===============================
-       FETCH DATA
+       EXCLUDE ASSIGNED SHIPMENTS
     =================================*/
     const assignedShipments = await ShipperShipment.find({}, "shipment");
     const assignedIds = assignedShipments.map((s) => s.shipment);
 
+    /* ===============================
+       FETCH SHIPMENTS
+    =================================*/
     let shipments = await CustomerShipment.find({
       publish: true,
       status: { $in: ["pending", "open_for_offers"] },
@@ -156,10 +169,10 @@ exports.getAvailableShipments = async (req, res) => {
         shipmentCode
         pickupLocation
         pickupCoords
-        pickupDate
+        pickupDateRange
         deliveryLocation
         deliveryCoords
-        deliveryDate
+        deliveryDateRange
         horses
         numberOfHorses
         additionalInfo
@@ -170,7 +183,7 @@ exports.getAvailableShipments = async (req, res) => {
       .sort({ publishedAt: -1 });
 
     /* ===============================
-       ADD ESTIMATED DISTANCE
+       ADD DISTANCE
     =================================*/
     let shipmentsWithDistance = shipments.map((shipment) => {
       const pickup = shipment.pickupCoords;
@@ -197,15 +210,16 @@ exports.getAvailableShipments = async (req, res) => {
     });
 
     /* ===============================
-       APPLY FILTERS ( FIXED)
+       APPLY FILTERS (UPDATED)
     =================================*/
     shipmentsWithDistance = shipmentsWithDistance.filter((shipment) => {
       let pickupOk = true,
         dropoffOk = true,
         stallOk = true,
-        horsesOk = true;
+        horsesOk = true,
+        pickupDateOk = true,
+        deliveryDateOk = true;
 
-      //  Pickup Distance Filter
       if (pickupDistance && shipperLocation) {
         const dist = calculateDistance(
           shipperLocation.lat,
@@ -213,11 +227,9 @@ exports.getAvailableShipments = async (req, res) => {
           shipment.pickupCoords.latitude,
           shipment.pickupCoords.longitude
         );
-
         pickupOk = dist <= Number(pickupDistance);
       }
 
-      //  Dropoff Distance Filter
       if (dropoffDistance && shipperLocation) {
         const dist = calculateDistance(
           shipperLocation.lat,
@@ -225,27 +237,49 @@ exports.getAvailableShipments = async (req, res) => {
           shipment.deliveryCoords.latitude,
           shipment.deliveryCoords.longitude
         );
-
         dropoffOk = dist <= Number(dropoffDistance);
       }
 
-      //  Stall Size
       if (stallSize) {
         stallOk = shipment.horses.some(
           (h) => h.requestedStallSize === stallSize
         );
       }
 
-      //  Number of Horses
       if (minHorses) {
         horsesOk = shipment.numberOfHorses >= Number(minHorses);
       }
 
-      return pickupOk && dropoffOk && stallOk && horsesOk;
+      if (pickupStart && pickupEnd) {
+        const start = new Date(pickupStart);
+        const end = new Date(pickupEnd);
+
+        pickupDateOk =
+          shipment.pickupDateRange?.start <= end &&
+          shipment.pickupDateRange?.end >= start;
+      }
+
+      if (deliveryStart && deliveryEnd) {
+        const start = new Date(deliveryStart);
+        const end = new Date(deliveryEnd);
+
+        deliveryDateOk =
+          shipment.deliveryDateRange?.start <= end &&
+          shipment.deliveryDateRange?.end >= start;
+      }
+
+      return (
+        pickupOk &&
+        dropoffOk &&
+        stallOk &&
+        horsesOk &&
+        pickupDateOk &&
+        deliveryDateOk
+      );
     });
 
     /* ===============================
-       SAVE CACHE
+       CACHE SAVE
     =================================*/
     cache.set(cacheKey, shipmentsWithDistance);
 
