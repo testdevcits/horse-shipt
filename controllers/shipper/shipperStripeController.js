@@ -203,27 +203,26 @@ exports.stripeWebhook = async (req, res) => {
 
   try {
     const data = event.data.object;
-
     console.log("Stripe Event:", event.type);
+
+    const SubscriptionModel = require("../../models/shipper/subscriptionModel");
 
     switch (event.type) {
       // ================= ACCOUNT UPDATED =================
       case "account.updated": {
-        const account = data;
-
         const shipper = await Shipper.findOne({
-          stripeAccountId: account.id,
+          stripeAccountId: data.id,
         });
 
         if (shipper) {
-          shipper.stripeChargesEnabled = account.charges_enabled;
-          shipper.stripePayoutsEnabled = account.payouts_enabled;
-          shipper.stripeOnboardingCompleted = account.details_submitted;
+          shipper.stripeChargesEnabled = data.charges_enabled;
+          shipper.stripePayoutsEnabled = data.payouts_enabled;
+          shipper.stripeOnboardingCompleted = data.details_submitted;
 
           shipper.stripeVerified =
-            account.details_submitted &&
-            account.charges_enabled &&
-            account.payouts_enabled;
+            data.details_submitted &&
+            data.charges_enabled &&
+            data.payouts_enabled;
 
           await shipper.save();
         }
@@ -232,14 +231,13 @@ exports.stripeWebhook = async (req, res) => {
 
       // ================= PAYMENT SUCCESS =================
       case "payment_intent.succeeded": {
-        const paymentIntent = data;
-        const quoteId = paymentIntent.metadata?.quoteId;
+        const quoteId = data.metadata?.quoteId;
 
         if (quoteId) {
           await ShipmentQuote.findByIdAndUpdate(quoteId, {
             paymentStatus: "paid",
             paymentCompletedAt: new Date(),
-            stripePaymentIntentId: paymentIntent.id,
+            stripePaymentIntentId: data.id,
           });
         }
         break;
@@ -247,8 +245,7 @@ exports.stripeWebhook = async (req, res) => {
 
       // ================= PAYMENT FAILED =================
       case "payment_intent.payment_failed": {
-        const paymentIntent = data;
-        const quoteId = paymentIntent.metadata?.quoteId;
+        const quoteId = data.metadata?.quoteId;
 
         if (quoteId) {
           await ShipmentQuote.findByIdAndUpdate(quoteId, {
@@ -260,85 +257,72 @@ exports.stripeWebhook = async (req, res) => {
 
       // ================= TRANSFER CREATED =================
       case "transfer.created": {
-        const transfer = data;
-        const quoteId = transfer.metadata?.quoteId;
+        const quoteId = data.metadata?.quoteId;
 
         if (quoteId) {
           await ShipmentQuote.findByIdAndUpdate(quoteId, {
-            transferId: transfer.id,
+            transferId: data.id,
           });
         }
         break;
       }
 
-      // ================= SUBSCRIPTION CREATED / UPDATED =================
+      // ================= SUBSCRIPTION CREATE / UPDATE =================
       case "customer.subscription.created":
       case "customer.subscription.updated": {
         const subscription = data;
 
-        const SubscriptionModel = require("../../models/shipper/subscriptionModel");
-
-        // 🔥 IMPORTANT: customer → user mapping
         const shipper = await Shipper.findOne({
           stripeCustomerId: subscription.customer,
         });
 
         if (!shipper) {
-          console.log("No shipper found for this subscription");
+          console.log("⚠️ No shipper found");
           break;
         }
 
-        let existingSub = await SubscriptionModel.findOne({
+        const updateData = {
+          shipperId: shipper._id,
           stripeSubscriptionId: subscription.id,
-        });
+          stripeCustomerId: subscription.customer,
+          status: subscription.status,
 
-        const currentPeriodStart = subscription.current_period_start
-          ? new Date(subscription.current_period_start * 1000)
-          : null;
+          currentPeriodStart: subscription.current_period_start
+            ? new Date(subscription.current_period_start * 1000)
+            : null,
 
-        const currentPeriodEnd = subscription.current_period_end
-          ? new Date(subscription.current_period_end * 1000)
-          : null;
+          currentPeriodEnd: subscription.current_period_end
+            ? new Date(subscription.current_period_end * 1000)
+            : null,
 
-        const trialStart = subscription.trial_start
-          ? new Date(subscription.trial_start * 1000)
-          : null;
+          trialStart: subscription.trial_start
+            ? new Date(subscription.trial_start * 1000)
+            : null,
 
-        const trialEnd = subscription.trial_end
-          ? new Date(subscription.trial_end * 1000)
-          : null;
+          trialEnd: subscription.trial_end
+            ? new Date(subscription.trial_end * 1000)
+            : null,
 
-        const canceledAt = subscription.canceled_at
-          ? new Date(subscription.canceled_at * 1000)
-          : null;
+          canceledAt: subscription.canceled_at
+            ? new Date(subscription.canceled_at * 1000)
+            : null,
 
-        if (!existingSub) {
-          // ✅ CREATE NEW SUBSCRIPTION
-          existingSub = new SubscriptionModel({
-            shipperId: shipper._id,
-            stripeSubscriptionId: subscription.id,
-            stripeCustomerId: subscription.customer,
-            status: subscription.status,
-            currentPeriodStart,
-            currentPeriodEnd,
-            trialStart,
-            trialEnd,
-            canceledAt,
-          });
-        } else {
-          // ✅ UPDATE EXISTING
-          existingSub.status = subscription.status;
-          existingSub.currentPeriodStart = currentPeriodStart;
-          existingSub.currentPeriodEnd = currentPeriodEnd;
-          existingSub.trialStart = trialStart;
-          existingSub.trialEnd = trialEnd;
-          existingSub.canceledAt = canceledAt;
+          cancelAtPeriodEnd: subscription.cancel_at_period_end || false,
+        };
+
+        await SubscriptionModel.findOneAndUpdate(
+          { stripeSubscriptionId: subscription.id },
+          updateData,
+          { upsert: true, new: true }
+        );
+
+        shipper.subscriptionStatus = subscription.status;
+
+        // trial used mark
+        if (subscription.trial_start || subscription.trial_end) {
+          shipper.hasUsedTrial = true;
         }
 
-        await existingSub.save();
-
-        // ✅ update shipper status
-        shipper.subscriptionStatus = subscription.status;
         await shipper.save();
 
         break;
@@ -348,17 +332,14 @@ exports.stripeWebhook = async (req, res) => {
       case "customer.subscription.deleted": {
         const subscription = data;
 
-        const SubscriptionModel = require("../../models/shipper/subscriptionModel");
-
-        const existingSub = await SubscriptionModel.findOne({
-          stripeSubscriptionId: subscription.id,
-        });
-
-        if (existingSub) {
-          existingSub.status = "canceled";
-          existingSub.canceledAt = new Date();
-          await existingSub.save();
-        }
+        await SubscriptionModel.findOneAndUpdate(
+          { stripeSubscriptionId: subscription.id },
+          {
+            status: "canceled",
+            canceledAt: new Date(),
+            cancelAtPeriodEnd: false,
+          }
+        );
 
         break;
       }
@@ -366,8 +347,6 @@ exports.stripeWebhook = async (req, res) => {
       // ================= INVOICE PAID =================
       case "invoice.paid": {
         const invoice = data;
-
-        const SubscriptionModel = require("../../models/shipper/subscriptionModel");
 
         const sub = await SubscriptionModel.findOne({
           stripeSubscriptionId: invoice.subscription,
@@ -392,8 +371,6 @@ exports.stripeWebhook = async (req, res) => {
       // ================= INVOICE FAILED =================
       case "invoice.payment_failed": {
         const invoice = data;
-
-        const SubscriptionModel = require("../../models/shipper/subscriptionModel");
 
         const sub = await SubscriptionModel.findOne({
           stripeSubscriptionId: invoice.subscription,
@@ -838,7 +815,7 @@ exports.createSubscription = async (req, res) => {
 // =========================================================
 
 exports.cancelSubscription = async (req, res) => {
-  console.log("=== CANCEL SUBSCRIPTION API HIT (NO REFUND) ===");
+  console.log("=== CANCEL SUBSCRIPTION API HIT (FINAL FIXED) ===");
 
   try {
     const { reason = "User requested" } = req.body;
@@ -903,7 +880,7 @@ exports.cancelSubscription = async (req, res) => {
     if (isTrial) {
       console.log("Canceling trial immediately");
 
-      updatedStripeSub = await stripe.subscriptions.del(
+      updatedStripeSub = await stripe.subscriptions.cancel(
         subscription.stripeSubscriptionId
       );
 
@@ -917,7 +894,7 @@ exports.cancelSubscription = async (req, res) => {
     else if (isPastDue) {
       console.log("Past due → immediate cancel");
 
-      updatedStripeSub = await stripe.subscriptions.del(
+      updatedStripeSub = await stripe.subscriptions.cancel(
         subscription.stripeSubscriptionId
       );
 
@@ -938,7 +915,7 @@ exports.cancelSubscription = async (req, res) => {
         }
       );
 
-      subscription.status = updatedStripeSub.status; // fix
+      subscription.status = updatedStripeSub.status;
       subscription.cancelAtPeriodEnd = true;
     }
 
