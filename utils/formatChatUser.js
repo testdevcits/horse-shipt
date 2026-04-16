@@ -9,7 +9,7 @@ module.exports = (user, role) => {
   let avatarPath =
     user.profileImage?.url || // Cloudinary
     user.profilePicture || // Google
-    "/assets/images/default_profile.png"; // default
+    ""; // default
 
   const resolvedAvatar = avatarPath.startsWith("http")
     ? avatarPath
