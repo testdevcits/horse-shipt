@@ -1,12 +1,19 @@
+const BASE_URL = process.env.BASE_URL || "https://horse-shipt.vercel.app";
+
 module.exports = (user, role) => {
   // Avatar priority:
   // 1. Uploaded profile image (Cloudinary)
   // 2. Google OAuth profile picture
   // 3. Backend default image
-  const resolvedAvatar =
-    user.profileImage?.url || // <-- this handles your customer profileImage
-    user.profilePicture ||
-    "/assets/images/default_profile.png";
+
+  let avatarPath =
+    user.profileImage?.url || // Cloudinary
+    user.profilePicture || // Google
+    "/assets/images/default_profile.png"; // default
+
+  const resolvedAvatar = avatarPath.startsWith("http")
+    ? avatarPath
+    : `${BASE_URL}${avatarPath}`;
 
   return {
     _id: user._id,
@@ -14,6 +21,6 @@ module.exports = (user, role) => {
     email: user.email,
     avatar: resolvedAvatar,
     isOnline: Boolean(user.isLogin),
-    role, // "customer" | "shipper"
+    role,
   };
 };
