@@ -322,7 +322,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
       });
     }
 
-    // ❌ Restrict update after certain stages
+    // Restrict update after certain stages
     if (
       ["assigned", "picked", "in_transit", "delivered"].includes(
         shipment.status
