@@ -305,6 +305,158 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   }
 };
 
+exports.updateShipmentByCustomer = async (req, res) => {
+  try {
+    const shipmentId = req.params.shipmentId;
+    const customerId = req.user._id;
+
+    const shipment = await CustomerShipment.findOne({
+      _id: shipmentId,
+      customer: customerId,
+    });
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    // ❌ Restrict update after certain stages
+    if (
+      ["assigned", "picked", "in_transit", "delivered"].includes(
+        shipment.status
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot update shipment after it is in progress",
+      });
+    }
+
+    // ===== FILE MAP =====
+    const fileMap = {};
+    (req.files || []).forEach((file) => {
+      fileMap[file.fieldname] = file;
+    });
+
+    // ===== BASIC FIELDS UPDATE =====
+    shipment.pickupLocation =
+      req.body.pickupLocation || shipment.pickupLocation;
+
+    shipment.deliveryLocation =
+      req.body.deliveryLocation || shipment.deliveryLocation;
+
+    shipment.additionalInfo =
+      req.body.additionalInfo || shipment.additionalInfo;
+
+    shipment.publish = req.body.publish === "true" || req.body.publish === true;
+
+    // ===== DATE RANGE UPDATE =====
+    if (req.body.pickupStartDate && req.body.pickupEndDate) {
+      shipment.pickupDateRange = {
+        start: new Date(req.body.pickupStartDate),
+        end: new Date(req.body.pickupEndDate),
+      };
+    }
+
+    if (req.body.deliveryStartDate && req.body.deliveryEndDate) {
+      shipment.deliveryDateRange = {
+        start: new Date(req.body.deliveryStartDate),
+        end: new Date(req.body.deliveryEndDate),
+      };
+    }
+
+    // ===== HORSE UPDATE =====
+    let horseData = req.body.horses
+      ? Array.isArray(req.body.horses)
+        ? req.body.horses
+        : JSON.parse(req.body.horses)
+      : [];
+
+    const updatedHorses = [];
+
+    for (let i = 0; i < horseData.length; i++) {
+      const h = horseData[i];
+
+      const horseObj = {
+        registeredName: h.registeredName || "",
+        barnName: h.barnName || "",
+        breed: h.breed || "",
+        colour: h.colour || "",
+        age: h.age || null,
+        sex: h.sex || "",
+        generalInfo: h.generalInfo || "",
+        requestedStallSize: h.stallType || "Box",
+        documents: {},
+      };
+
+      const handleFile = async (field, type) => {
+        const key = `horses[${i}][${field}]`;
+        if (!fileMap[key]) return null;
+
+        const file = fileMap[key];
+
+        if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
+          throw new Error(`${field} too large (Max 5MB)`);
+        }
+
+        if (!file.buffer && file.path) {
+          const fs = require("fs");
+          file.buffer = fs.readFileSync(file.path);
+        }
+
+        if (file.buffer && isImage(file)) {
+          file.buffer = await processImage(file);
+        }
+
+        return await uploadToCloudinary(file, type);
+      };
+
+      // existing data preserve karo agar new file nahi hai
+      const existingHorse = shipment.horses[i] || {};
+
+      horseObj.photo =
+        (await handleFile("photo", "photo")) || existingHorse.photo;
+
+      horseObj.documents.coggins =
+        (await handleFile("cogins", "document")) ||
+        existingHorse?.documents?.coggins;
+
+      horseObj.documents.healthCertificate =
+        (await handleFile("healthCertificate", "document")) ||
+        existingHorse?.documents?.healthCertificate;
+
+      horseObj.documents.other =
+        (await handleFile("otherDocuments", "document")) ||
+        existingHorse?.documents?.other;
+
+      updatedHorses.push(horseObj);
+    }
+
+    if (updatedHorses.length > 0) {
+      shipment.horses = updatedHorses;
+      shipment.numberOfHorses = updatedHorses.length;
+    }
+
+    // ===== SAVE =====
+    await shipment.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Shipment updated successfully",
+      shipment,
+    });
+  } catch (err) {
+    console.error("[UPDATE SHIPMENT ERROR]", err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server Error",
+    });
+  }
+};
+
 // ============================================================
 // ==================== GET SHIPMENT BY ID =====================
 // ============================================================

@@ -43,6 +43,7 @@ const {
   getSingleShipmentForMap,
   getUpcomingShipmentsByCustomer,
   getCompletedShipmentsByCustomer,
+  updateShipmentByCustomer,
 } = require("../../controllers/customer/customerShipmentController");
 
 const {
@@ -137,13 +138,11 @@ router.post(
 
 router.get("/shipments", customerAuth, getUpcomingShipmentsByCustomer);
 
-router.get(
-  "/shipments/completed",
-  customerAuth,
-  getCompletedShipmentsByCustomer
-);
+router.put("/shipments/:shipmentId", customerAuth, updateShipmentByCustomer);
 
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
+
+router.put("/shipments/:shipmentId", customerAuth, updateShipmentByCustomer);
 
 // Publish shipment
 router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
