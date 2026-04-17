@@ -322,17 +322,10 @@ exports.updateShipmentByCustomer = async (req, res) => {
       });
     }
 
-    // Restrict update after certain stages
-    if (
-      ["assigned", "picked", "in_transit", "delivered"].includes(
-        shipment.status
-      )
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "Cannot update shipment after it is in progress",
-      });
-    }
+    // ===== DEFINE STATES =====
+    const isLocked = ["assigned", "picked", "in_transit", "delivered"].includes(
+      shipment.status
+    );
 
     // ===== FILE MAP =====
     const fileMap = {};
@@ -340,7 +333,75 @@ exports.updateShipmentByCustomer = async (req, res) => {
       fileMap[file.fieldname] = file;
     });
 
-    // ===== BASIC FIELDS UPDATE =====
+    // =========================================================
+    // CASE 1: LOCKED → ONLY DOCUMENTS + NOTES ALLOWED
+    // =========================================================
+    if (isLocked) {
+      // Only notes update
+      if (req.body.additionalInfo) {
+        shipment.additionalInfo = req.body.additionalInfo;
+      }
+
+      // Only documents update
+      const updatedHorses = [];
+
+      for (let i = 0; i < shipment.horses.length; i++) {
+        const existingHorse = shipment.horses[i];
+
+        const horseObj = {
+          ...existingHorse.toObject(),
+          documents: { ...existingHorse.documents },
+        };
+
+        const handleFile = async (field, type) => {
+          const key = `horses[${i}][${field}]`;
+          if (!fileMap[key]) return null;
+
+          const file = fileMap[key];
+
+          if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
+            throw new Error(`${field} too large (Max 5MB)`);
+          }
+
+          if (!file.buffer && file.path) {
+            const fs = require("fs");
+            file.buffer = fs.readFileSync(file.path);
+          }
+
+          if (file.buffer && isImage(file)) {
+            file.buffer = await processImage(file);
+          }
+
+          return await uploadToCloudinary(file, type);
+        };
+
+        const newCoggins = await handleFile("cogins", "document");
+        const newHealth = await handleFile("healthCertificate", "document");
+        const newOther = await handleFile("otherDocuments", "document");
+
+        if (newCoggins) horseObj.documents.coggins = newCoggins;
+        if (newHealth) horseObj.documents.healthCertificate = newHealth;
+        if (newOther) horseObj.documents.other = newOther;
+
+        updatedHorses.push(horseObj);
+      }
+
+      shipment.horses = updatedHorses;
+
+      await shipment.save();
+
+      return res.status(200).json({
+        success: true,
+        message: "Only documents and notes updated (shipment locked)",
+        shipment,
+      });
+    }
+
+    // =========================================================
+    // CASE 2: NOT LOCKED → FULL UPDATE ALLOWED
+    // =========================================================
+
+    // ===== BASIC FIELDS =====
     shipment.pickupLocation =
       req.body.pickupLocation || shipment.pickupLocation;
 
@@ -352,7 +413,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
     shipment.publish = req.body.publish === "true" || req.body.publish === true;
 
-    // ===== DATE RANGE UPDATE =====
+    // ===== DATE RANGE =====
     if (req.body.pickupStartDate && req.body.pickupEndDate) {
       shipment.pickupDateRange = {
         start: new Date(req.body.pickupStartDate),
@@ -413,7 +474,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
         return await uploadToCloudinary(file, type);
       };
 
-      // existing data preserve karo agar new file nahi hai
       const existingHorse = shipment.horses[i] || {};
 
       horseObj.photo =
