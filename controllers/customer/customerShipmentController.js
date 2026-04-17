@@ -305,6 +305,85 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   }
 };
 
+// ============================================================
+// ==================== GET SHIPMENT BY ID =====================
+// ============================================================
+exports.getShipmentById = async (req, res) => {
+  try {
+    // console.log(`[GET SHIPMENT BY ID] Shipment ID: ${req.params.shipmentId}`);
+    const shipment = await exports.fetchShipmentById(
+      req.params.shipmentId,
+      req.user._id
+    );
+    if (!shipment) {
+      // console.warn("[GET SHIPMENT BY ID] Shipment not found");
+      return res
+        .status(404)
+        .json({ success: false, message: "Shipment not found" });
+    }
+    res.status(200).json({ success: true, shipment });
+  } catch (err) {
+    console.error("[GET SHIPMENT BY ID ERROR]", err);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+exports.getCompletedShipmentsByCustomer = async (req, res) => {
+  try {
+    const shipments = await CustomerShipment.find({
+      customer: req.user._id,
+      status: {
+        $in: [
+          "pending",
+          "assigned",
+          "picked",
+          "in_transit",
+          "delivered",
+          "cancelled",
+          "open_for_offers",
+        ],
+      },
+    })
+      .sort({ createdAt: -1 }) // better for all statuses
+      .populate("shipper", "name email phone")
+      .lean();
+
+    const finalShipments = shipments.map((s) => {
+      return {
+        ...s,
+
+        // custom flags (VERY USEFUL )
+        isCompleted: s.status === "delivered",
+        isPending: s.status === "pending",
+        isInProgress: ["assigned", "picked", "in_transit"].includes(s.status),
+
+        // optional fields
+        totalPrice: s.totalPrice || null,
+        paymentStatus: s.paymentStatus || "pending",
+        payoutStatus: s.payoutStatus || "pending",
+        transportType: s.transportType || null,
+        pickupTime: s.pickupTime || null,
+        estimatedArrivalTime: s.estimatedArrivalTime || null,
+
+        shipperSignature: s.shipperSignature || null,
+        customerSignature: s.customerSignature || null,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      count: finalShipments.length,
+      shipments: finalShipments,
+    });
+  } catch (err) {
+    console.error("[GET SHIPMENTS ERROR]", err);
+    res.status(500).json({
+      success: false,
+      message: "Server Error",
+    });
+  }
+};
+
 exports.updateShipmentByCustomer = async (req, res) => {
   try {
     const shipmentId = req.params.shipmentId;
@@ -513,85 +592,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: err.message || "Server Error",
-    });
-  }
-};
-
-// ============================================================
-// ==================== GET SHIPMENT BY ID =====================
-// ============================================================
-exports.getShipmentById = async (req, res) => {
-  try {
-    // console.log(`[GET SHIPMENT BY ID] Shipment ID: ${req.params.shipmentId}`);
-    const shipment = await exports.fetchShipmentById(
-      req.params.shipmentId,
-      req.user._id
-    );
-    if (!shipment) {
-      // console.warn("[GET SHIPMENT BY ID] Shipment not found");
-      return res
-        .status(404)
-        .json({ success: false, message: "Shipment not found" });
-    }
-    res.status(200).json({ success: true, shipment });
-  } catch (err) {
-    console.error("[GET SHIPMENT BY ID ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
-  }
-};
-
-exports.getCompletedShipmentsByCustomer = async (req, res) => {
-  try {
-    const shipments = await CustomerShipment.find({
-      customer: req.user._id,
-      status: {
-        $in: [
-          "pending",
-          "assigned",
-          "picked",
-          "in_transit",
-          "delivered",
-          "cancelled",
-          "open_for_offers",
-        ],
-      },
-    })
-      .sort({ createdAt: -1 }) // better for all statuses
-      .populate("shipper", "name email phone")
-      .lean();
-
-    const finalShipments = shipments.map((s) => {
-      return {
-        ...s,
-
-        // custom flags (VERY USEFUL )
-        isCompleted: s.status === "delivered",
-        isPending: s.status === "pending",
-        isInProgress: ["assigned", "picked", "in_transit"].includes(s.status),
-
-        // optional fields
-        totalPrice: s.totalPrice || null,
-        paymentStatus: s.paymentStatus || "pending",
-        payoutStatus: s.payoutStatus || "pending",
-        transportType: s.transportType || null,
-        pickupTime: s.pickupTime || null,
-        estimatedArrivalTime: s.estimatedArrivalTime || null,
-
-        shipperSignature: s.shipperSignature || null,
-        customerSignature: s.customerSignature || null,
-      };
-    });
-
-    res.status(200).json({
-      success: true,
-      count: finalShipments.length,
-      shipments: finalShipments,
-    });
-  } catch (err) {
-    console.error("[GET SHIPMENTS ERROR]", err);
-    res.status(500).json({
-      success: false,
-      message: "Server Error",
     });
   }
 };

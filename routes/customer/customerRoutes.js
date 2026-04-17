@@ -138,7 +138,11 @@ router.post(
 
 router.get("/shipments", customerAuth, getUpcomingShipmentsByCustomer);
 
-router.put("/shipments/:shipmentId", customerAuth, updateShipmentByCustomer);
+router.get(
+  "/shipments/completed",
+  customerAuth,
+  getCompletedShipmentsByCustomer
+);
 
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
