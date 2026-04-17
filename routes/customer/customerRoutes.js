@@ -146,7 +146,24 @@ router.get(
 
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
 
-router.put("/shipments/:shipmentId", customerAuth, updateShipmentByCustomer);
+router.put(
+  "/shipments/:shipmentId",
+  customerAuth,
+  upload.any(),
+  (req, res, next) => {
+    console.log("=== Shipment Update Debug ===");
+    console.log("Body:", req.body);
+    console.log(
+      "Files:",
+      (req.files || []).map((f) => ({
+        fieldname: f.fieldname,
+        originalname: f.originalname,
+      }))
+    );
+    next();
+  },
+  updateShipmentByCustomer
+);
 
 // Publish shipment
 router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
