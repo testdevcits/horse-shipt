@@ -170,7 +170,6 @@ router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
 
 const inviteRoute = require("./inviteRoute"); // the new route file
 router.use("/shipment", inviteRoute);
-// Get single shipment (map data only)
 router.get("/shipments/:id/map", customerAuth, getSingleShipmentForMap);
 
 // Update shipment
