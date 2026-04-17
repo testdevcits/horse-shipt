@@ -386,13 +386,30 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
 
 exports.updateShipmentByCustomer = async (req, res) => {
   try {
+    console.log("=== UPDATE SHIPMENT START ===");
+
     const shipmentId = req.params.shipmentId;
-    const customerId = req.user._id;
+    const customerId = req.user?._id;
+
+    console.log("Shipment ID:", shipmentId);
+    console.log("Customer ID:", customerId);
+    console.log("Request Body:", req.body);
+    console.log("Request Files:", req.files);
+
+    if (!shipmentId || !customerId) {
+      console.log("Missing shipmentId or customerId");
+      return res.status(400).json({
+        success: false,
+        message: "Invalid request",
+      });
+    }
 
     const shipment = await CustomerShipment.findOne({
       _id: shipmentId,
       customer: customerId,
     });
+
+    console.log("Fetched Shipment:", shipment ? "FOUND" : "NOT FOUND");
 
     if (!shipment) {
       return res.status(404).json({
@@ -406,22 +423,27 @@ exports.updateShipmentByCustomer = async (req, res) => {
       shipment.status
     );
 
+    console.log("Shipment Status:", shipment.status);
+    console.log("Is Locked:", isLocked);
+
     // ===== FILE MAP =====
     const fileMap = {};
     (req.files || []).forEach((file) => {
       fileMap[file.fieldname] = file;
     });
 
+    console.log("File Map Keys:", Object.keys(fileMap));
+
     // =========================================================
-    // CASE 1: LOCKED → ONLY DOCUMENTS + NOTES ALLOWED
+    // CASE 1: LOCKED
     // =========================================================
     if (isLocked) {
-      // Only notes update
-      if (req.body.additionalInfo) {
+      console.log("Shipment is LOCKED");
+
+      if (req.body?.additionalInfo) {
         shipment.additionalInfo = req.body.additionalInfo;
       }
 
-      // Only documents update
       const updatedHorses = [];
 
       for (let i = 0; i < shipment.horses.length; i++) {
@@ -437,9 +459,10 @@ exports.updateShipmentByCustomer = async (req, res) => {
           if (!fileMap[key]) return null;
 
           const file = fileMap[key];
+          console.log(`Processing file: ${key}`);
 
           if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
-            throw new Error(`${field} too large (Max 5MB)`);
+            throw new Error(`${field} too large`);
           }
 
           if (!file.buffer && file.path) {
@@ -469,6 +492,8 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
       await shipment.save();
 
+      console.log("LOCKED shipment updated");
+
       return res.status(200).json({
         success: true,
         message: "Only documents and notes updated (shipment locked)",
@@ -477,47 +502,73 @@ exports.updateShipmentByCustomer = async (req, res) => {
     }
 
     // =========================================================
-    // CASE 2: NOT LOCKED → FULL UPDATE ALLOWED
+    // CASE 2: NOT LOCKED
     // =========================================================
+    console.log("Shipment is NOT LOCKED");
 
-    // ===== BASIC FIELDS =====
-    shipment.pickupLocation =
-      req.body.pickupLocation || shipment.pickupLocation;
+    // ===== SAFE BODY =====
+    const body = req.body || {};
 
-    shipment.deliveryLocation =
-      req.body.deliveryLocation || shipment.deliveryLocation;
+    console.log("pickupLocation:", body.pickupLocation);
+    console.log("deliveryLocation:", body.deliveryLocation);
 
-    shipment.additionalInfo =
-      req.body.additionalInfo || shipment.additionalInfo;
+    // ===== BASIC FIELDS (SAFE FIX) =====
+    if (body.pickupLocation !== undefined) {
+      shipment.pickupLocation = body.pickupLocation;
+    }
 
-    shipment.publish = req.body.publish === "true" || req.body.publish === true;
+    if (body.deliveryLocation !== undefined) {
+      shipment.deliveryLocation = body.deliveryLocation;
+    }
+
+    if (body.additionalInfo !== undefined) {
+      shipment.additionalInfo = body.additionalInfo;
+    }
+
+    if (body.publish !== undefined) {
+      shipment.publish = body.publish === "true" || body.publish === true;
+    }
 
     // ===== DATE RANGE =====
-    if (req.body.pickupStartDate && req.body.pickupEndDate) {
+    if (body.pickupStartDate && body.pickupEndDate) {
       shipment.pickupDateRange = {
-        start: new Date(req.body.pickupStartDate),
-        end: new Date(req.body.pickupEndDate),
+        start: new Date(body.pickupStartDate),
+        end: new Date(body.pickupEndDate),
       };
     }
 
-    if (req.body.deliveryStartDate && req.body.deliveryEndDate) {
+    if (body.deliveryStartDate && body.deliveryEndDate) {
       shipment.deliveryDateRange = {
-        start: new Date(req.body.deliveryStartDate),
-        end: new Date(req.body.deliveryEndDate),
+        start: new Date(body.deliveryStartDate),
+        end: new Date(body.deliveryEndDate),
       };
     }
 
-    // ===== HORSE UPDATE =====
-    let horseData = req.body.horses
-      ? Array.isArray(req.body.horses)
-        ? req.body.horses
-        : JSON.parse(req.body.horses)
-      : [];
+    // ===== HORSE DATA =====
+    let horseData = [];
+
+    try {
+      horseData = body.horses
+        ? Array.isArray(body.horses)
+          ? body.horses
+          : JSON.parse(body.horses)
+        : [];
+    } catch (err) {
+      console.log("Horse JSON parse error:", err.message);
+      return res.status(400).json({
+        success: false,
+        message: "Invalid horses data",
+      });
+    }
+
+    console.log("Horse Data Length:", horseData.length);
 
     const updatedHorses = [];
 
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
+
+      console.log(`Processing horse index: ${i}`, h);
 
       const horseObj = {
         registeredName: h.registeredName || "",
@@ -536,9 +587,10 @@ exports.updateShipmentByCustomer = async (req, res) => {
         if (!fileMap[key]) return null;
 
         const file = fileMap[key];
+        console.log(`Uploading file: ${key}`);
 
         if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
-          throw new Error(`${field} too large (Max 5MB)`);
+          throw new Error(`${field} too large`);
         }
 
         if (!file.buffer && file.path) {
@@ -581,13 +633,16 @@ exports.updateShipmentByCustomer = async (req, res) => {
     // ===== SAVE =====
     await shipment.save();
 
+    console.log("Shipment updated successfully");
+
     return res.status(200).json({
       success: true,
       message: "Shipment updated successfully",
       shipment,
     });
   } catch (err) {
-    console.error("[UPDATE SHIPMENT ERROR]", err);
+    console.error("[UPDATE SHIPMENT ERROR FULL]", err);
+    console.error("STACK:", err.stack);
 
     return res.status(500).json({
       success: false,
@@ -595,7 +650,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
     });
   }
 };
-
 // GET /api/shipments/:id
 
 exports.getSingleShipmentForMap = async (req, res) => {
