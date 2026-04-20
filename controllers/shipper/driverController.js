@@ -257,3 +257,48 @@ exports.deleteDriverProfileImage = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+exports.updateDriverLocation = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+    const { lat, lng, speed, heading } = req.body;
+
+    if (!lat || !lng) {
+      return res.status(400).json({
+        success: false,
+        message: "Latitude and Longitude required",
+      });
+    }
+
+    const driver = await Driver.findByIdAndUpdate(
+      driverId,
+      {
+        currentLocation: {
+          lat,
+          lng,
+          coordinates: {
+            type: "Point",
+            coordinates: [lng, lat],
+          },
+          speed: speed || 0,
+          heading: heading || 0,
+          updatedAt: new Date(),
+        },
+        lastActiveAt: new Date(),
+      },
+      { new: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Location updated",
+      location: driver.currentLocation,
+    });
+  } catch (error) {
+    console.error("[LOCATION UPDATE ERROR]", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to update location",
+    });
+  }
+};

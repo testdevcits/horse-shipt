@@ -10,6 +10,33 @@ const imageSchema = new mongoose.Schema(
   { _id: false }
 );
 
+// ================= LOCATION SCHEMA (IMPROVED) =================
+const locationSchema = new mongoose.Schema(
+  {
+    lat: { type: Number },
+    lng: { type: Number },
+
+    // GeoJSON for MongoDB indexing (IMPORTANT)
+    coordinates: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number], // [lng, lat]
+        default: [0, 0],
+      },
+    },
+
+    heading: { type: Number, default: 0 },
+    speed: { type: Number, default: 0 },
+
+    updatedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const driverSchema = new mongoose.Schema(
   {
     // ================= BASIC INFO =================
@@ -52,9 +79,14 @@ const driverSchema = new mongoose.Schema(
 
     // ================= LIVE LOCATION =================
     currentLocation: {
-      lat: { type: Number, default: null },
-      lng: { type: Number, default: null },
-      updatedAt: { type: Date, default: null },
+      type: locationSchema,
+      default: null,
+    },
+
+    // ================= TRACKING FLAGS =================
+    isTrackingEnabled: {
+      type: Boolean,
+      default: false,
     },
 
     lastActiveAt: {
@@ -69,6 +101,9 @@ const driverSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// ================= GEO INDEX (VERY IMPORTANT) =================
+driverSchema.index({ "currentLocation.coordinates": "2dsphere" });
 
 // ================= PASSWORD HASH =================
 driverSchema.pre("save", async function (next) {
