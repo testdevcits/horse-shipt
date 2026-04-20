@@ -1051,24 +1051,19 @@ exports.getSubscriptionPlan = async (req, res) => {
       // ============================
       let rawNext = null;
 
-      // 1. trial_end (highest priority)
-      if (sub.trial_end) {
-        rawNext = sub.trial_end;
+      // 1. items (MOST RELIABLE in your case)
+      if (sub.items?.data?.length > 0) {
+        rawNext = sub.items.data[0].current_period_end;
       }
 
-      // 2. current_period_end
+      // 2. fallback to current_period_end
       if (!rawNext && sub.current_period_end) {
         rawNext = sub.current_period_end;
       }
 
-      // 3. fallback (items level)
-      if (!rawNext && sub.items?.data?.length > 0) {
-        rawNext = sub.items.data[0].current_period_end;
-      }
-
-      // 4. avoid past date (optional safety)
-      if (rawNext && rawNext * 1000 < Date.now()) {
-        rawNext = null;
+      // 3. last fallback to trial_end (only if future)
+      if (!rawNext && sub.trial_end && sub.trial_end * 1000 > Date.now()) {
+        rawNext = sub.trial_end;
       }
 
       // FORMAT DATE
