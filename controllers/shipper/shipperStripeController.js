@@ -1047,23 +1047,23 @@ exports.getSubscriptionPlan = async (req, res) => {
       cancelAtPeriodEnd = sub.cancel_at_period_end;
 
       // ============================
-      // FINAL NEXT BILLING LOGIC
+      // FINAL BILLING LOGIC (FIXED)
       // ============================
       let rawNext = null;
 
-      // 1. items (MOST RELIABLE in your case)
-      if (sub.items?.data?.length > 0) {
-        rawNext = sub.items.data[0].current_period_end;
-      }
-
-      // 2. fallback to current_period_end
-      if (!rawNext && sub.current_period_end) {
-        rawNext = sub.current_period_end;
-      }
-
-      // 3. last fallback to trial_end (only if future)
-      if (!rawNext && sub.trial_end && sub.trial_end * 1000 > Date.now()) {
+      if (sub.status === "trialing") {
+        // only trial case
         rawNext = sub.trial_end;
+      } else {
+        // active case → ALWAYS prefer item
+        if (sub.items?.data?.length > 0) {
+          rawNext = sub.items.data[0].current_period_end;
+        }
+
+        // fallback
+        if (!rawNext && sub.current_period_end) {
+          rawNext = sub.current_period_end;
+        }
       }
 
       // FORMAT DATE
