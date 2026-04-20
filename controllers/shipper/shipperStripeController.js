@@ -1024,7 +1024,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     let subscriptionEndDate = null;
 
     // ============================
-    // GET ACTIVE / TRIAL SUB (BETTER QUERY)
+    // GET ACTIVE/TRIAL SUB
     // ============================
     const dbSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
@@ -1034,34 +1034,50 @@ exports.getSubscriptionPlan = async (req, res) => {
     if (dbSub?.stripeSubscriptionId) {
       const sub = await stripe.subscriptions.retrieve(
         dbSub.stripeSubscriptionId,
-        {
-          expand: ["latest_invoice"],
-        }
+        { expand: ["latest_invoice"] }
       );
 
-      // DEBUG (optional)
+      // DEBUG
       console.log("STATUS:", sub.status);
       console.log("CURRENT PERIOD END:", sub.current_period_end);
       console.log("TRIAL END:", sub.trial_end);
+      console.log("ITEM PERIOD END:", sub.items?.data[0]?.current_period_end);
 
       subscriptionStatus = sub.status;
       cancelAtPeriodEnd = sub.cancel_at_period_end;
 
       // ============================
-      // CORRECT NEXT BILLING LOGIC
+      // FINAL NEXT BILLING LOGIC
       // ============================
       let rawNext = null;
 
-      if (sub.status === "trialing") {
+      // 1. trial_end (highest priority)
+      if (sub.trial_end) {
         rawNext = sub.trial_end;
-      } else if (sub.status === "active") {
+      }
+
+      // 2. current_period_end
+      if (!rawNext && sub.current_period_end) {
         rawNext = sub.current_period_end;
       }
 
+      // 3. fallback (items level)
+      if (!rawNext && sub.items?.data?.length > 0) {
+        rawNext = sub.items.data[0].current_period_end;
+      }
+
+      // 4. avoid past date (optional safety)
+      if (rawNext && rawNext * 1000 < Date.now()) {
+        rawNext = null;
+      }
+
+      // FORMAT DATE
       if (rawNext) {
+        const dateObj = new Date(rawNext * 1000);
+
         nextBillingDate = {
-          iso: new Date(rawNext * 1000).toISOString(),
-          us: new Date(rawNext * 1000).toLocaleString("en-US", {
+          iso: dateObj.toISOString(),
+          us: dateObj.toLocaleString("en-US", {
             month: "short",
             day: "2-digit",
             year: "numeric",
@@ -1075,9 +1091,11 @@ exports.getSubscriptionPlan = async (req, res) => {
       // CANCEL AT PERIOD END
       // ============================
       if (sub.cancel_at_period_end && sub.current_period_end) {
+        const dateObj = new Date(sub.current_period_end * 1000);
+
         subscriptionEndDate = {
-          iso: new Date(sub.current_period_end * 1000).toISOString(),
-          us: new Date(sub.current_period_end * 1000).toLocaleString("en-US", {
+          iso: dateObj.toISOString(),
+          us: dateObj.toLocaleString("en-US", {
             month: "short",
             day: "2-digit",
             year: "numeric",
@@ -1094,9 +1112,11 @@ exports.getSubscriptionPlan = async (req, res) => {
         const rawEnd = sub.canceled_at || sub.current_period_end;
 
         if (rawEnd) {
+          const dateObj = new Date(rawEnd * 1000);
+
           subscriptionEndDate = {
-            iso: new Date(rawEnd * 1000).toISOString(),
-            us: new Date(rawEnd * 1000).toLocaleString("en-US", {
+            iso: dateObj.toISOString(),
+            us: dateObj.toLocaleString("en-US", {
               month: "short",
               day: "2-digit",
               year: "numeric",
