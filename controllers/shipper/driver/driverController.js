@@ -181,11 +181,17 @@ exports.startTrip = async (req, res) => {
 // ====================================================
 exports.updateDriverLocation = async (req, res) => {
   try {
-    const driverId = req.driver._id;
+    console.log("=== DRIVER LOCATION UPDATE START ===");
+
+    const driverId = req.driver?._id;
     const { lat, lng, speed = 0, heading = 0 } = req.body;
+
+    console.log("Driver ID:", driverId);
+    console.log("Incoming Location:", { lat, lng, speed, heading });
 
     // ================= VALIDATION =================
     if (lat === undefined || lng === undefined) {
+      console.log("Missing lat/lng");
       return res.status(400).json({
         success: false,
         message: "Latitude and Longitude required",
@@ -195,15 +201,22 @@ exports.updateDriverLocation = async (req, res) => {
     // ================= FIND DRIVER =================
     const driver = await Driver.findById(driverId);
 
+    console.log("Driver Found:", !!driver);
+
     if (!driver || !driver.isActive) {
+      console.log("Driver not found or inactive");
       return res.status(404).json({
         success: false,
         message: "Driver not found or inactive",
       });
     }
 
-    // ================= OPTIONAL: TRACKING CHECK =================
+    console.log("Driver isActive:", driver.isActive);
+    console.log("Tracking Enabled:", driver.isTrackingEnabled);
+
+    // ================= TRACKING CHECK =================
     if (!driver.isTrackingEnabled) {
+      console.log("Tracking is disabled for this driver");
       return res.status(400).json({
         success: false,
         message: "Tracking is disabled for this driver",
@@ -216,18 +229,22 @@ exports.updateDriverLocation = async (req, res) => {
       tripStatus: { $in: ["started", "inTransit"] },
     });
 
-    // ================= PREPARE LOCATION OBJECT =================
+    console.log("Active Shipment Found:", !!activeShipment);
+
+    // ================= PREPARE LOCATION =================
     const locationPayload = {
       lat,
       lng,
       coordinates: {
         type: "Point",
-        coordinates: [lng, lat], // GeoJSON format
+        coordinates: [lng, lat],
       },
       speed,
       heading,
       updatedAt: new Date(),
     };
+
+    console.log("Location Payload:", locationPayload);
 
     // ================= UPDATE DRIVER =================
     await Driver.findByIdAndUpdate(driverId, {
@@ -236,15 +253,19 @@ exports.updateDriverLocation = async (req, res) => {
       driverStatus: activeShipment ? "onTrip" : "available",
     });
 
-    // ================= UPDATE SHIPMENT (IF ACTIVE) =================
+    console.log("Driver location updated");
+
+    // ================= UPDATE SHIPMENT =================
     if (activeShipment) {
       activeShipment.currentLocation = locationPayload;
       activeShipment.tripStatus = "inTransit";
 
       await activeShipment.save();
+      console.log("Shipment location updated");
     }
 
-    // ================= RESPONSE =================
+    console.log("=== DRIVER LOCATION UPDATE END ===");
+
     return res.json({
       success: true,
       message: "Location updated successfully",
