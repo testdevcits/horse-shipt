@@ -135,10 +135,6 @@ exports.startTrip = async (req, res) => {
     const driverId = req.driver._id;
     const { quoteId } = req.body;
 
-    console.log("Driver ID:", driverId);
-    console.log("Quote ID:", quoteId);
-
-    // ================= VALIDATION =================
     if (!quoteId) {
       return res.status(400).json({
         success: false,
@@ -149,53 +145,53 @@ exports.startTrip = async (req, res) => {
     const quote = await ShipmentQuote.findById(quoteId);
 
     if (!quote) {
-      console.log("Quote not found");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
 
-    console.log("Quote Found:", quote._id);
     console.log("Current Trip Status:", quote.tripStatus);
 
+    // ✅ FIX: allow if already started / inTransit
+    if (["started", "inTransit"].includes(quote.tripStatus)) {
+      console.log("Trip already active, skipping start");
+
+      return res.json({
+        success: true,
+        message: "Trip already started",
+        trackingEnabled: true,
+      });
+    }
+
     if (quote.tripStatus !== "notStarted") {
-      console.log("Trip already started or invalid state");
       return res.status(400).json({
         success: false,
         message: "Trip cannot be started",
       });
     }
 
-    // ================= START TRIP =================
+    // START TRIP
     quote.tripStatus = "started";
     quote.isTrackingActive = true;
     quote.tripStartedAt = new Date();
 
     await quote.save();
 
-    console.log("Quote updated");
-
-    // ================= UPDATE VEHICLE =================
+    // VEHICLE UPDATE
     if (quote.vehicle) {
       await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
         currentShipment: quoteId,
         driverStatus: "BUSY",
       });
-
-      console.log("Vehicle updated");
     }
 
-    // ================= UPDATE DRIVER =================
+    // DRIVER UPDATE
     await Driver.findByIdAndUpdate(driverId, {
       driverStatus: "onTrip",
       isTrackingEnabled: true,
       lastActiveAt: new Date(),
     });
-
-    console.log("Driver tracking enabled");
-
-    console.log("=== START TRIP SUCCESS ===");
 
     return res.json({
       success: true,
