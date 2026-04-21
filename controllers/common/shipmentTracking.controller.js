@@ -17,22 +17,33 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 // ========================================================
-// TRACK SHIPMENT
+// TRACK SHIPMENT (OPTIMIZED)
 // ========================================================
 exports.trackShipment = async (req, res) => {
   try {
     const { quoteId } = req.params;
 
-    // ================= GET QUOTE =================
+    // ================= GET ONLY REQUIRED FIELDS =================
     const quote = await ShipmentQuote.findById(quoteId)
-      .populate("shipment")
-      .populate("vehicle")
+      .select("shipment assignedDriver tripStatus status isCancelled")
+      .populate({
+        path: "shipment",
+        select: "pickupLocation deliveryLocation pickupCoords deliveryCoords",
+      })
       .lean();
 
     if (!quote) {
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
+      });
+    }
+
+    // ================= BLOCK CANCELLED =================
+    if (quote.isCancelled || quote.status === "cancelled") {
+      return res.status(400).json({
+        success: false,
+        message: "Shipment is cancelled",
       });
     }
 
@@ -49,10 +60,12 @@ exports.trackShipment = async (req, res) => {
       });
     }
 
-    // ================= DRIVER =================
-    const driver = await Driver.findById(quote.assignedDriver).lean();
+    // ================= DRIVER (ONLY REQUIRED FIELDS) =================
+    const driver = await Driver.findById(quote.assignedDriver)
+      .select("currentLocation")
+      .lean();
 
-    if (!driver?.currentLocation) {
+    if (!driver?.currentLocation?.lat) {
       return res.status(400).json({
         success: false,
         message: "Driver location not available",
@@ -60,7 +73,6 @@ exports.trackShipment = async (req, res) => {
     }
 
     const shipment = quote.shipment;
-
     const pickup = shipment?.pickupCoords;
     const delivery = shipment?.deliveryCoords;
 
@@ -90,24 +102,17 @@ exports.trackShipment = async (req, res) => {
 
     const avgSpeed = 50;
 
-    // ================= RESPONSE =================
+    // ================= RESPONSE (MINIMAL + UI READY) =================
     return res.status(200).json({
       success: true,
 
-      shipment: {
-        id: shipment._id,
-        status: quote.tripStatus,
-      },
+      tripStatus: quote.tripStatus,
 
       driver: {
-        id: driver._id,
-        location: {
-          lat: driverLoc.lat,
-          lng: driverLoc.lng,
-          speed: driverLoc.speed,
-          heading: driverLoc.heading,
-          updatedAt: driverLoc.updatedAt,
-        },
+        lat: driverLoc.lat,
+        lng: driverLoc.lng,
+        heading: driverLoc.heading || 0,
+        updatedAt: driverLoc.updatedAt,
       },
 
       pickup: {
