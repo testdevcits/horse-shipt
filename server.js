@@ -156,6 +156,8 @@ const customerRoutes = require("./routes/customer/customerRoutes");
 const shipperRoutes = require("./routes/shipper/shipperRoutes");
 const shipmentQuestionRoutes = require("./routes/common/shipmentQuestion.routes");
 
+const shipmentTrackingRoutes = require("./routes/common/shipmentTracking.routes");
+
 const adminRoutes = require("./routes/admin/admin.routes");
 const adminBreedRoutes = require("./routes/admin/breed.routes");
 const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
@@ -174,6 +176,8 @@ app.use("/api/customer", customerRoutes);
 app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
+
+app.use("/api/tracking", shipmentTrackingRoutes);
 
 // Admin APIs
 app.use("/api/admin", adminRoutes);
