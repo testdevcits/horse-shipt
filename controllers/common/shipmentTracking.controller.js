@@ -17,13 +17,13 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
 };
 
 // ========================================================
-// TRACK SHIPMENT (OPTIMIZED)
+// TRACK SHIPMENT (UPDATED)
 // ========================================================
 exports.trackShipment = async (req, res) => {
   try {
     const { quoteId } = req.params;
 
-    // ================= GET ONLY REQUIRED FIELDS =================
+    // ================= GET DATA =================
     const quote = await ShipmentQuote.findById(quoteId)
       .select("shipment assignedDriver tripStatus status isCancelled")
       .populate({
@@ -47,11 +47,9 @@ exports.trackShipment = async (req, res) => {
       });
     }
 
-    // ================= CHECK ACCESS =================
-    const role = req.user.role;
-
+    // ================= DRIVER SECURITY ONLY =================
     if (
-      role === "driver" &&
+      req.user.role === "driver" &&
       quote.assignedDriver?.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
@@ -60,7 +58,7 @@ exports.trackShipment = async (req, res) => {
       });
     }
 
-    // ================= DRIVER (ONLY REQUIRED FIELDS) =================
+    // ================= DRIVER LOCATION =================
     const driver = await Driver.findById(quote.assignedDriver)
       .select("currentLocation")
       .lean();
@@ -102,10 +100,9 @@ exports.trackShipment = async (req, res) => {
 
     const avgSpeed = 50;
 
-    // ================= RESPONSE (MINIMAL + UI READY) =================
+    // ================= RESPONSE =================
     return res.status(200).json({
       success: true,
-
       tripStatus: quote.tripStatus,
 
       driver: {

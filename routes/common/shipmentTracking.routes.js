@@ -36,14 +36,11 @@ const allowAllRoles = async (req, res, next) => {
     }
 
     // ================= DRIVER =================
-    const driver = await Driver.findById(decoded.id).populate(
-      "assignedVehicles"
-    );
+    const driver = await Driver.findById(decoded.id);
 
     if (driver && driver.isActive) {
       req.user = driver;
       req.user.role = "driver";
-      req.driver = driver;
       return next();
     }
 
@@ -53,7 +50,6 @@ const allowAllRoles = async (req, res, next) => {
     if (shipper && shipper.isActive) {
       req.user = shipper;
       req.user.role = "shipper";
-      req.shipper = shipper;
       return next();
     }
 
