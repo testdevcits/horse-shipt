@@ -23,125 +23,68 @@ exports.trackShipment = async (req, res) => {
   try {
     const { quoteId } = req.params;
 
-    console.log("\n========== TRACK SHIPMENT ==========");
-    console.log("QuoteId:", quoteId);
-
-    const role = req.user?.role;
-    const userId = req.user?._id?.toString();
-
-    console.log("User:", { role, userId });
-
+    // ================= GET ONLY REQUIRED FIELDS =================
     const quote = await ShipmentQuote.findById(quoteId)
-      .select("shipment assignedDriver tripStatus status isCancelled shipperId")
+      .select("shipment assignedDriver tripStatus status isCancelled")
       .populate({
         path: "shipment",
-        select:
-          "pickupLocation deliveryLocation pickupCoords deliveryCoords customerId",
+        select: "pickupLocation deliveryLocation pickupCoords deliveryCoords",
       })
       .lean();
 
     if (!quote) {
-      console.log("Shipment NOT FOUND in DB");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
 
-    const shipment = quote.shipment;
-
-    console.log("Quote Debug:", {
-      assignedDriver: quote.assignedDriver?.toString(),
-      shipperId: quote.shipperId?.toString(),
-      customerId: shipment?.customerId?.toString(),
-      tripStatus: quote.tripStatus,
-      status: quote.status,
-    });
-
-    // ================= CANCEL CHECK =================
+    // ================= BLOCK CANCELLED =================
     if (quote.isCancelled || quote.status === "cancelled") {
-      console.log("Shipment is cancelled");
       return res.status(400).json({
         success: false,
         message: "Shipment is cancelled",
       });
     }
 
-    // ================= DRIVER =================
-    if (role === "driver") {
-      console.log("Checking driver access...");
-      if (quote.assignedDriver?.toString() !== userId) {
-        console.log("Driver mismatch", {
-          expected: quote.assignedDriver?.toString(),
-          got: userId,
-        });
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized driver",
-        });
-      }
-      console.log("Driver authorized");
+    // ================= CHECK ACCESS =================
+    const role = req.user.role;
+
+    if (
+      role === "driver" &&
+      quote.assignedDriver?.toString() !== req.user._id.toString()
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Unauthorized driver",
+      });
     }
 
-    // ================= SHIPPER =================
-    if (role === "shipper") {
-      console.log("Checking shipper access...");
-      if (quote.shipperId?.toString() !== userId) {
-        console.log("Shipper mismatch", {
-          expected: quote.shipperId?.toString(),
-          got: userId,
-        });
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized shipper",
-        });
-      }
-      console.log("Shipper authorized");
-    }
-
-    // ================= CUSTOMER =================
-    if (role === "customer") {
-      console.log("Checking customer access...");
-      if (shipment?.customerId?.toString() !== userId) {
-        console.log("Customer mismatch", {
-          expected: shipment?.customerId?.toString(),
-          got: userId,
-        });
-        return res.status(403).json({
-          success: false,
-          message: "Unauthorized customer",
-        });
-      }
-      console.log("Customer authorized");
-    }
-
-    // ================= DRIVER LOCATION =================
+    // ================= DRIVER (ONLY REQUIRED FIELDS) =================
     const driver = await Driver.findById(quote.assignedDriver)
       .select("currentLocation")
       .lean();
 
     if (!driver?.currentLocation?.lat) {
-      console.log("Driver location missing");
       return res.status(400).json({
         success: false,
         message: "Driver location not available",
       });
     }
 
+    const shipment = quote.shipment;
     const pickup = shipment?.pickupCoords;
     const delivery = shipment?.deliveryCoords;
 
     if (!pickup || !delivery) {
-      console.log("Missing pickup/delivery coords");
       return res.status(400).json({
         success: false,
         message: "Shipment coordinates missing",
       });
     }
 
+    // ================= CALCULATIONS =================
     const driverLoc = driver.currentLocation;
-
-    console.log("Driver Location:", driverLoc);
 
     const toPickupKm = calculateDistance(
       driverLoc.lat,
@@ -157,17 +100,12 @@ exports.trackShipment = async (req, res) => {
       delivery.longitude
     );
 
-    console.log("Distances:", {
-      toPickupKm: toPickupKm.toFixed(2),
-      toDeliveryKm: toDeliveryKm.toFixed(2),
-    });
-
     const avgSpeed = 50;
 
-    console.log("SUCCESS RESPONSE");
-
+    // ================= RESPONSE (MINIMAL + UI READY) =================
     return res.status(200).json({
       success: true,
+
       tripStatus: quote.tripStatus,
 
       driver: {
@@ -194,7 +132,7 @@ exports.trackShipment = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("TRACK SHIPMENT ERROR:", error);
+    console.error("[TRACK SHIPMENT ERROR]", error);
 
     return res.status(500).json({
       success: false,
