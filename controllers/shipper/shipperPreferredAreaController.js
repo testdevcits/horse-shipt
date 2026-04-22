@@ -1,177 +1,165 @@
-const axios = require("axios");
-const ShipperPreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
+const PreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
 
-// ===================================================
-// Helper Function: Get Coordinates from Address
-// ===================================================
-const getCoordinatesFromAddress = async (address) => {
-  try {
-    const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-    const encodedAddress = encodeURIComponent(address);
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}`;
-
-    const response = await axios.get(url);
-    const result = response.data.results[0];
-
-    if (!result) return null;
-
-    const { lat, lng } = result.geometry.location;
-    return { latitude: lat, longitude: lng };
-  } catch (error) {
-    console.error("Google Geocoding API Error:", error);
-    return null;
-  }
+// ================================
+// COMMON RESPONSE HELPERS
+// ================================
+const successResponse = (res, message, data = null, status = 200) => {
+  return res.status(status).json({
+    success: true,
+    message,
+    data,
+  });
 };
 
-// ===================================================
-// Add a New Preferred Area (with auto geocoding)
-// ===================================================
+const errorResponse = (res, message, status = 500) => {
+  return res.status(status).json({
+    success: false,
+    message,
+  });
+};
+
+// ================================
+// ADD PREFERRED AREA (MAX 4)
+// ================================
 exports.addPreferredArea = async (req, res) => {
   try {
-    const { address, radiusMiles } = req.body;
+    const { locationName, latitude, longitude, radiusKm } = req.body;
 
-    if (!address || !radiusMiles) {
-      return res.status(400).json({
-        success: false,
-        message: "Address and radiusMiles are required",
-      });
+    // Validation
+    if (!latitude || !longitude) {
+      return errorResponse(res, "Latitude and Longitude are required", 400);
     }
 
-    // Auto-fetch coordinates from Google Maps API
-    const coordinates = await getCoordinatesFromAddress(address);
-    if (!coordinates) {
-      return res.status(400).json({
-        success: false,
-        message: "Unable to fetch location coordinates for this address",
-      });
-    }
-
-    const newArea = await ShipperPreferredArea.create({
+    // Limit: max 4 areas per shipper
+    const count = await PreferredArea.countDocuments({
       shipper: req.user.id,
-      address,
-      latitude: coordinates.latitude,
-      longitude: coordinates.longitude,
-      radiusMiles,
     });
 
-    res.status(201).json({
-      success: true,
-      message: "Preferred area added successfully",
-      data: newArea,
+    if (count >= 4) {
+      return errorResponse(
+        res,
+        "You can only add up to 4 preferred areas",
+        400
+      );
+    }
+
+    const newArea = await PreferredArea.create({
+      shipper: req.user.id,
+      locationName: locationName || "",
+      coordinates: {
+        type: "Point",
+        coordinates: [parseFloat(longitude), parseFloat(latitude)], // ⚠️ [lng, lat]
+      },
+      radiusKm: radiusKm || 50,
     });
-  } catch (error) {
-    console.error("Add Preferred Area Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to add preferred area",
-    });
+
+    return successResponse(
+      res,
+      "Preferred area added successfully",
+      newArea,
+      201
+    );
+  } catch (err) {
+    return errorResponse(res, err.message);
   }
 };
 
-// ===================================================
-// Update Preferred Area (auto geocode if address changed)
-// ===================================================
+// ================================
+// GET ALL AREAS
+// ================================
+exports.getPreferredAreas = async (req, res) => {
+  try {
+    const areas = await PreferredArea.find({
+      shipper: req.user.id,
+    }).sort({ createdAt: -1 });
+
+    return successResponse(res, "Preferred areas fetched", areas);
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// ================================
+// UPDATE AREA
+// ================================
 exports.updatePreferredArea = async (req, res) => {
   try {
     const { areaId } = req.params;
-    const { address, radiusMiles } = req.body;
+    const { locationName, latitude, longitude, radiusKm } = req.body;
 
-    const area = await ShipperPreferredArea.findOne({
+    const area = await PreferredArea.findOne({
       _id: areaId,
       shipper: req.user.id,
     });
 
     if (!area) {
-      return res.status(404).json({
-        success: false,
-        message: "Preferred area not found or unauthorized",
-      });
+      return errorResponse(res, "Preferred area not found", 404);
     }
 
-    // If address is changed, update coordinates
-    if (address && address !== area.address) {
-      const coordinates = await getCoordinatesFromAddress(address);
-      if (!coordinates) {
-        return res.status(400).json({
-          success: false,
-          message: "Unable to fetch location coordinates for this address",
-        });
-      }
-
-      area.address = address;
-      area.latitude = coordinates.latitude;
-      area.longitude = coordinates.longitude;
+    // Update fields
+    if (locationName !== undefined) {
+      area.locationName = locationName;
     }
 
-    if (radiusMiles) area.radiusMiles = radiusMiles;
+    if (latitude !== undefined && longitude !== undefined) {
+      area.coordinates = {
+        type: "Point",
+        coordinates: [parseFloat(longitude), parseFloat(latitude)],
+      };
+    }
+
+    if (radiusKm !== undefined) {
+      area.radiusKm = radiusKm;
+    }
 
     await area.save();
 
-    res.status(200).json({
-      success: true,
-      message: "Preferred area updated successfully",
-      data: area,
-    });
-  } catch (error) {
-    console.error("Update Preferred Area Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to update preferred area",
-    });
+    return successResponse(res, "Preferred area updated successfully", area);
+  } catch (err) {
+    return errorResponse(res, err.message);
   }
 };
 
-// ===================================================
-// Get All Preferred Areas for Logged-in Shipper
-// ===================================================
-exports.getPreferredAreas = async (req, res) => {
-  try {
-    const areas = await ShipperPreferredArea.find({
-      shipper: req.user.id,
-    }).sort({ createdAt: -1 });
-
-    res.status(200).json({
-      success: true,
-      message: "Preferred areas fetched successfully",
-      data: areas,
-    });
-  } catch (error) {
-    console.error("Get Preferred Areas Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to fetch preferred areas",
-    });
-  }
-};
-
-// ===================================================
-//  Delete Preferred Area
-// ===================================================
+// ================================
+// DELETE AREA
+// ================================
 exports.deletePreferredArea = async (req, res) => {
   try {
     const { areaId } = req.params;
 
-    const area = await ShipperPreferredArea.findOneAndDelete({
+    const deleted = await PreferredArea.findOneAndDelete({
+      _id: areaId,
+      shipper: req.user.id,
+    });
+
+    if (!deleted) {
+      return errorResponse(res, "Preferred area not found", 404);
+    }
+
+    return successResponse(res, "Preferred area deleted successfully");
+  } catch (err) {
+    return errorResponse(res, err.message);
+  }
+};
+
+// ================================
+// GET SINGLE AREA (OPTIONAL)
+// ================================
+exports.getPreferredAreaById = async (req, res) => {
+  try {
+    const { areaId } = req.params;
+
+    const area = await PreferredArea.findOne({
       _id: areaId,
       shipper: req.user.id,
     });
 
     if (!area) {
-      return res.status(404).json({
-        success: false,
-        message: "Preferred area not found or unauthorized",
-      });
+      return errorResponse(res, "Preferred area not found", 404);
     }
 
-    res.status(200).json({
-      success: true,
-      message: "Preferred area deleted successfully",
-    });
-  } catch (error) {
-    console.error("Delete Preferred Area Error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to delete preferred area",
-    });
+    return successResponse(res, "Preferred area fetched", area);
+  } catch (err) {
+    return errorResponse(res, err.message);
   }
 };

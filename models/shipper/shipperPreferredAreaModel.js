@@ -1,35 +1,41 @@
 const mongoose = require("mongoose");
 
-const shipperPreferredAreaSchema = new mongoose.Schema(
+const preferredAreaSchema = new mongoose.Schema(
   {
+    // Link to Shipper
     shipper: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Shipper", // Reference to Shipper model
+      ref: "Shipper",
       required: true,
+      index: true,
     },
-    address: {
+
+    locationName: {
       type: String,
-      required: true,
-      trim: true,
+      default: "",
     },
-    latitude: {
-      type: Number,
-      required: true,
+
+    coordinates: {
+      type: {
+        type: String,
+        enum: ["Point"],
+        default: "Point",
+      },
+      coordinates: {
+        type: [Number],
+        required: true,
+      },
     },
-    longitude: {
+
+    radiusKm: {
       type: Number,
-      required: true,
-    },
-    radiusMiles: {
-      type: Number,
-      required: true,
-      default: 0,
+      default: 50,
     },
   },
   { timestamps: true }
 );
 
-module.exports = mongoose.model(
-  "ShipperPreferredArea",
-  shipperPreferredAreaSchema
-);
+// GEO INDEX (very important)
+preferredAreaSchema.index({ coordinates: "2dsphere" });
+
+module.exports = mongoose.model("PreferredArea", preferredAreaSchema);

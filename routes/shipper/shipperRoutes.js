@@ -246,6 +246,15 @@ router.post("/settings/update-notifications", shipperAuth, updateSettings);
 router.get("/settings/:shipperId", shipperAuth, getSettingsById);
 
 // ====================================================
+// preferred-areas ROUTES
+// ====================================================
+
+router.post("/preferred-areas", shipperAuth, addPreferredArea);
+router.get("/preferred-areas", shipperAuth, getPreferredAreas);
+router.put("/preferred-areas/:areaId", shipperAuth, updatePreferredArea);
+router.delete("/preferred-areas/:areaId", shipperAuth, deletePreferredArea);
+
+// ====================================================
 // LOCATION ROUTES
 // ====================================================
 
