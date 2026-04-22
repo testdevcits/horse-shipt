@@ -23,12 +23,12 @@ exports.trackShipment = async (req, res) => {
   try {
     const { quoteId } = req.params;
 
-    // ================= GET ONLY REQUIRED FIELDS =================
     const quote = await ShipmentQuote.findById(quoteId)
-      .select("shipment assignedDriver tripStatus status isCancelled")
+      .select("shipment assignedDriver tripStatus status isCancelled shipperId")
       .populate({
         path: "shipment",
-        select: "pickupLocation deliveryLocation pickupCoords deliveryCoords",
+        select:
+          "pickupLocation deliveryLocation pickupCoords deliveryCoords customerId",
       })
       .lean();
 
@@ -47,20 +47,40 @@ exports.trackShipment = async (req, res) => {
       });
     }
 
-    // ================= CHECK ACCESS =================
     const role = req.user.role;
+    const userId = req.user._id.toString();
 
-    if (
-      role === "driver" &&
-      quote.assignedDriver?.toString() !== req.user._id.toString()
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: "Unauthorized driver",
-      });
+    // ================= DRIVER ACCESS =================
+    if (role === "driver") {
+      if (quote.assignedDriver?.toString() !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized driver",
+        });
+      }
     }
 
-    // ================= DRIVER (ONLY REQUIRED FIELDS) =================
+    // ================= SHIPPER ACCESS =================
+    if (role === "shipper") {
+      if (quote.shipperId?.toString() !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized shipper",
+        });
+      }
+    }
+
+    // ================= CUSTOMER ACCESS =================
+    if (role === "customer") {
+      if (quote.shipment?.customerId?.toString() !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "Unauthorized customer",
+        });
+      }
+    }
+
+    // ================= DRIVER LOCATION =================
     const driver = await Driver.findById(quote.assignedDriver)
       .select("currentLocation")
       .lean();
@@ -83,7 +103,6 @@ exports.trackShipment = async (req, res) => {
       });
     }
 
-    // ================= CALCULATIONS =================
     const driverLoc = driver.currentLocation;
 
     const toPickupKm = calculateDistance(
@@ -102,7 +121,6 @@ exports.trackShipment = async (req, res) => {
 
     const avgSpeed = 50;
 
-    // ================= RESPONSE (MINIMAL + UI READY) =================
     return res.status(200).json({
       success: true,
 
