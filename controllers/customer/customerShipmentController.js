@@ -1,6 +1,7 @@
 const Customer = require("../../models/customer/customerModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const cloudinary = require("../../utils/cloudinary");
 const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const webpush = require("web-push");
@@ -344,20 +345,38 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
         ],
       },
     })
-      .sort({ createdAt: -1 }) // better for all statuses
+      .sort({ createdAt: -1 })
       .populate("shipper", "name email phone")
       .lean();
 
+    // ================= GET QUOTES =================
+    const shipmentIds = shipments.map((s) => s._id);
+
+    const quotes = await ShipmentQuote.find({
+      shipment: { $in: shipmentIds },
+      status: "accepted", // only accepted quote
+    }).select("_id shipment");
+
+    // Map shipmentId -> quoteId
+    const quoteMap = {};
+    quotes.forEach((q) => {
+      quoteMap[q.shipment.toString()] = q._id;
+    });
+
+    // ================= FINAL RESPONSE =================
     const finalShipments = shipments.map((s) => {
       return {
         ...s,
 
-        // custom flags (VERY USEFUL )
+        // IMPORTANT (ADD THIS)
+        quoteId: quoteMap[s._id.toString()] || null,
+
+        // FLAGS
         isCompleted: s.status === "delivered",
         isPending: s.status === "pending",
         isInProgress: ["assigned", "picked", "in_transit"].includes(s.status),
 
-        // optional fields
+        // OPTIONAL
         totalPrice: s.totalPrice || null,
         paymentStatus: s.paymentStatus || "pending",
         payoutStatus: s.payoutStatus || "pending",
