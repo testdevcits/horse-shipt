@@ -23,6 +23,14 @@ exports.trackShipment = async (req, res) => {
   try {
     const { quoteId } = req.params;
 
+    console.log("\n========== TRACK SHIPMENT ==========");
+    console.log("QuoteId:", quoteId);
+
+    const role = req.user?.role;
+    const userId = req.user?._id?.toString();
+
+    console.log("User:", { role, userId });
+
     const quote = await ShipmentQuote.findById(quoteId)
       .select("shipment assignedDriver tripStatus status isCancelled shipperId")
       .populate({
@@ -33,51 +41,78 @@ exports.trackShipment = async (req, res) => {
       .lean();
 
     if (!quote) {
+      console.log("Shipment NOT FOUND in DB");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
 
-    // ================= BLOCK CANCELLED =================
+    const shipment = quote.shipment;
+
+    console.log("Quote Debug:", {
+      assignedDriver: quote.assignedDriver?.toString(),
+      shipperId: quote.shipperId?.toString(),
+      customerId: shipment?.customerId?.toString(),
+      tripStatus: quote.tripStatus,
+      status: quote.status,
+    });
+
+    // ================= CANCEL CHECK =================
     if (quote.isCancelled || quote.status === "cancelled") {
+      console.log("Shipment is cancelled");
       return res.status(400).json({
         success: false,
         message: "Shipment is cancelled",
       });
     }
 
-    const role = req.user.role;
-    const userId = req.user._id.toString();
-
-    // ================= DRIVER ACCESS =================
+    // ================= DRIVER =================
     if (role === "driver") {
+      console.log("Checking driver access...");
       if (quote.assignedDriver?.toString() !== userId) {
+        console.log("Driver mismatch", {
+          expected: quote.assignedDriver?.toString(),
+          got: userId,
+        });
         return res.status(403).json({
           success: false,
           message: "Unauthorized driver",
         });
       }
+      console.log("Driver authorized");
     }
 
-    // ================= SHIPPER ACCESS =================
+    // ================= SHIPPER =================
     if (role === "shipper") {
+      console.log("Checking shipper access...");
       if (quote.shipperId?.toString() !== userId) {
+        console.log("Shipper mismatch", {
+          expected: quote.shipperId?.toString(),
+          got: userId,
+        });
         return res.status(403).json({
           success: false,
           message: "Unauthorized shipper",
         });
       }
+      console.log("Shipper authorized");
     }
 
-    // ================= CUSTOMER ACCESS =================
+    // ================= CUSTOMER =================
     if (role === "customer") {
-      if (quote.shipment?.customerId?.toString() !== userId) {
+      console.log("Checking customer access...");
+      if (shipment?.customerId?.toString() !== userId) {
+        console.log("Customer mismatch", {
+          expected: shipment?.customerId?.toString(),
+          got: userId,
+        });
         return res.status(403).json({
           success: false,
           message: "Unauthorized customer",
         });
       }
+      console.log("Customer authorized");
     }
 
     // ================= DRIVER LOCATION =================
@@ -86,17 +121,18 @@ exports.trackShipment = async (req, res) => {
       .lean();
 
     if (!driver?.currentLocation?.lat) {
+      console.log("Driver location missing");
       return res.status(400).json({
         success: false,
         message: "Driver location not available",
       });
     }
 
-    const shipment = quote.shipment;
     const pickup = shipment?.pickupCoords;
     const delivery = shipment?.deliveryCoords;
 
     if (!pickup || !delivery) {
+      console.log("Missing pickup/delivery coords");
       return res.status(400).json({
         success: false,
         message: "Shipment coordinates missing",
@@ -104,6 +140,8 @@ exports.trackShipment = async (req, res) => {
     }
 
     const driverLoc = driver.currentLocation;
+
+    console.log("Driver Location:", driverLoc);
 
     const toPickupKm = calculateDistance(
       driverLoc.lat,
@@ -119,11 +157,17 @@ exports.trackShipment = async (req, res) => {
       delivery.longitude
     );
 
+    console.log("Distances:", {
+      toPickupKm: toPickupKm.toFixed(2),
+      toDeliveryKm: toDeliveryKm.toFixed(2),
+    });
+
     const avgSpeed = 50;
+
+    console.log("SUCCESS RESPONSE");
 
     return res.status(200).json({
       success: true,
-
       tripStatus: quote.tripStatus,
 
       driver: {
@@ -150,7 +194,7 @@ exports.trackShipment = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("[TRACK SHIPMENT ERROR]", error);
+    console.error("TRACK SHIPMENT ERROR:", error);
 
     return res.status(500).json({
       success: false,
