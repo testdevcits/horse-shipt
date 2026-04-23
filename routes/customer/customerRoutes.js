@@ -169,6 +169,9 @@ router.put(
 router.patch("/shipments/:shipmentId/publish", customerAuth, publishShipment);
 
 const inviteRoute = require("./inviteRoute"); // the new route file
+const {
+  getMatchingShippers,
+} = require("../../controllers/customer/shipmentMatchingController");
 router.use("/shipment", inviteRoute);
 router.get("/shipments/:id/map", customerAuth, getSingleShipmentForMap);
 
@@ -231,6 +234,12 @@ router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
 router.get("/payments", customerAuth, getCustomerStripePayments);
+
+router.get(
+  "/shipments/:shipmentId/matching-shippers",
+  customerAuth,
+  getMatchingShippers
+);
 
 // ====================================================
 // PAYMENT (QUOTE PAYMENT)
