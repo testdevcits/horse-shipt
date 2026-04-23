@@ -172,6 +172,9 @@ const inviteRoute = require("./inviteRoute"); // the new route file
 const {
   getMatchingShippers,
 } = require("../../controllers/customer/shipmentMatchingController");
+const {
+  sendInvitation,
+} = require("../../controllers/customer/shipmentInvitationController");
 router.use("/shipment", inviteRoute);
 router.get("/shipments/:id/map", customerAuth, getSingleShipmentForMap);
 
@@ -241,6 +244,7 @@ router.get(
   getMatchingShippers
 );
 
+router.post("/shipments/send-invitation", customerAuth, sendInvitation);
 // ====================================================
 // PAYMENT (QUOTE PAYMENT)
 // ====================================================

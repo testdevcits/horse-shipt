@@ -147,6 +147,9 @@ const {
   verifyVehicle,
   assignDriverToVehicle,
 } = require("../../controllers/shipper/shipperVehicleController");
+const {
+  getMyInvitations,
+} = require("../../controllers/shipper/invitationController");
 
 // ====================================================
 // SHIPPER PROFILE ROUTES
@@ -425,6 +428,8 @@ router.get(
   shipperAuth,
   getShipmentDeliveryStatus
 );
+
+router.get("/invitations", shipperAuth, getMyInvitations);
 
 router.post("/create-customer", shipperAuth, createStripeCustomer);
 router.post("/setup-intent", shipperAuth, createSetupIntent);
