@@ -8,6 +8,10 @@ const Shipper = require("../../models/shipper/shipperModel");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const subscriptionModel = require("../../models/shipper/subscriptionModel");
 
+const {
+  sendSubscriptionEmail,
+} = require("../../utils/subscriptionEmailService");
+
 // ==========================================================
 // GET PLATFORM COUNTRY
 // ==========================================================
@@ -674,7 +678,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // CHECK TRIAL HISTORY (IMPORTANT FIX)
+    // CHECK TRIAL HISTORY
     // ============================
     const allSubs = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
@@ -694,9 +698,7 @@ exports.createSubscription = async (req, res) => {
       items: [{ price: DAILY_PRICE_ID }],
       default_payment_method: shipper.paymentMethodId,
       expand: ["items.data.price"],
-
       cancel_at_period_end: false,
-
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
@@ -705,7 +707,7 @@ exports.createSubscription = async (req, res) => {
     };
 
     // ============================
-    // TRIAL LOGIC (FIXED)
+    // TRIAL LOGIC
     // ============================
     const TRIAL_DAYS = 1;
 
@@ -720,7 +722,7 @@ exports.createSubscription = async (req, res) => {
     // CREATE SUBSCRIPTION
     // ============================
     const subscription = await stripe.subscriptions.create(subscriptionData, {
-      idempotencyKey: `sub_${shipper._id}`, // prevent duplicate calls
+      idempotencyKey: `sub_${shipper._id}`,
     });
 
     const price = subscription.items.data[0].price;
@@ -753,35 +755,40 @@ exports.createSubscription = async (req, res) => {
     // ============================
     const newSubscription = await subscriptionModel.create({
       shipperId: shipper._id,
-
       stripeCustomerId: shipper.stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: price.id,
-
       planName: "Shipper Daily Plan",
-
       amount: price.unit_amount / 100,
       currency: price.currency,
       interval: "day",
-
       status: subscription.status,
-
       trialStart,
       trialEnd,
-
       currentPeriodStart,
       currentPeriodEnd,
-
       cancelAtPeriodEnd: false,
     });
 
     // ============================
-    // MARK TRIAL USED (EXTRA SAFETY)
+    // MARK TRIAL USED
     // ============================
     if (subscription.trial_start || subscription.trial_end) {
       shipper.hasUsedTrial = true;
       await shipper.save();
     }
+
+    // ============================
+    // SEND EMAIL (NON-BLOCKING + SAFE)
+    // ============================
+    sendSubscriptionEmail({
+      shipperId: shipper._id,
+      planName: "Shipper Daily Plan",
+      amount: price.unit_amount / 100,
+      trialEnd,
+    }).catch((mailError) => {
+      console.error("Email failed:", mailError.message);
+    });
 
     // ============================
     // RESPONSE
@@ -793,7 +800,6 @@ exports.createSubscription = async (req, res) => {
         subscriptionId: newSubscription._id,
         stripeSubscriptionId: subscription.id,
         status: newSubscription.status,
-
         trialStart,
         trialEnd,
         currentPeriodStart,
@@ -809,7 +815,6 @@ exports.createSubscription = async (req, res) => {
     });
   }
 };
-
 // =========================================================
 // CANCEL SUBSCRIPTION
 // =========================================================
