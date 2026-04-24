@@ -1014,6 +1014,8 @@ exports.getSubscriptionPlan = async (req, res) => {
       label: "Daily Plan",
       planType: "daily",
     };
+    const hasUsedTrial = shipper.hasUsedTrial === true;
+    const trialDays = hasUsedTrial ? 0 : 1;
 
     // ============================
     // DEFAULT VALUES
@@ -1130,7 +1132,9 @@ exports.getSubscriptionPlan = async (req, res) => {
       success: true,
       data: {
         daily,
-        trialDays: 1,
+        trialDays,
+        hasUsedTrial,
+        trialEligible: !hasUsedTrial,
         currency: daily.currency,
 
         subscriptionStatus,
