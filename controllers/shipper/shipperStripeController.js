@@ -611,7 +611,7 @@ exports.getPaymentStatus = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
-  console.log("=== CREATE SUBSCRIPTION (FIXED TRIAL LOGIC) ===");
+  console.log("=== CREATE SUBSCRIPTION (FINAL TRIAL FIX) ===");
 
   try {
     const { withTrial = true } = req.body;
@@ -644,7 +644,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // PREVENT DUPLICATE (DB CHECK)
+    // PREVENT DUPLICATE (DB)
     // ============================
     const existingSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
@@ -659,7 +659,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // STRIPE CHECK (ACTIVE SUB)
+    // STRIPE CHECK (ACTIVE)
     // ============================
     const stripeSubs = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
@@ -678,17 +678,9 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // CHECK TRIAL HISTORY
+    // FINAL TRIAL CHECK (STRICT DB BASED)
     // ============================
-    const allSubs = await stripe.subscriptions.list({
-      customer: shipper.stripeCustomerId,
-      status: "all",
-      limit: 100,
-    });
-
-    const hasUsedTrialBefore = allSubs.data.some(
-      (sub) => sub.trial_start !== null
-    );
+    const hasUsedTrialBefore = shipper.hasUsedTrial === true;
 
     // ============================
     // BUILD SUBSCRIPTION DATA
@@ -707,7 +699,7 @@ exports.createSubscription = async (req, res) => {
     };
 
     // ============================
-    // TRIAL LOGIC
+    // TRIAL LOGIC (FIXED)
     // ============================
     const TRIAL_DAYS = 1;
 
@@ -771,15 +763,17 @@ exports.createSubscription = async (req, res) => {
     });
 
     // ============================
-    // MARK TRIAL USED
+    // MARK TRIAL USED (IMPORTANT)
     // ============================
     if (subscription.trial_start || subscription.trial_end) {
-      shipper.hasUsedTrial = true;
-      await shipper.save();
+      if (!shipper.hasUsedTrial) {
+        shipper.hasUsedTrial = true;
+        await shipper.save();
+      }
     }
 
     // ============================
-    // SEND EMAIL (NON-BLOCKING + SAFE)
+    // SEND EMAIL (SAFE)
     // ============================
     sendSubscriptionEmail({
       shipperId: shipper._id,
@@ -804,6 +798,7 @@ exports.createSubscription = async (req, res) => {
         trialEnd,
         currentPeriodStart,
         currentPeriodEnd,
+        trialApplied: !!subscription.trial_start,
       },
     });
   } catch (error) {
