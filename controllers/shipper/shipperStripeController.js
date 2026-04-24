@@ -1191,8 +1191,15 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       expand: ["data.items.data.price"],
     });
 
-    // ALWAYS PICK LATEST
-    const currentSub = subscriptions.data[0];
+    // Prefer the currently usable subscription instead of blindly
+    // taking the first item from Stripe history.
+    const nowTs = Math.floor(Date.now() / 1000);
+    const currentSub =
+      subscriptions.data.find(
+        (sub) =>
+          ["active", "trialing", "past_due"].includes(sub.status) ||
+          (sub.cancel_at_period_end && sub.current_period_end > nowTs)
+      ) || subscriptions.data[0];
 
     if (!currentSub) {
       return res.json({
@@ -1255,13 +1262,10 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     const hasAccess =
       currentSub.status === "active" ||
       currentSub.status === "trialing" ||
-      (cancelAtPeriodEnd &&
-        currentSub.current_period_end > Math.floor(Date.now() / 1000));
+      (cancelAtPeriodEnd && currentSub.current_period_end > nowTs);
 
     const isExpired =
-      isCanceled &&
-      currentSub.ended_at &&
-      currentSub.ended_at < Math.floor(Date.now() / 1000);
+      isCanceled && currentSub.ended_at && currentSub.ended_at < nowTs;
 
     // =======================
     // DB SYNC (IMPROVED)
