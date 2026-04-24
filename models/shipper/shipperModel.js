@@ -158,6 +158,12 @@ const shipperSchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+
+    hasUsedTrial: {
+      type: Boolean,
+      default: false,
+    },
+
     // Login History
     loginHistory: [loginHistorySchema],
   },

@@ -678,9 +678,17 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // FINAL TRIAL CHECK (STRICT DB BASED)
+    // FINAL TRIAL CHECK
+    // Fallback to subscription history for older users whose
+    // hasUsedTrial flag may not have been saved previously.
     // ============================
-    const hasUsedTrialBefore = shipper.hasUsedTrial === true;
+    const priorTrialSubscription = await subscriptionModel.findOne({
+      shipperId: shipper._id,
+      $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
+    }).lean();
+
+    const hasUsedTrialBefore =
+      shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
 
     // ============================
     // BUILD SUBSCRIPTION DATA
@@ -1014,7 +1022,13 @@ exports.getSubscriptionPlan = async (req, res) => {
       label: "Daily Plan",
       planType: "daily",
     };
-    const hasUsedTrial = shipper.hasUsedTrial === true;
+    const priorTrialSubscription = await subscriptionModel.findOne({
+      shipperId: shipper._id,
+      $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
+    }).lean();
+
+    const hasUsedTrial =
+      shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
     const trialDays = hasUsedTrial ? 0 : 1;
 
     // ============================
