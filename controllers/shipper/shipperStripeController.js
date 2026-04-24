@@ -644,38 +644,68 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // PREVENT DUPLICATE (DB)
-    // ============================
-    const existingSub = await subscriptionModel.findOne({
-      shipperId: shipper._id,
-      status: { $in: ["active", "trialing"] },
-    });
-
-    if (existingSub) {
-      return res.status(400).json({
-        success: false,
-        message: "Subscription already exists",
-      });
-    }
-
-    // ============================
-    // STRIPE CHECK (ACTIVE)
+    // STRIPE CHECK (SOURCE OF TRUTH)
     // ============================
     const stripeSubs = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
       limit: 10,
     });
 
-    const activeSub = stripeSubs.data.find((sub) =>
-      ["active", "trialing"].includes(sub.status)
+    const nowTs = Math.floor(Date.now() / 1000);
+
+    const activeSub = stripeSubs.data.find(
+      (sub) =>
+        ["active", "trialing"].includes(sub.status) ||
+        (sub.cancel_at_period_end && sub.current_period_end > nowTs)
     );
 
     if (activeSub) {
+      await subscriptionModel.findOneAndUpdate(
+        { stripeSubscriptionId: activeSub.id },
+        {
+          shipperId: shipper._id,
+          stripeCustomerId: shipper.stripeCustomerId,
+          stripeSubscriptionId: activeSub.id,
+          status: activeSub.status,
+          cancelAtPeriodEnd: activeSub.cancel_at_period_end || false,
+          currentPeriodStart: activeSub.current_period_start
+            ? new Date(activeSub.current_period_start * 1000).toISOString()
+            : null,
+          currentPeriodEnd: activeSub.current_period_end
+            ? new Date(activeSub.current_period_end * 1000).toISOString()
+            : null,
+          canceledAt: activeSub.canceled_at
+            ? new Date(activeSub.canceled_at * 1000).toISOString()
+            : null,
+        },
+        { upsert: true, new: true }
+      );
+
       return res.status(400).json({
         success: false,
-        message: "Subscription already exists (Stripe)",
+        message: activeSub.cancel_at_period_end
+          ? "Your current subscription is still active until the billing period ends."
+          : "Subscription already exists",
       });
     }
+
+    // ============================
+    // CLEAN STALE DB RECORDS
+    // Old users may still have active/trialing status in Mongo
+    // even when Stripe no longer has a usable subscription.
+    // ============================
+    await subscriptionModel.updateMany(
+      {
+        shipperId: shipper._id,
+        status: { $in: ["active", "trialing"] },
+      },
+      {
+        $set: {
+          status: "canceled",
+          cancelAtPeriodEnd: false,
+        },
+      }
+    );
 
     // ============================
     // FINAL TRIAL CHECK
