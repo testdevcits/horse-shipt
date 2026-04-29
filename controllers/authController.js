@@ -1,8 +1,11 @@
 const bcrypt = require("bcryptjs");
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
+const Otp = require("../models/common/Otp");
 const generateToken = require("../utils/generateToken");
+const { sendOtpMail } = require("../utils/mailService");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 // ----------------- Utility Functions -----------------
 const getModel = (role) => {
   if (role === "shipper") return Shipper;
@@ -26,19 +29,10 @@ const generateUniqueId = async (role) => {
   return id;
 };
 
-// ----------------- Signup -----------------
+// ----------------- Signup (SEND OTP ONLY) -----------------
 exports.signup = async (req, res) => {
   try {
-    const {
-      role,
-      email,
-      password,
-      name,
-      provider = "local",
-      profile,
-      location,
-      deviceId,
-    } = req.body;
+    const { role, email, password, name, provider = "local" } = req.body;
 
     if (!role || !email) {
       return res.status(400).json({
@@ -62,54 +56,97 @@ exports.signup = async (req, res) => {
     if (existingShipper || existingCustomer) {
       return res.status(409).json({
         success: false,
-        errors: ["Email already registered with another account/role"],
+        errors: ["Email already registered"],
       });
     }
+
+    // ---------------- GOOGLE SIGNUP ----------------
+    if (provider === "google") {
+      return res.status(200).json({
+        success: true,
+        message: "Continue with Google OAuth",
+      });
+    }
+
+    // ---------------- LOCAL SIGNUP → SEND OTP ----------------
+    if (!password) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Password is required"],
+      });
+    }
+
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+    await Otp.create({
+      email,
+      otp,
+      role,
+      data: { password, name },
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+    });
+
+    await sendOtpMail(email, otp);
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent to email",
+    });
+  } catch (err) {
+    console.error("[SIGNUP ERROR]", err);
+    return res.status(500).json({
+      success: false,
+      errors: ["Server Error"],
+    });
+  }
+};
+
+// ----------------- VERIFY OTP + CREATE ACCOUNT -----------------
+exports.verifyOtpAndCreateAccount = async (req, res) => {
+  try {
+    const { email, otp, role, deviceId, location } = req.body;
+
+    const record = await Otp.findOne({ email, otp, role });
+
+    if (!record) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Invalid OTP"],
+      });
+    }
+
+    if (record.expiresAt < new Date()) {
+      return res.status(400).json({
+        success: false,
+        errors: ["OTP expired"],
+      });
+    }
+
+    const Model = getModel(role);
+    const { password, name } = record.data;
 
     const uniqueId = await generateUniqueId(role);
 
     let userData = {
       uniqueId,
-      name: name || profile?.name || email.split("@")[0],
+      name: name || email.split("@")[0],
       email,
+      password,
       role,
-      provider,
-      emailVerified: provider === "google",
-      isLogin: provider === "google",
+      provider: "local",
+      emailVerified: true,
+      isLogin: true,
       isActive: true,
       currentDevice: deviceId || null,
       currentLocation: location || undefined,
-      loginHistory:
-        provider === "google"
-          ? [{ deviceId: deviceId || null, ip: req.ip, loginAt: new Date() }]
-          : [],
+      loginHistory: [
+        { deviceId: deviceId || null, ip: req.ip, loginAt: new Date() },
+      ],
     };
 
-    // ---------------- PASSWORD ----------------
-    if (provider === "local") {
-      if (!password) {
-        return res.status(400).json({
-          success: false,
-          errors: ["Password is required"],
-        });
-      }
-      userData.password = password;
-    }
-
-    // ---------------- GOOGLE PROFILE ----------------
-    if (provider === "google" && profile) {
-      userData.providerId = profile.sub;
-      userData.profilePicture = profile.picture || null;
-      userData.firstName = profile.given_name || null;
-      userData.lastName = profile.family_name || null;
-      userData.locale = profile.locale || null;
-      userData.rawProfile = profile;
-    }
-
-    // ---------------- CREATE USER ----------------
     const user = new Model(userData);
 
-    // ---------------- CREATE STRIPE CUSTOMER (AUTO) ----------------
+    // ---------------- STRIPE ----------------
     const customer = await stripe.customers.create({
       email: user.email,
       name: user.name,
@@ -119,6 +156,9 @@ exports.signup = async (req, res) => {
 
     await user.save();
 
+    // cleanup OTP
+    await Otp.deleteMany({ email });
+
     const token = generateToken({ id: user._id, role: user.role });
 
     return res.status(201).json({
@@ -126,7 +166,7 @@ exports.signup = async (req, res) => {
       data: { ...user.toObject(), token },
     });
   } catch (err) {
-    console.error("[SIGNUP ERROR]", err);
+    console.error("[OTP VERIFY ERROR]", err);
     return res.status(500).json({
       success: false,
       errors: ["Server Error"],
@@ -161,6 +201,14 @@ exports.login = async (req, res) => {
       return res.status(401).json({
         success: false,
         errors: ["Invalid credentials"],
+      });
+    }
+
+    // ---------------- BLOCK UNVERIFIED USERS ----------------
+    if (!user.emailVerified) {
+      return res.status(401).json({
+        success: false,
+        errors: ["Please verify your email first"],
       });
     }
 
@@ -215,24 +263,37 @@ exports.login = async (req, res) => {
 exports.logout = async (req, res) => {
   try {
     const { role, userId } = req.body;
+
     const Model = getModel(role);
-    if (!Model)
-      return res.status(400).json({ success: false, errors: ["Invalid role"] });
+    if (!Model) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Invalid role"],
+      });
+    }
 
     const user = await Model.findById(userId);
-    if (!user)
-      return res
-        .status(404)
-        .json({ success: false, errors: ["User not found"] });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        errors: ["User not found"],
+      });
+    }
 
     user.isLogin = false;
     user.currentDevice = null;
 
     await user.save();
 
-    res.status(200).json({ success: true, message: "Logged out successfully" });
+    res.status(200).json({
+      success: true,
+      message: "Logged out successfully",
+    });
   } catch (err) {
     console.error("[LOGOUT ERROR]", err);
-    res.status(500).json({ success: false, errors: ["Server Error"] });
+    res.status(500).json({
+      success: false,
+      errors: ["Server Error"],
+    });
   }
 };
