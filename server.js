@@ -161,6 +161,8 @@ const shipmentTrackingRoutes = require("./routes/common/shipmentTracking.routes"
 const adminRoutes = require("./routes/admin/admin.routes");
 const adminBreedRoutes = require("./routes/admin/breed.routes");
 const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
+const adminCustomerRoutes = require("./routes/admin/adminCustomer.routes");
+const adminShipmentRoutes = require("./routes/admin/adminShipment.routes");
 const adminVehicleRoutes = require("./routes/admin/adminVehicleRoutes");
 const adminPlatformSettingsRoutes = require("./routes/admin/Payments/admin.platformSettingsRoutes");
 const adminPaymentsRoutes = require("./routes/admin/Payments/adminPaymentsRoutes");
@@ -183,6 +185,8 @@ app.use("/api/tracking", shipmentTrackingRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
 app.use("/api/admin/shippers", adminShipperRoutes);
+app.use("/api/admin/customers", adminCustomerRoutes);
+app.use("/api/admin/shipments", adminShipmentRoutes);
 app.use("/api/admin/vehicles", adminVehicleRoutes);
 app.use("/api/admin/platform-settings", adminPlatformSettingsRoutes);
 app.use("/api/admin/payments", adminPaymentsRoutes);

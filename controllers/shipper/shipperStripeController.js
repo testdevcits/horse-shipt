@@ -820,9 +820,6 @@ exports.cancelSubscription = async (req, res) => {
   try {
     const { reason = "User requested" } = req.body;
 
-    // ============================
-    // FETCH SHIPPER
-    // ============================
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper) {
@@ -832,9 +829,6 @@ exports.cancelSubscription = async (req, res) => {
       });
     }
 
-    // ============================
-    // FIND MONTHLY SUBSCRIPTION
-    // ============================
     const subscription = await subscriptionModel.findOne({
       shipperId: shipper._id,
       interval: "month",
@@ -844,13 +838,10 @@ exports.cancelSubscription = async (req, res) => {
     if (!subscription) {
       return res.status(404).json({
         success: false,
-        message: "No active monthly subscription found",
+        message: "No active subscription found",
       });
     }
 
-    // ============================
-    // FETCH STRIPE SUBSCRIPTION
-    // ============================
     const stripeSub = await stripe.subscriptions.retrieve(
       subscription.stripeSubscriptionId
     );
@@ -863,82 +854,74 @@ exports.cancelSubscription = async (req, res) => {
     }
 
     // ============================
-    // ALREADY CANCELED
+    // CASE 1: FREE TRIAL ONLY (NO PAYMENT STARTED)
+    // ============================
+    if (
+      stripeSub.status === "trialing" &&
+      stripeSub.cancel_at_period_end === false
+    ) {
+      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+
+      subscription.status = "canceled";
+      subscription.cancelAtPeriodEnd = true;
+      subscription.canceledAt = new Date().toISOString();
+      subscription.cancelReason = reason;
+
+      await subscription.save();
+
+      return res.json({
+        success: true,
+        message: "Trial canceled successfully. You will not be charged.",
+        data: {
+          plan: "monthly",
+          status: "canceled",
+          cancelAtPeriodEnd: true,
+          accessValidTill: subscription.currentPeriodEnd,
+        },
+      });
+    }
+
+    // ============================
+    // CASE 2: ALREADY CANCELED
     // ============================
     if (stripeSub.status === "canceled") {
       return res.json({
         success: true,
         message: "Subscription already canceled",
+        data: {
+          status: "canceled",
+        },
       });
     }
 
-    let updatedStripeSub;
-
     // ============================
-    // CANCEL LOGIC (FIXED UX)
+    // CASE 3: ACTIVE SUBSCRIPTION
     // ============================
+    const updatedStripeSub = await stripe.subscriptions.update(
+      subscription.stripeSubscriptionId,
+      {
+        cancel_at_period_end: true,
+      }
+    );
 
-    const isPastDue = stripeSub.status === "past_due";
-
-    if (isPastDue) {
-      // immediate cancel
-      updatedStripeSub = await stripe.subscriptions.cancel(
-        subscription.stripeSubscriptionId
-      );
-
-      subscription.status = "canceled";
-      subscription.cancelAtPeriodEnd = false;
-    } else {
-      // active OR trial → cancel safely
-      updatedStripeSub = await stripe.subscriptions.update(
-        subscription.stripeSubscriptionId,
-        {
-          cancel_at_period_end: true,
-        }
-      );
-
-      subscription.status = updatedStripeSub.status;
-      subscription.cancelAtPeriodEnd = true;
-    }
-
-    // ============================
-    // DATES
-    // ============================
-    const canceledAt = updatedStripeSub.canceled_at
-      ? new Date(updatedStripeSub.canceled_at * 1000).toISOString()
-      : new Date().toISOString();
-
-    const accessValidTill = updatedStripeSub.current_period_end
-      ? new Date(updatedStripeSub.current_period_end * 1000).toISOString()
-      : subscription.currentPeriodEnd;
-
-    // ============================
-    // SAVE DB
-    // ============================
-    subscription.canceledAt = canceledAt;
+    subscription.status = updatedStripeSub.status;
+    subscription.cancelAtPeriodEnd = true;
+    subscription.canceledAt = new Date().toISOString();
     subscription.cancelReason = reason;
-    subscription.currentPeriodEnd = accessValidTill;
 
     await subscription.save();
 
-    // ============================
-    // RESPONSE
-    // ============================
     return res.json({
       success: true,
-      message:
-        stripeSub.status === "trialing"
-          ? "Trial canceled successfully. You will not be charged."
-          : isPastDue
-          ? "Subscription canceled immediately due to payment failure"
-          : "Subscription will end at the end of current monthly billing cycle",
+      message: "Subscription will be canceled at the end of billing cycle",
 
       data: {
         plan: "monthly",
         status: subscription.status,
-        cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
-        canceledAt,
-        accessValidTill,
+        cancelAtPeriodEnd: true,
+        accessValidTill: subscription.currentPeriodEnd,
       },
     });
   } catch (error) {
