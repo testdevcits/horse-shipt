@@ -27,8 +27,8 @@ router.post("/logout", authController.logout);
 // ========================
 router.get("/google", (req, res, next) => {
   const role = req.query.role;
-  const intent = req.query.intent || "login";
-  // intent = login | link-account (NOT signup subscription trigger)
+  const intent = req.query.intent || req.query.action || "login";
+  // intent = login | signup | link (NOT subscription trigger)
 
   // ------------------------
   // VALIDATE ROLE
@@ -40,7 +40,7 @@ router.get("/google", (req, res, next) => {
   // ------------------------
   // FORCE SAFE INTENT ONLY
   // ------------------------
-  if (!["login", "link"].includes(intent)) {
+  if (!["login", "signup", "link"].includes(intent)) {
     return redirectOAuthError(res, "Invalid OAuth intent");
   }
 
@@ -51,6 +51,7 @@ router.get("/google", (req, res, next) => {
     JSON.stringify({
       role,
       intent,
+      action: intent,
       timestamp: Date.now(),
     })
   ).toString("base64");

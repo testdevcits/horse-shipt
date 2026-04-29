@@ -62,10 +62,14 @@ passport.use(
         }
 
         const role = parsedState.role;
-        const action = parsedState.action || "login";
+        const intent = parsedState.intent || parsedState.action || "login";
 
         if (!["shipper", "customer"].includes(role)) {
           return done(new Error("Invalid role selected"), null);
+        }
+
+        if (!["login", "signup", "link"].includes(intent)) {
+          return done(new Error("Invalid OAuth intent"), null);
         }
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
@@ -91,7 +95,7 @@ passport.use(
 
         // ================= SIGNUP =================
         if (!user) {
-          if (action === "login") {
+          if (intent !== "signup") {
             return done(
               new Error("No account found. Please sign up first."),
               null
@@ -118,7 +122,7 @@ passport.use(
 
         // ================= LOGIN =================
         else {
-          if (action === "signup") {
+          if (intent === "signup") {
             return done(
               new Error("Account already exists. Please login."),
               null
@@ -140,7 +144,18 @@ passport.use(
           role: user.role,
         });
 
-        const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${token}`;
+        const params = new URLSearchParams({
+          token,
+          id: user._id.toString(),
+          role: user.role,
+          provider: user.provider || "google",
+          providerId: user.providerId || profile.id,
+          email: user.email || "",
+          name: user.name || "",
+          photo: user.profilePicture || "",
+        });
+
+        const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?${params.toString()}`;
 
         done(null, { redirectUrl });
       } catch (err) {
