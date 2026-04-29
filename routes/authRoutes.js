@@ -23,6 +23,9 @@ router.post("/signup", authController.signup);
 //  NEW ROUTE (VERY IMPORTANT)
 router.post("/verify-otp", authController.verifyOtpAndCreateAccount);
 
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
+
 router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
