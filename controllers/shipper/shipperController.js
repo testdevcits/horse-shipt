@@ -14,39 +14,33 @@ exports.updateProfile = async (req, res) => {
     console.log("=====================================");
     console.log("[UPDATE PROFILE] Start", { userId: user._id, mobile });
 
-    // -------------------------
-    // MOBILE NORMALIZATION
+    // MOBILE NORMALIZATION (GLOBAL)
     // -------------------------
     if (mobile) {
       console.log("[MOBILE RAW INPUT]", mobile);
 
-      // remove spaces
       mobile = mobile.toString().trim();
 
-      // remove +91
-      if (mobile.startsWith("+91")) {
-        mobile = mobile.slice(3);
+      // Ensure it starts with +
+      if (!mobile.startsWith("+")) {
+        return res.status(400).json({
+          success: false,
+          message: "Mobile must include country code (e.g. +1, +91)",
+        });
       }
 
-      // remove 91 (without +)
-      if (mobile.length === 12 && mobile.startsWith("91")) {
-        mobile = mobile.slice(2);
-      }
-
-      console.log("[MOBILE NORMALIZED]", mobile);
-
-      // validate final number
-      const mobileRegex = /^[6-9]\d{9}$/;
+      // Basic international validation (E.164 format)
+      const mobileRegex = /^\+[1-9]\d{7,14}$/;
 
       if (!mobileRegex.test(mobile)) {
-        console.log("[ERROR] Invalid mobile after normalization");
+        console.log("[ERROR] Invalid international mobile");
         return res.status(400).json({
           success: false,
           message: "Invalid mobile number",
         });
       }
 
-      user.mobile = mobile;
+      user.mobile = mobile; // store full number with country code
     }
 
     // -------------------------
