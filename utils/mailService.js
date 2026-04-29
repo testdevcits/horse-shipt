@@ -1,5 +1,10 @@
 const nodemailer = require("nodemailer");
 
+// -------------------- DEBUG ENV --------------------
+console.log("EMAIL:", process.env.EMAIL);
+console.log("EMAIL_PASS:", process.env.EMAIL_PASS ? "Loaded " : "Missing ");
+
+// -------------------- TRANSPORTER --------------------
 const transporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -8,12 +13,25 @@ const transporter = nodemailer.createTransport({
   },
 });
 
+// Optional: verify connection at startup
+transporter.verify((error, success) => {
+  if (error) {
+    console.error("Mail Transport Error:", error.message);
+  } else {
+    console.log("Mail server is ready");
+  }
+});
+
+// -------------------- SEND OTP MAIL --------------------
 exports.sendOtpMail = async (email, otp) => {
-  await transporter.sendMail({
-    from: process.env.EMAIL,
-    to: email,
-    subject: "Verify Your Account - OTP",
-    html: `
+  try {
+    console.log("Sending OTP to:", email);
+
+    const info = await transporter.sendMail({
+      from: process.env.EMAIL,
+      to: email,
+      subject: "Verify Your Account - OTP",
+      html: `
 <div style="font-family: Arial, sans-serif; background:#f9fafb; padding:20px;">
  
   <div style="
@@ -34,9 +52,7 @@ exports.sendOtpMail = async (email, otp) => {
     <!-- CONTENT -->
     <div style="padding:24px;">
  
-      <p style="font-size:14px; color:#333; margin-bottom:10px;">
-        Hello,
-      </p>
+      <p style="font-size:14px; color:#333;">Hello,</p>
  
       <p style="font-size:14px; color:#555;">
         Thank you for signing up with <strong>Horse Shipt</strong>.
@@ -46,7 +62,6 @@ exports.sendOtpMail = async (email, otp) => {
         Please use the OTP below to verify your email address:
       </p>
  
-      <!-- OTP BOX -->
       <div style="
         margin-top:20px;
         border:1px solid #BF9B53;
@@ -70,20 +85,24 @@ exports.sendOtpMail = async (email, otp) => {
         </div>
       </div>
  
-      <!-- NOTE -->
-      <p style="font-size:12px; color:#777; line-height:1.5; margin-top:20px;">
+      <p style="font-size:12px; color:#777; margin-top:20px;">
         This OTP will expire in 5 minutes. Do not share this code with anyone.
       </p>
  
     </div>
  
-    <!-- FOOTER -->
     <div style="background:#f1f1f1; text-align:center; padding:12px; font-size:12px; color:#666;">
       <p style="margin:0;">© ${new Date().getFullYear()} Horse Shipt</p>
     </div>
  
   </div>
 </div>
-    `,
-  });
+      `,
+    });
+
+    console.log("OTP email sent:", info.response);
+  } catch (error) {
+    console.error("EMAIL SEND ERROR:", error.message);
+    throw error; // important so your controller catches it
+  }
 };
