@@ -655,7 +655,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // CHECK EXISTING SUBSCRIPTIONS
+    // CHECK EXISTING SUBSCRIPTIONS (STRIPE)
     // ============================
     const stripeSubs = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
@@ -665,12 +665,22 @@ exports.createSubscription = async (req, res) => {
     const nowTs = Math.floor(Date.now() / 1000);
 
     const activeSub = stripeSubs.data.find((sub) => {
-      const isActive = ["active", "trialing"].includes(sub.status);
+      const isBlockingStatus = [
+        "active",
+        "trialing",
+        "past_due",
+        "incomplete",
+        "incomplete_expired",
+      ].includes(sub.status);
+
       const isValid = sub.current_period_end && sub.current_period_end > nowTs;
 
-      return isActive || (sub.cancel_at_period_end && isValid);
+      return isBlockingStatus && isValid;
     });
 
+    // ============================
+    // IF SUBSCRIPTION EXISTS
+    // ============================
     if (activeSub) {
       await subscriptionModel.findOneAndUpdate(
         { stripeSubscriptionId: activeSub.id },
@@ -695,9 +705,7 @@ exports.createSubscription = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message: activeSub.cancel_at_period_end
-          ? "Your subscription is still active until billing period ends"
-          : "Subscription already exists",
+        message: "Subscription already exists or is active",
       });
     }
 
@@ -731,7 +739,7 @@ exports.createSubscription = async (req, res) => {
       shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
 
     // ============================
-    // CREATE SUBSCRIPTION DATA
+    // CREATE SUBSCRIPTION
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
@@ -747,15 +755,12 @@ exports.createSubscription = async (req, res) => {
     };
 
     // ============================
-    // TRIAL LOGIC (FIXED)
+    // TRIAL LOGIC (30 DAYS)
     // ============================
     const TRIAL_DAYS = 30;
 
     if (withTrial && !hasUsedTrialBefore) {
       subscriptionData.trial_period_days = TRIAL_DAYS;
-      console.log("Monthly Trial Applied (30 Days)");
-    } else {
-      console.log("No Trial Applied");
     }
 
     // ============================
@@ -765,30 +770,11 @@ exports.createSubscription = async (req, res) => {
       idempotencyKey: `sub_${shipper._id}`,
     });
 
-    if (!subscription.items?.data?.length) {
-      return res.status(500).json({
-        success: false,
-        message: "Subscription items missing from Stripe response",
-      });
-    }
-
     const price = subscription.items.data[0].price;
 
     // ============================
     // DATES
     // ============================
-    const currentPeriodStart = subscription.current_period_start
-      ? new Date(subscription.current_period_start * 1000).toISOString()
-      : subscription.trial_start
-      ? new Date(subscription.trial_start * 1000).toISOString()
-      : null;
-
-    const currentPeriodEnd = subscription.current_period_end
-      ? new Date(subscription.current_period_end * 1000).toISOString()
-      : subscription.trial_end
-      ? new Date(subscription.trial_end * 1000).toISOString()
-      : null;
-
     const trialStart = subscription.trial_start
       ? new Date(subscription.trial_start * 1000).toISOString()
       : null;
@@ -796,6 +782,14 @@ exports.createSubscription = async (req, res) => {
     const trialEnd = subscription.trial_end
       ? new Date(subscription.trial_end * 1000).toISOString()
       : null;
+
+    const currentPeriodStart = subscription.current_period_start
+      ? new Date(subscription.current_period_start * 1000).toISOString()
+      : trialStart;
+
+    const currentPeriodEnd = subscription.current_period_end
+      ? new Date(subscription.current_period_end * 1000).toISOString()
+      : trialEnd;
 
     // ============================
     // SAVE DB
@@ -821,23 +815,9 @@ exports.createSubscription = async (req, res) => {
     // MARK TRIAL USED
     // ============================
     if (subscription.trial_start || subscription.trial_end) {
-      if (!shipper.hasUsedTrial) {
-        shipper.hasUsedTrial = true;
-        await shipper.save();
-      }
+      shipper.hasUsedTrial = true;
+      await shipper.save();
     }
-
-    // ============================
-    // EMAIL
-    // ============================
-    sendSubscriptionEmail({
-      shipperId: shipper._id,
-      planName: "Shipper Monthly Plan",
-      amount: price.unit_amount / 100,
-      trialEnd,
-    }).catch((err) => {
-      console.error("Email failed:", err.message);
-    });
 
     // ============================
     // RESPONSE
@@ -848,13 +828,13 @@ exports.createSubscription = async (req, res) => {
       data: {
         subscriptionId: newSubscription._id,
         stripeSubscriptionId: subscription.id,
-        status: newSubscription.status,
+        status: subscription.status,
         plan: "monthly",
         trialStart,
         trialEnd,
         currentPeriodStart,
         currentPeriodEnd,
-        trialApplied: subscription.status === "trialing",
+        trialApplied: !!subscription.trial_start,
       },
     });
   } catch (error) {
@@ -1055,7 +1035,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     }
 
     // ============================
-    // FETCH MONTHLY PRICE
+    // FETCH PRICE
     // ============================
     const price = await stripe.prices.retrieve(MONTHLY_PRICE_ID, {
       expand: ["product"],
@@ -1072,7 +1052,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     };
 
     // ============================
-    // TRIAL CHECK (FIXED LOGIC)
+    // TRIAL CHECK (FIXED)
     // ============================
     const priorTrialSubscription = await subscriptionModel
       .findOne({
@@ -1084,7 +1064,10 @@ exports.getSubscriptionPlan = async (req, res) => {
     const hasUsedTrial =
       shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
 
-    const trialDays = hasUsedTrial ? 0 : 1;
+    let trialDays = 0;
+    if (!hasUsedTrial) {
+      trialDays = 30;
+    }
 
     // ============================
     // DEFAULT VALUES
@@ -1095,7 +1078,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     let subscriptionEndDate = null;
 
     // ============================
-    // GET ACTIVE MONTHLY SUB
+    // GET ACTIVE SUBSCRIPTION
     // ============================
     const dbSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
@@ -1115,16 +1098,12 @@ exports.getSubscriptionPlan = async (req, res) => {
       // ============================
       // NEXT BILLING DATE
       // ============================
-      let rawNext = null;
-
-      if (sub.status === "trialing") {
-        rawNext = sub.trial_end;
-      } else {
-        rawNext =
-          sub.items?.data?.[0]?.current_period_end ||
-          sub.current_period_end ||
-          null;
-      }
+      let rawNext =
+        sub.status === "trialing"
+          ? sub.trial_end
+          : sub.items?.data?.[0]?.current_period_end ||
+            sub.current_period_end ||
+            null;
 
       if (rawNext) {
         const dateObj = new Date(rawNext * 1000);
@@ -1142,7 +1121,7 @@ exports.getSubscriptionPlan = async (req, res) => {
       }
 
       // ============================
-      // END DATE (IF CANCELED)
+      // CANCEL DATE
       // ============================
       if (sub.cancel_at_period_end && sub.current_period_end) {
         const dateObj = new Date(sub.current_period_end * 1000);
@@ -1183,7 +1162,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     }
 
     // ============================
-    // FINAL RESPONSE
+    // RESPONSE
     // ============================
     return res.json({
       success: true,
@@ -1233,12 +1212,20 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
 
     const nowTs = Math.floor(Date.now() / 1000);
 
+    // =======================
+    // PICK CURRENT SUB (FIXED LOGIC)
+    // =======================
     const currentSub =
-      subscriptions.data.find(
-        (sub) =>
-          ["active", "trialing", "past_due"].includes(sub.status) ||
-          (sub.cancel_at_period_end && sub.current_period_end > nowTs)
-      ) || subscriptions.data[0];
+      subscriptions.data.find((sub) => {
+        const isValidStatus = ["active", "trialing", "past_due"].includes(
+          sub.status
+        );
+
+        const stillValid =
+          sub.current_period_end && sub.current_period_end > nowTs;
+
+        return isValidStatus || (sub.cancel_at_period_end && stillValid);
+      }) || null;
 
     if (!currentSub) {
       return res.json({
@@ -1254,7 +1241,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     const price = currentSub.items?.data?.[0]?.price || {};
 
     // =======================
-    // DATE HANDLING
+    // DATES
     // =======================
     const currentPeriodStart = currentSub.current_period_start
       ? new Date(currentSub.current_period_start * 1000).toISOString()
@@ -1277,17 +1264,18 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       : null;
 
     // =======================
-    // TRIAL LOGIC (FIXED)
+    // TRIAL LOGIC (SAFE FIX)
     // =======================
     let remainingTrialDays = 0;
     let trialActive = false;
 
-    if (currentSub.status === "trialing" && currentSub.trial_end) {
-      const now = Math.floor(Date.now() / 1000);
-
-      remainingTrialDays = Math.max(
-        0,
-        Math.ceil((currentSub.trial_end - now) / (60 * 60 * 24))
+    if (
+      currentSub.status === "trialing" &&
+      currentSub.trial_end &&
+      currentSub.trial_end > nowTs
+    ) {
+      remainingTrialDays = Math.ceil(
+        (currentSub.trial_end - nowTs) / (60 * 60 * 24)
       );
 
       trialActive = remainingTrialDays > 0;
@@ -1304,11 +1292,8 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       currentSub.status === "trialing" ||
       (cancelAtPeriodEnd && currentSub.current_period_end > nowTs);
 
-    const isExpired =
-      isCanceled && currentSub.ended_at && currentSub.ended_at < nowTs;
-
     // =======================
-    // DB SYNC (MONTHLY ONLY)
+    // DB SYNC
     // =======================
     await subscriptionModel.findOneAndUpdate(
       { stripeSubscriptionId: currentSub.id },
@@ -1367,10 +1352,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       isPastDue: currentSub.status === "past_due",
 
       isCanceled,
-      isExpired,
-
-      needsRenewal: currentSub.status === "past_due" || isExpired,
-
+      needsRenewal: currentSub.status === "past_due",
       needsSubscription: !hasAccess,
     });
   } catch (error) {
@@ -1382,7 +1364,6 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     });
   }
 };
-
 exports.getBillingHistory = async (req, res) => {
   try {
     const shipper = await Shipper.findById(req.user.id);
