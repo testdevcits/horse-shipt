@@ -19,28 +19,41 @@ const redirectOAuthError = (res, message) => {
 // Local auth
 // ------------------------
 router.post("/signup", authController.signup);
-
 router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 
-// ------------------------
-// Google OAuth - Start
-// ------------------------
+// ========================
+// GOOGLE OAUTH START
+// ========================
 router.get("/google", (req, res, next) => {
-  const { role } = req.query;
-  const action = req.query.action || "login";
+  const role = req.query.role;
+  const intent = req.query.intent || "login";
+  // intent = login | link-account (NOT signup subscription trigger)
 
+  // ------------------------
+  // VALIDATE ROLE
+  // ------------------------
   if (!["shipper", "customer"].includes(role)) {
-    return redirectOAuthError(res, "Please select a valid role");
+    return redirectOAuthError(res, "Invalid role selected");
   }
 
-  if (!["signup", "login"].includes(action)) {
-    return redirectOAuthError(res, "Invalid action type");
+  // ------------------------
+  // FORCE SAFE INTENT ONLY
+  // ------------------------
+  if (!["login", "link"].includes(intent)) {
+    return redirectOAuthError(res, "Invalid OAuth intent");
   }
 
-  const state = Buffer.from(JSON.stringify({ role, action })).toString(
-    "base64"
-  );
+  // ------------------------
+  // STATE ENCODE
+  // ------------------------
+  const state = Buffer.from(
+    JSON.stringify({
+      role,
+      intent,
+      timestamp: Date.now(),
+    })
+  ).toString("base64");
 
   passport.authenticate("google", {
     scope: ["profile", "email"],
@@ -49,27 +62,35 @@ router.get("/google", (req, res, next) => {
   })(req, res, next);
 });
 
-// ------------------------
-// Google OAuth - Callback
-// ------------------------
+// ========================
+// GOOGLE CALLBACK
+// ========================
 router.get("/google/callback", (req, res, next) => {
   passport.authenticate("google", (err, user, info) => {
     try {
       if (err) {
-        console.error("OAuth Error:", err.message);
+        console.error("OAuth Error:", err);
         return redirectOAuthError(res, err.message);
       }
 
       if (!user) {
         return redirectOAuthError(
           res,
-          info?.message || "Authentication failed"
+          info?.message || "Google authentication failed"
         );
       }
 
       if (!user.redirectUrl) {
-        return redirectOAuthError(res, "Invalid redirect URL");
+        return redirectOAuthError(res, "Missing redirect URL");
       }
+
+      // =========================
+      // IMPORTANT FIX:
+      // DO NOT TRIGGER SUBSCRIPTION HERE
+      // =========================
+
+      // Only login session should happen here
+      // subscription must be manually triggered by frontend action
 
       return res.redirect(user.redirectUrl);
     } catch (error) {
