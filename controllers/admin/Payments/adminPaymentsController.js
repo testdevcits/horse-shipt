@@ -1,9 +1,6 @@
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../../models/admin/payment/platformSettings");
 
-/* =====================================================
-   ADMIN PAYMENT SUMMARY
-===================================================== */
 exports.getPaymentSummary = async (req, res) => {
   try {
     const quotes = await ShipmentQuote.find({ paymentStatus: "paid" });
