@@ -1,13 +1,13 @@
 const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
-
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 const generateUniqueId = require("../utils/generateUniqueId");
 
-// ---------------- HELPERS ----------------
+// ---------------- HELPER ----------------
 const getModel = (role) => (role === "shipper" ? Shipper : Customer);
 
 const getCallbackURL = () =>
@@ -15,7 +15,7 @@ const getCallbackURL = () =>
     ? process.env.GOOGLE_REDIRECT_URI_PROD
     : process.env.GOOGLE_REDIRECT_URI_LOCAL;
 
-// ---------------- STRIPE CUSTOMER ----------------
+// ---------------- STRIPE ----------------
 const ensureStripeCustomer = async (user) => {
   try {
     if (!user || !user.email) return;
@@ -33,7 +33,6 @@ const ensureStripeCustomer = async (user) => {
         email: user.email,
         name: user.name,
       });
-
       user.stripeCustomerId = customer.id;
     }
   } catch (err) {
@@ -52,68 +51,49 @@ passport.use(
     },
     async (req, accessToken, refreshToken, profile, done) => {
       try {
-        // ---------------- STATE ----------------
         const state = req.query.state;
         if (!state) return done(new Error("Missing state parameter"), null);
 
-        let parsed;
+        let parsedState;
         try {
-          parsed = JSON.parse(Buffer.from(state, "base64").toString());
+          parsedState = JSON.parse(Buffer.from(state, "base64").toString());
         } catch {
           return done(new Error("Invalid state parameter"), null);
         }
 
-        const role = parsed.role;
-        const action = parsed.action || "login"; // login | signup | link
+        const role = parsedState.role;
+        const action = parsedState.action || "login";
 
         if (!["shipper", "customer"].includes(role)) {
           return done(new Error("Invalid role selected"), null);
         }
 
-        const email =
-          profile.emails?.[0]?.value || `${profile.id}@google.local`;
+        const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
+
+        const existingShipper = await Shipper.findOne({ email });
+        const existingCustomer = await Customer.findOne({ email });
+
+        // ---------------- ROLE CONFLICT ----------------
+        if (role === "shipper" && existingCustomer) {
+          return done(new Error("Email already registered as customer"), null);
+        }
+
+        if (role === "customer" && existingShipper) {
+          return done(new Error("Email already registered as shipper"), null);
+        }
 
         const Model = getModel(role);
 
-        // ---------------- FIND USER ----------------
-        let user = await Model.findOne({ email });
+        let user = await Model.findOne({
+          email,
+          providerId: profile.id,
+        });
 
-        // ALSO check opposite model (prevent duplicate role mismatch)
-        const otherModel = role === "shipper" ? Customer : Shipper;
-        const conflictUser = await otherModel.findOne({ email });
-
-        if (conflictUser) {
-          return done(
-            new Error("Email already registered with different role"),
-            null
-          );
-        }
-
-        // ================= LOGIN FLOW =================
-        if (action === "login") {
-          if (!user) {
+        // ================= SIGNUP =================
+        if (!user) {
+          if (action === "login") {
             return done(
               new Error("No account found. Please sign up first."),
-              null
-            );
-          }
-
-          // FIXED: allow login even if providerId missing
-          if (user.provider === "google" && user.providerId !== profile.id) {
-            user.providerId = profile.id;
-          }
-
-          user.isLogin = true;
-
-          await ensureStripeCustomer(user);
-          await user.save();
-        }
-
-        // ================= SIGNUP FLOW =================
-        else if (action === "signup") {
-          if (user) {
-            return done(
-              new Error("Account already exists. Please login."),
               null
             );
           }
@@ -124,11 +104,11 @@ passport.use(
             uniqueId,
             name: profile.displayName,
             email,
-            role,
             provider: "google",
             providerId: profile.id,
-            emailVerified: true,
+            role,
             isLogin: true,
+            emailVerified: true,
             profilePicture: profile.photos?.[0]?.value || null,
           });
 
@@ -136,16 +116,21 @@ passport.use(
           await user.save();
         }
 
-        // ================= LINK FLOW (optional future use) =================
-        else if (action === "link") {
-          if (!user) {
-            return done(new Error("No account found to link"), null);
+        // ================= LOGIN =================
+        else {
+          if (action === "signup") {
+            return done(
+              new Error("Account already exists. Please login."),
+              null
+            );
           }
 
-          user.provider = "google";
-          user.providerId = profile.id;
+          user.isLogin = true;
 
-          await ensureStripeCustomer(user);
+          if (!user.stripeCustomerId) {
+            await ensureStripeCustomer(user);
+          }
+
           await user.save();
         }
 
@@ -157,14 +142,14 @@ passport.use(
 
         const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?token=${token}`;
 
-        return done(null, { redirectUrl });
+        done(null, { redirectUrl });
       } catch (err) {
-        console.error("OAuth Error:", err);
-        return done(new Error(err.message || "Google OAuth failed"), null);
+        console.error("OAuth Error:", err.message);
+        done(new Error(err.message || "Google OAuth failed"), null);
       }
     }
   )
 );
 
-passport.serializeUser((data, done) => done(null, data));
-passport.deserializeUser((data, done) => done(null, data));
+passport.serializeUser((obj, done) => done(null, obj));
+passport.deserializeUser((obj, done) => done(null, obj));
