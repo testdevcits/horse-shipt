@@ -285,10 +285,20 @@ exports.stripeWebhook = async (req, res) => {
           break;
         }
 
+        const price = subscription.items?.data?.[0]?.price || {};
+
         const updateData = {
           shipperId: shipper._id,
           stripeSubscriptionId: subscription.id,
           stripeCustomerId: subscription.customer,
+          stripePriceId: price.id,
+
+          planName: "Shipper Monthly Plan",
+          interval: "month",
+
+          amount: price?.unit_amount / 100 || 0,
+          currency: price?.currency,
+
           status: subscription.status,
 
           currentPeriodStart: subscription.current_period_start
@@ -320,9 +330,10 @@ exports.stripeWebhook = async (req, res) => {
           { upsert: true, new: true }
         );
 
+        // update shipper
         shipper.subscriptionStatus = subscription.status;
 
-        // trial used mark
+        // mark trial used
         if (subscription.trial_start || subscription.trial_end) {
           shipper.hasUsedTrial = true;
         }
@@ -364,6 +375,7 @@ exports.stripeWebhook = async (req, res) => {
 
           if (periodEnd) {
             sub.nextBillingDate = new Date(periodEnd * 1000);
+            sub.currentPeriodEnd = new Date(periodEnd * 1000);
           }
 
           await sub.save();
@@ -399,11 +411,11 @@ exports.stripeWebhook = async (req, res) => {
         console.log(`Unhandled event: ${event.type}`);
     }
 
-    res.json({ received: true });
+    return res.json({ received: true });
   } catch (error) {
     console.error("Webhook Processing Error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
       error: "Webhook processing failed",
     });
@@ -611,16 +623,15 @@ exports.getPaymentStatus = async (req, res) => {
 };
 
 exports.createSubscription = async (req, res) => {
-  console.log("=== CREATE SUBSCRIPTION (FINAL TRIAL FIX) ===");
-
   try {
     const { withTrial = true } = req.body;
-    const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
 
-    if (!DAILY_PRICE_ID) {
+    const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
+
+    if (!MONTHLY_PRICE_ID) {
       return res.status(400).json({
         success: false,
-        message: "Daily price ID not configured",
+        message: "Monthly price ID not configured",
       });
     }
 
@@ -690,9 +701,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // CLEAN STALE DB RECORDS
-    // Old users may still have active/trialing status in Mongo
-    // even when Stripe no longer has a usable subscription.
+    // CLEAN OLD DB RECORDS
     // ============================
     await subscriptionModel.updateMany(
       {
@@ -708,48 +717,48 @@ exports.createSubscription = async (req, res) => {
     );
 
     // ============================
-    // FINAL TRIAL CHECK
-    // Fallback to subscription history for older users whose
-    // hasUsedTrial flag may not have been saved previously.
+    // CHECK TRIAL USED
     // ============================
-    const priorTrialSubscription = await subscriptionModel.findOne({
-      shipperId: shipper._id,
-      $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
-    }).lean();
+    const priorTrialSubscription = await subscriptionModel
+      .findOne({
+        shipperId: shipper._id,
+        $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
+      })
+      .lean();
 
     const hasUsedTrialBefore =
       shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
 
     // ============================
-    // BUILD SUBSCRIPTION DATA
+    // CREATE SUBSCRIPTION DATA
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
-      items: [{ price: DAILY_PRICE_ID }],
+      items: [{ price: MONTHLY_PRICE_ID }],
       default_payment_method: shipper.paymentMethodId,
       expand: ["items.data.price"],
       cancel_at_period_end: false,
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
-        plan: "daily",
+        plan: "monthly",
       },
     };
 
     // ============================
-    // TRIAL LOGIC (FIXED)
+    // TRIAL LOGIC
     // ============================
     const TRIAL_DAYS = 1;
 
     if (withTrial && !hasUsedTrialBefore) {
       subscriptionData.trial_period_days = TRIAL_DAYS;
-      console.log("Trial Applied (First Time Only)");
+      console.log("Trial Applied");
     } else {
-      console.log("No Trial - already used before");
+      console.log("No Trial");
     }
 
     // ============================
-    // CREATE SUBSCRIPTION
+    // CREATE SUBSCRIPTION IN STRIPE
     // ============================
     const subscription = await stripe.subscriptions.create(subscriptionData, {
       idempotencyKey: `sub_${shipper._id}`,
@@ -788,10 +797,10 @@ exports.createSubscription = async (req, res) => {
       stripeCustomerId: shipper.stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: price.id,
-      planName: "Shipper Daily Plan",
+      planName: "Shipper Monthly Plan",
       amount: price.unit_amount / 100,
       currency: price.currency,
-      interval: "day",
+      interval: "month",
       status: subscription.status,
       trialStart,
       trialEnd,
@@ -801,7 +810,7 @@ exports.createSubscription = async (req, res) => {
     });
 
     // ============================
-    // MARK TRIAL USED (IMPORTANT)
+    // MARK TRIAL USED
     // ============================
     if (subscription.trial_start || subscription.trial_end) {
       if (!shipper.hasUsedTrial) {
@@ -811,27 +820,28 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // SEND EMAIL (SAFE)
+    // SEND EMAIL
     // ============================
     sendSubscriptionEmail({
       shipperId: shipper._id,
-      planName: "Shipper Daily Plan",
+      planName: "Shipper Monthly Plan",
       amount: price.unit_amount / 100,
       trialEnd,
-    }).catch((mailError) => {
-      console.error("Email failed:", mailError.message);
+    }).catch((err) => {
+      console.error("Email failed:", err.message);
     });
 
     // ============================
-    // RESPONSE
+    // FINAL RESPONSE
     // ============================
     return res.json({
       success: true,
-      message: "Subscription created successfully",
+      message: "Monthly subscription created successfully",
       data: {
         subscriptionId: newSubscription._id,
         stripeSubscriptionId: subscription.id,
         status: newSubscription.status,
+        plan: "monthly",
         trialStart,
         trialEnd,
         currentPeriodStart,
@@ -853,11 +863,12 @@ exports.createSubscription = async (req, res) => {
 // =========================================================
 
 exports.cancelSubscription = async (req, res) => {
-  console.log("=== CANCEL SUBSCRIPTION API HIT (TRIAL BLOCKED) ===");
-
   try {
     const { reason = "User requested" } = req.body;
 
+    // ============================
+    // FETCH SHIPPER
+    // ============================
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper) {
@@ -867,24 +878,31 @@ exports.cancelSubscription = async (req, res) => {
       });
     }
 
+    // ============================
+    // FIND ACTIVE SUBSCRIPTION (MONTHLY)
+    // ============================
     const subscription = await subscriptionModel.findOne({
       shipperId: shipper._id,
+      interval: "month",
       status: { $in: ["active", "trialing", "past_due"] },
     });
 
     if (!subscription) {
       return res.status(404).json({
         success: false,
-        message: "No active subscription found",
+        message: "No active monthly subscription found",
       });
     }
 
+    // ============================
+    // FETCH FROM STRIPE
+    // ============================
     const stripeSub = await stripe.subscriptions.retrieve(
       subscription.stripeSubscriptionId
     );
 
     // ============================
-    // IF ALREADY CANCELED
+    // ALREADY CANCELED
     // ============================
     if (stripeSub.status === "canceled") {
       return res.json({
@@ -937,7 +955,7 @@ exports.cancelSubscription = async (req, res) => {
     }
 
     // ============================
-    // DATES
+    // DATE HANDLING
     // ============================
     let canceledAt = new Date().toISOString();
     let accessValidTill = null;
@@ -953,7 +971,7 @@ exports.cancelSubscription = async (req, res) => {
     }
 
     // ============================
-    // SAVE
+    // SAVE DB
     // ============================
     subscription.canceledAt = canceledAt;
     subscription.cancelReason = reason;
@@ -962,13 +980,17 @@ exports.cancelSubscription = async (req, res) => {
 
     await subscription.save();
 
+    // ============================
+    // FINAL RESPONSE
+    // ============================
     return res.json({
       success: true,
       message: isPastDue
-        ? "Subscription canceled due to payment failure"
-        : "Subscription will end at billing period",
+        ? "Subscription canceled immediately due to payment failure"
+        : "Subscription will remain active until the end of current monthly billing period",
 
       data: {
+        plan: "monthly",
         status: subscription.status,
         cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
         canceledAt,
@@ -1013,14 +1035,12 @@ const toISO = (timestamp) => {
 // ============================
 exports.getSubscriptionPlan = async (req, res) => {
   try {
-    console.log("========== GET SUBSCRIPTION PLAN + NEXT BILLING ==========");
+    const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
 
-    const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
-
-    if (!DAILY_PRICE_ID) {
+    if (!MONTHLY_PRICE_ID) {
       return res.status(500).json({
         success: false,
-        message: "Daily price ID not configured",
+        message: "Monthly price ID not configured",
       });
     }
 
@@ -1037,28 +1057,35 @@ exports.getSubscriptionPlan = async (req, res) => {
     }
 
     // ============================
-    // FETCH PRICE
+    // FETCH MONTHLY PRICE
     // ============================
-    const price = await stripe.prices.retrieve(DAILY_PRICE_ID, {
+    const price = await stripe.prices.retrieve(MONTHLY_PRICE_ID, {
       expand: ["product"],
     });
 
-    const daily = {
+    const monthly = {
       priceId: price.id,
       amount: price.unit_amount / 100,
       currency: price.currency,
-      interval: price.recurring?.interval || "day",
+      interval: price.recurring?.interval || "month",
       productName: price.product?.name || "Subscription",
-      label: "Daily Plan",
-      planType: "daily",
+      label: "Monthly Plan",
+      planType: "monthly",
     };
-    const priorTrialSubscription = await subscriptionModel.findOne({
-      shipperId: shipper._id,
-      $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
-    }).lean();
+
+    // ============================
+    // TRIAL CHECK
+    // ============================
+    const priorTrialSubscription = await subscriptionModel
+      .findOne({
+        shipperId: shipper._id,
+        $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
+      })
+      .lean();
 
     const hasUsedTrial =
       shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
+
     const trialDays = hasUsedTrial ? 0 : 1;
 
     // ============================
@@ -1074,6 +1101,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     // ============================
     const dbSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
+      interval: "month",
       status: { $in: ["active", "trialing"] },
     });
 
@@ -1083,36 +1111,26 @@ exports.getSubscriptionPlan = async (req, res) => {
         { expand: ["latest_invoice"] }
       );
 
-      // DEBUG
-      console.log("STATUS:", sub.status);
-      console.log("CURRENT PERIOD END:", sub.current_period_end);
-      console.log("TRIAL END:", sub.trial_end);
-      console.log("ITEM PERIOD END:", sub.items?.data[0]?.current_period_end);
-
       subscriptionStatus = sub.status;
       cancelAtPeriodEnd = sub.cancel_at_period_end;
 
       // ============================
-      // FINAL BILLING LOGIC (FIXED)
+      // NEXT BILLING DATE LOGIC
       // ============================
       let rawNext = null;
 
       if (sub.status === "trialing") {
-        // only trial case
         rawNext = sub.trial_end;
       } else {
-        // active case → ALWAYS prefer item
         if (sub.items?.data?.length > 0) {
           rawNext = sub.items.data[0].current_period_end;
         }
 
-        // fallback
         if (!rawNext && sub.current_period_end) {
           rawNext = sub.current_period_end;
         }
       }
 
-      // FORMAT DATE
       if (rawNext) {
         const dateObj = new Date(rawNext * 1000);
 
@@ -1170,16 +1188,16 @@ exports.getSubscriptionPlan = async (req, res) => {
     }
 
     // ============================
-    // RESPONSE
+    // FINAL RESPONSE
     // ============================
     return res.json({
       success: true,
       data: {
-        daily,
+        monthly,
         trialDays,
         hasUsedTrial,
         trialEligible: !hasUsedTrial,
-        currency: daily.currency,
+        currency: monthly.currency,
 
         subscriptionStatus,
         nextBillingDate,
@@ -1201,8 +1219,6 @@ exports.getSubscriptionPlan = async (req, res) => {
 // GET CURRENT SHIPPER SUBSCRIPTION
 exports.getShipperSubscriptionStatus = async (req, res) => {
   try {
-    console.log("=== getShipperSubscriptionStatus (UPDATED) ===");
-
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper || !shipper.stripeCustomerId) {
@@ -1213,7 +1229,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     }
 
     // =======================
-    // FETCH ALL SUBSCRIPTIONS
+    // FETCH SUBSCRIPTIONS FROM STRIPE
     // =======================
     const subscriptions = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
@@ -1221,9 +1237,8 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       expand: ["data.items.data.price"],
     });
 
-    // Prefer the currently usable subscription instead of blindly
-    // taking the first item from Stripe history.
     const nowTs = Math.floor(Date.now() / 1000);
+
     const currentSub =
       subscriptions.data.find(
         (sub) =>
@@ -1236,6 +1251,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         success: true,
         hasSubscription: false,
         status: "none",
+        planType: "monthly",
         hasAccess: false,
         needsSubscription: true,
       });
@@ -1244,7 +1260,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     const price = currentSub.items?.data?.[0]?.price || {};
 
     // =======================
-    // DATES
+    // DATE HANDLING
     // =======================
     const currentPeriodStart = currentSub.current_period_start
       ? new Date(currentSub.current_period_start * 1000).toISOString()
@@ -1267,7 +1283,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       : null;
 
     // =======================
-    // TRIAL
+    // TRIAL LOGIC
     // =======================
     let remainingTrialDays = 0;
     let trialActive = false;
@@ -1284,7 +1300,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     }
 
     // =======================
-    // ACCESS LOGIC (FIXED)
+    // ACCESS LOGIC
     // =======================
     const isCanceled = currentSub.status === "canceled";
     const cancelAtPeriodEnd = currentSub.cancel_at_period_end;
@@ -1298,7 +1314,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       isCanceled && currentSub.ended_at && currentSub.ended_at < nowTs;
 
     // =======================
-    // DB SYNC (IMPROVED)
+    // DB SYNC (MONTHLY)
     // =======================
     await subscriptionModel.findOneAndUpdate(
       { stripeSubscriptionId: currentSub.id },
@@ -1308,11 +1324,11 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         stripeSubscriptionId: currentSub.id,
         stripePriceId: price.id,
 
-        planName: "Shipper Daily Plan",
+        planName: "Shipper Monthly Plan",
 
         amount: price?.unit_amount / 100 || 0,
         currency: price?.currency,
-        interval: "day",
+        interval: "month",
 
         status: currentSub.status,
 
@@ -1332,14 +1348,14 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     );
 
     // =======================
-    // RESPONSE
+    // FINAL RESPONSE
     // =======================
     return res.json({
       success: true,
 
       hasSubscription: true,
       status: currentSub.status,
-      planType: "daily",
+      planType: "monthly",
 
       hasAccess,
 
@@ -1376,8 +1392,6 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
 
 exports.getBillingHistory = async (req, res) => {
   try {
-    console.log("=== GET BILLING HISTORY (SEPARATED) ===");
-
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper || !shipper.stripeCustomerId) {
@@ -1390,7 +1404,7 @@ exports.getBillingHistory = async (req, res) => {
     // ============================
     // PARALLEL CALLS ⚡
     // ============================
-    const [invoices, charges, payouts] = await Promise.all([
+    const [invoices, charges] = await Promise.all([
       stripe.invoices.list({
         customer: shipper.stripeCustomerId,
         limit: 20,
@@ -1400,18 +1414,24 @@ exports.getBillingHistory = async (req, res) => {
         customer: shipper.stripeCustomerId,
         limit: 20,
       }),
-
-      // ⚠️ payouts require Stripe Connect (account based)
-      stripe.payouts.list({
-        limit: 20,
-      }),
     ]);
 
+    // ⚠️ payouts optional (only if using Stripe Connect)
+    let payouts = { data: [] };
+    try {
+      payouts = await stripe.payouts.list({ limit: 20 });
+    } catch (err) {
+      console.warn("Payouts not available (Stripe Connect not enabled)");
+    }
+
     // ============================
-    // FORMAT INVOICES (SUBSCRIPTION)
+    // FORMAT INVOICES (SUBSCRIPTION - MONTHLY)
     // ============================
     const subscriptionData = invoices.data.map((inv) => ({
       id: inv.id,
+
+      planType: "monthly",
+
       amount: inv.amount_paid / 100,
       currency: inv.currency,
 
@@ -1419,10 +1439,13 @@ exports.getBillingHistory = async (req, res) => {
       billingReason: inv.billing_reason,
 
       createdAt: new Date(inv.created * 1000),
+
       periodStart: inv.period_start ? new Date(inv.period_start * 1000) : null,
+
       periodEnd: inv.period_end ? new Date(inv.period_end * 1000) : null,
 
       paid: inv.paid,
+
       paidAt: inv.status_transitions?.paid_at
         ? new Date(inv.status_transitions.paid_at * 1000)
         : null,
@@ -1436,6 +1459,9 @@ exports.getBillingHistory = async (req, res) => {
     // ============================
     const paymentData = charges.data.map((ch) => ({
       id: ch.id,
+
+      planType: "monthly",
+
       amount: ch.amount / 100,
       currency: ch.currency,
 
@@ -1453,28 +1479,30 @@ exports.getBillingHistory = async (req, res) => {
     }));
 
     // ============================
-    // FORMAT PAYOUTS (BANK TRANSFER)
+    // FORMAT PAYOUTS (OPTIONAL)
     // ============================
     const payoutData = payouts.data.map((po) => ({
       id: po.id,
       amount: po.amount / 100,
       currency: po.currency,
 
-      status: po.status, // paid, pending, failed
+      status: po.status,
 
       arrivalDate: new Date(po.arrival_date * 1000),
       createdAt: new Date(po.created * 1000),
 
-      method: po.method, // standard / instant
+      method: po.method,
     }));
 
     // ============================
-    // RESPONSE (SEPARATED)
+    // FINAL RESPONSE
     // ============================
     return res.json({
       success: true,
 
       data: {
+        planType: "monthly",
+
         subscriptions: subscriptionData,
         payments: paymentData,
         payouts: payoutData,
