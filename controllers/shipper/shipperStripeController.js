@@ -635,9 +635,6 @@ exports.createSubscription = async (req, res) => {
       });
     }
 
-    // ============================
-    // FETCH SHIPPER
-    // ============================
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper) {
@@ -655,7 +652,7 @@ exports.createSubscription = async (req, res) => {
     }
 
     // ============================
-    // CHECK EXISTING SUBSCRIPTIONS (STRIPE)
+    // CHECK STRIPE SUBSCRIPTIONS
     // ============================
     const stripeSubs = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
@@ -665,44 +662,15 @@ exports.createSubscription = async (req, res) => {
     const nowTs = Math.floor(Date.now() / 1000);
 
     const activeSub = stripeSubs.data.find((sub) => {
-      const isBlockingStatus = [
-        "active",
-        "trialing",
-        "past_due",
-        "incomplete",
-        "incomplete_expired",
-      ].includes(sub.status);
-
-      const isValid = sub.current_period_end && sub.current_period_end > nowTs;
-
-      return isBlockingStatus && isValid;
+      const validStatus = ["active", "trialing", "past_due"].includes(
+        sub.status
+      );
+      const validTime =
+        sub.current_period_end && sub.current_period_end > nowTs;
+      return validStatus && validTime;
     });
 
-    // ============================
-    // IF SUBSCRIPTION EXISTS
-    // ============================
     if (activeSub) {
-      await subscriptionModel.findOneAndUpdate(
-        { stripeSubscriptionId: activeSub.id },
-        {
-          shipperId: shipper._id,
-          stripeCustomerId: shipper.stripeCustomerId,
-          stripeSubscriptionId: activeSub.id,
-          status: activeSub.status,
-          cancelAtPeriodEnd: activeSub.cancel_at_period_end || false,
-          currentPeriodStart: activeSub.current_period_start
-            ? new Date(activeSub.current_period_start * 1000).toISOString()
-            : null,
-          currentPeriodEnd: activeSub.current_period_end
-            ? new Date(activeSub.current_period_end * 1000).toISOString()
-            : null,
-          canceledAt: activeSub.canceled_at
-            ? new Date(activeSub.canceled_at * 1000).toISOString()
-            : null,
-        },
-        { upsert: true, new: true }
-      );
-
       return res.status(400).json({
         success: false,
         message: "Subscription already exists or is active",
@@ -718,35 +686,29 @@ exports.createSubscription = async (req, res) => {
         status: { $in: ["active", "trialing"] },
       },
       {
-        $set: {
-          status: "canceled",
-          cancelAtPeriodEnd: false,
-        },
+        status: "canceled",
+        cancelAtPeriodEnd: false,
       }
     );
 
     // ============================
-    // TRIAL CHECK
+    // CHECK TRIAL HISTORY
     // ============================
-    const priorTrialSubscription = await subscriptionModel
-      .findOne({
-        shipperId: shipper._id,
-        $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
-      })
-      .lean();
+    const priorTrialSubscription = await subscriptionModel.findOne({
+      shipperId: shipper._id,
+      $or: [{ trialStart: { $ne: null } }, { trialEnd: { $ne: null } }],
+    });
 
     const hasUsedTrialBefore =
-      shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
+      shipper.hasUsedTrial || Boolean(priorTrialSubscription);
 
     // ============================
-    // CREATE SUBSCRIPTION
+    // CREATE STRIPE SUBSCRIPTION
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
       items: [{ price: MONTHLY_PRICE_ID }],
       default_payment_method: shipper.paymentMethodId,
-      expand: ["items.data.price"],
-      cancel_at_period_end: false,
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
@@ -754,18 +716,12 @@ exports.createSubscription = async (req, res) => {
       },
     };
 
-    // ============================
-    // TRIAL LOGIC (30 DAYS)
-    // ============================
     const TRIAL_DAYS = 30;
 
     if (withTrial && !hasUsedTrialBefore) {
       subscriptionData.trial_period_days = TRIAL_DAYS;
     }
 
-    // ============================
-    // CREATE STRIPE SUBSCRIPTION
-    // ============================
     const subscription = await stripe.subscriptions.create(subscriptionData, {
       idempotencyKey: `sub_${shipper._id}`,
     });
@@ -818,6 +774,16 @@ exports.createSubscription = async (req, res) => {
       shipper.hasUsedTrial = true;
       await shipper.save();
     }
+
+    // ============================
+    // SEND EMAIL (IMPORTANT FIX)
+    // ============================
+    await sendSubscriptionEmail({
+      shipperId: shipper._id,
+      planName: "Shipper Monthly Plan",
+      amount: price.unit_amount / 100,
+      trialEnd,
+    });
 
     // ============================
     // RESPONSE

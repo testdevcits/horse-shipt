@@ -1,11 +1,6 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 
-/**
- * ============================
- * SEND SUBSCRIPTION EMAIL
- * ============================
- */
 const sendSubscriptionEmail = async ({
   shipperId,
   planName,
@@ -15,92 +10,88 @@ const sendSubscriptionEmail = async ({
   try {
     const shipper = await Shipper.findById(shipperId);
 
-    if (!shipper || !shipper.email) {
-      console.warn("No valid email for shipper:", shipperId);
-      return;
-    }
+    if (!shipper || !shipper.email) return;
 
     // ============================
-    // TRANSPORTER
+    // GMAIL SMTP CONFIG (FIXED)
     // ============================
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === "true",
+      host: process.env.EMAIL_HOST, // smtp.gmail.com
+      port: Number(process.env.EMAIL_PORT), // 465
+      secure: true, // IMPORTANT for 465
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
     });
 
-    // ============================
-    // SUBJECT
-    // ============================
-    const subject = "Subscription Activated";
-
-    // ============================
-    // HTML TEMPLATE
-    // ============================
     const html = `
-      <div style="font-family: Arial, sans-serif; background:#f9fafb; padding:20px;">
-        <div style="max-width:600px;margin:auto;background:white;border-radius:10px;padding:24px;border:1px solid #eee;">
-          
-          <h2 style="color:#BF9B53;margin-bottom:10px;">
-            Subscription Activated
-          </h2>
-
-          <p style="color:#333;font-size:14px;">
-            Hello <strong>${shipper.name || "Shipper"}</strong>,
-          </p>
-
-          <p style="color:#555;font-size:14px;">
-            Your subscription has been successfully activated.
-          </p>
-
-          <div style="margin:20px 0;padding:16px;background:#f8f8f8;border-radius:8px;">
-            <p style="margin:5px 0;"><strong>Plan:</strong> ${planName}</p>
-            <p style="margin:5px 0;"><strong>Amount:</strong> $${amount}</p>
-            ${
-              trialEnd
-                ? `<p style="margin:5px 0;"><strong>Trial Ends:</strong> ${new Date(
-                    trialEnd
-                  ).toDateString()}</p>`
-                : ""
-            }
-          </div>
-
-          <p style="color:#555;font-size:14px;">
-            You can now enjoy all premium features of HorseShipt
-          </p>
-
-          <div style="margin-top:25px;">
-            <a href="${process.env.FRONTEND_URL}" 
-              style="background:#BF9B53;color:white;padding:10px 18px;text-decoration:none;border-radius:6px;font-size:14px;">
-              Go to Dashboard
-            </a>
-          </div>
-
-          <p style="margin-top:30px;font-size:12px;color:#999;">
-            If you have any questions, feel free to contact support.
-          </p>
-
-        </div>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial, sans-serif;">
+  <div style="padding:20px;">
+    <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:10px;border:1px solid #eee;overflow:hidden;">
+      
+      <!-- HEADER -->
+      <div style="background:#BF9B53;padding:18px;text-align:center;">
+        <h2 style="color:white;margin:0;">Horse Shipt</h2>
       </div>
+
+      <!-- CONTENT -->
+      <div style="padding:24px;">
+
+        <p style="font-size:14px;color:#333;">
+          Hello <strong>${shipper.name || "Shipper"}</strong>,
+        </p>
+
+        <p style="font-size:14px;color:#555;">
+          Your subscription is now active on <strong>Horse Shipt</strong>.
+        </p>
+
+        <div style="margin:20px 0;padding:16px;background:#f8f8f8;border-radius:8px;">
+          <h4 style="margin:0 0 10px 0;">Subscription Summary</h4>
+          <p><strong>Plan:</strong> ${planName}</p>
+          <p><strong>Amount:</strong> $${amount}</p>
+          ${
+            trialEnd
+              ? `<p><strong>Trial Ends:</strong> ${new Date(
+                  trialEnd
+                ).toDateString()}</p>`
+              : ""
+          }
+        </div>
+
+        <div style="margin:20px 0;">
+          <a href="${process.env.FRONTEND_URL}"
+             style="background:#BF9B53;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;">
+            Go to Dashboard
+          </a>
+        </div>
+
+        <p style="font-size:14px;color:#333;">
+          Thanks,<br/>
+          <strong>Horse Shipt Team</strong>
+        </p>
+
+      </div>
+
+      <div style="background:#f1f1f1;text-align:center;padding:10px;font-size:12px;">
+        © ${new Date().getFullYear()} Horse Shipt
+      </div>
+
+    </div>
+  </div>
+</body>
     `;
 
-    // ============================
-    // SEND MAIL
-    // ============================
     await transporter.sendMail({
-      from: `"HorseShipt" <${process.env.SMTP_USER}>`,
+      from: process.env.EMAIL_FROM,
       to: shipper.email,
-      subject,
+      subject: "Subscription Activated - Horse Shipt",
       html,
     });
 
-    console.log(`Subscription email sent to ${shipper.email}`);
+    console.log("Subscription email sent to:", shipper.email);
   } catch (error) {
-    console.error("Subscription email error:", error);
+    console.error("Email error:", error.message);
   }
 };
 
