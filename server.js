@@ -251,6 +251,7 @@ const io = new Server(server, {
   },
   transports: ["websocket", "polling"],
   path: "/socket.io",
+  maxHttpBufferSize: 10 * 1024 * 1024,
 });
 
 // Make io accessible

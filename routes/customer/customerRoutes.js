@@ -7,6 +7,7 @@ const {
 } = require("../../middleware/customer/customerMiddleware");
 
 const upload = require("../../middleware/uploadMiddleware");
+const chatUpload = require("../../middleware/chatUploadMiddleware");
 
 // ---------------- Controllers ----------------
 const {
@@ -64,6 +65,11 @@ const {
 const {
   getShippersForChat,
 } = require("../../controllers/customer/customerChatListController");
+const {
+  getOrCreateRoom,
+  getRoomMessages,
+  sendRoomMessage,
+} = require("../../controllers/chat/chatApiController");
 const {
   createHorse,
   getMyHorses,
@@ -265,6 +271,14 @@ router.post("/quotes/:quoteId/cancel", customerAuth, cancelQuote);
 // CHAT LIST (Customer Dashboard)
 // ====================================================
 router.get("/chat/shippers", customerAuth, getShippersForChat);
+router.post("/chat/room", customerAuth, getOrCreateRoom);
+router.get("/chat/rooms/:roomId/messages", customerAuth, getRoomMessages);
+router.post(
+  "/chat/rooms/:roomId/messages",
+  customerAuth,
+  chatUpload.single("image"),
+  sendRoomMessage
+);
 
 // ===================================================
 // GET /api/customer/profile

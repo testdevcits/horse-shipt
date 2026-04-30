@@ -5,6 +5,7 @@ const path = require("path");
 // ================= MIDDLEWARE =================
 const { shipperAuth } = require("../../middleware/shipper/shipperMiddleware");
 const upload = require("../../middleware/uploadMiddleware");
+const chatUpload = require("../../middleware/chatUploadMiddleware");
 
 // ----- DRIVER AUTH MIDDLEWARE -----
 const driverAuth = require("../../middleware/shipper/driverAuth");
@@ -114,6 +115,11 @@ const {
 const {
   getCustomersForChat,
 } = require("../../controllers/shipper/shipperChatListController");
+const {
+  getOrCreateRoom,
+  getRoomMessages,
+  sendRoomMessage,
+} = require("../../controllers/chat/chatApiController");
 
 // -------- Reviews --------
 const {
@@ -363,6 +369,14 @@ router.patch("/contracts/deactivate", shipperAuth, deactivateContract);
 // CHAT LIST (Shipper Dashboard)
 // ====================================================
 router.get("/chat/customers", shipperAuth, getCustomersForChat);
+router.post("/chat/room", shipperAuth, getOrCreateRoom);
+router.get("/chat/rooms/:roomId/messages", shipperAuth, getRoomMessages);
+router.post(
+  "/chat/rooms/:roomId/messages",
+  shipperAuth,
+  chatUpload.single("image"),
+  sendRoomMessage
+);
 
 // ====================================================
 // SHIPPER REVIEW ROUTES

@@ -21,9 +21,24 @@ const messageSchema = new mongoose.Schema(
 
     message: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
     },
+
+    media: [
+      {
+        type: {
+          type: String,
+          enum: ["image"],
+          required: true,
+        },
+        url: { type: String, required: true },
+        public_id: { type: String, required: true },
+        mimeType: { type: String, default: "image/jpeg" },
+        originalName: { type: String, default: "" },
+        size: { type: Number, default: 0 },
+      },
+    ],
 
     isRead: {
       type: Boolean,
