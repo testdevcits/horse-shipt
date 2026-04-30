@@ -1,5 +1,6 @@
 const PreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
 const Shipment = require("../../models/customer/CustomerShipment");
+const Invitation = require("../../models/common/ShipmentInvitation");
 
 // Distance (KM)
 const getDistanceKm = (lat1, lon1, lat2, lon2) => {
@@ -108,10 +109,22 @@ exports.getMatchingShippers = async (req, res) => {
       ...new Set(matchedAreas.map((a) => a.shipper.toString())),
     ];
 
+    const invitations = await Invitation.find({
+      shipment: shipmentId,
+      shipper: { $in: shipperIds },
+    })
+      .select("shipper")
+      .lean();
+
+    const invitedShippers = invitations.map((invite) =>
+      invite.shipper.toString()
+    );
+
     return res.json({
       success: true,
       count: shipperIds.length,
       shippers: shipperIds,
+      invitedShippers,
     });
   } catch (error) {
     console.error("MATCHING ERROR:", error);

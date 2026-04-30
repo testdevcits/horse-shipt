@@ -1,9 +1,20 @@
 const Invitation = require("../../models/common/ShipmentInvitation");
 const Shipment = require("../../models/customer/CustomerShipment");
+const Customer = require("../../models/customer/customerModel");
+const Shipper = require("../../models/shipper/shipperModel");
+const sendEmail = require("../../utils/sendShipmentInviteEmail");
+
+const escapeHtml = (value = "") =>
+  String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 exports.sendInvitation = async (req, res) => {
   try {
-    const { shipmentId, shipperId } = req.body;
+    const { shipmentId, shipperId, message = "" } = req.body;
 
     if (!shipmentId || !shipperId) {
       return res.status(400).json({
@@ -12,12 +23,23 @@ exports.sendInvitation = async (req, res) => {
       });
     }
 
-    const shipment = await Shipment.findById(shipmentId).lean();
+    const [shipment, shipper, customer] = await Promise.all([
+      Shipment.findById(shipmentId).lean(),
+      Shipper.findById(shipperId).select("name email").lean(),
+      Customer.findById(req.user.id).select("name email").lean(),
+    ]);
 
     if (!shipment) {
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
+      });
+    }
+
+    if (!shipper) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipper not found",
       });
     }
 
@@ -43,12 +65,63 @@ exports.sendInvitation = async (req, res) => {
       shipmentCode: shipment.shipmentCode,
       pickupLocation: shipment.pickupLocation,
       deliveryLocation: shipment.deliveryLocation,
+      message,
     });
+
+    let emailSent = false;
+
+    if (shipper.email) {
+      const dashboardUrl = `${
+        process.env.FRONTEND_URL || process.env.REACT_APP_FRONTEND_URL || ""
+      }/shipper/dashboard`;
+
+      const shipperName = escapeHtml(shipper.name || "Shipper");
+      const customerName = escapeHtml(customer?.name || "A customer");
+      const shipmentCode = escapeHtml(shipment.shipmentCode || "N/A");
+      const pickupLocation = escapeHtml(shipment.pickupLocation || "N/A");
+      const deliveryLocation = escapeHtml(shipment.deliveryLocation || "N/A");
+      const safeMessage = escapeHtml(message);
+
+      emailSent = await sendEmail({
+        to: shipper.email,
+        subject: `New shipment invitation: ${shipment.shipmentCode}`,
+        html: `
+          <div style="font-family:Arial,sans-serif;background:#f9fafb;padding:24px;">
+            <div style="max-width:620px;margin:auto;background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;">
+              <div style="background:#BF9B53;color:#fff;padding:18px 22px;">
+                <h2 style="margin:0;">Horse Shipt</h2>
+              </div>
+              <div style="padding:22px;color:#333;">
+                <p>Hello <strong>${shipperName}</strong>,</p>
+                <p><strong>${customerName}</strong> invited you to review a shipment.</p>
+                <div style="background:#f8f8f8;border-left:4px solid #BF9B53;padding:14px 16px;margin:18px 0;">
+                  <p style="margin:0 0 8px;"><strong>Shipment:</strong> ${shipmentCode}</p>
+                  <p style="margin:0 0 8px;"><strong>Pickup:</strong> ${pickupLocation}</p>
+                  <p style="margin:0;"><strong>Delivery:</strong> ${deliveryLocation}</p>
+                </div>
+                ${
+                  message
+                    ? `<p style="font-size:14px;color:#555;"><strong>Message:</strong> ${safeMessage}</p>`
+                    : ""
+                }
+                <p style="margin:22px 0;">
+                  <a href="${dashboardUrl}" style="background:#BF9B53;color:#fff;padding:11px 18px;text-decoration:none;border-radius:6px;display:inline-block;">View invitation</a>
+                </p>
+                <p>Thanks,<br/><strong>Horse Shipt Team</strong></p>
+              </div>
+            </div>
+          </div>
+        `,
+      });
+    }
 
     return res.json({
       success: true,
-      message: "Invitation sent",
+      message: emailSent
+        ? "Invitation sent and email delivered"
+        : "Invitation sent",
       data: invitation,
+      emailSent,
     });
   } catch (err) {
     if (err.code === 11000) {
