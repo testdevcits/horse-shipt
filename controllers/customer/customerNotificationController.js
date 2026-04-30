@@ -13,6 +13,11 @@ exports.getSettings = async (req, res) => {
       notification = await CustomerNotification.create({ user: userId });
     }
 
+    if (notification.settings.question === undefined) {
+      notification.settings.question = true;
+      await notification.save();
+    }
+
     return res.status(200).json({
       success: true,
       message: "Notification settings fetched successfully",
@@ -39,6 +44,10 @@ exports.updateSetting = async (req, res) => {
     // If not exists, create default
     if (!notification) {
       notification = await CustomerNotification.create({ user: userId });
+    }
+
+    if (notification.settings.question === undefined) {
+      notification.settings.question = true;
     }
 
     // Check if type is valid

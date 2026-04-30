@@ -1,5 +1,6 @@
 const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const { notifyQuestionReceiver } = require("../../utils/chatNotificationService");
 
 // ========================================================
 // SHIPPER: ASK QUESTION
@@ -29,6 +30,15 @@ exports.askQuestion = async (req, res) => {
       shipperId,
       customerId: shipment.customer,
       question: question.trim(),
+    });
+
+    notifyQuestionReceiver({
+      receiverRole: "customer",
+      receiverId: shipment.customer,
+      senderRole: "shipper",
+      shipmentId,
+      action: "asked",
+      text: question.trim(),
     });
 
     return res.status(201).json({
@@ -94,6 +104,15 @@ exports.answerQuestion = async (req, res) => {
     questionDoc.answeredAt = new Date();
 
     await questionDoc.save();
+
+    notifyQuestionReceiver({
+      receiverRole: "shipper",
+      receiverId: questionDoc.shipperId,
+      senderRole: "customer",
+      shipmentId: questionDoc.shipmentId,
+      action: "answered",
+      text: answer.trim(),
+    });
 
     return res.json({
       success: true,

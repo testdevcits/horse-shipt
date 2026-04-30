@@ -13,6 +13,7 @@ const CustomerNotificationSchema = new mongoose.Schema(
       newQuote: { type: Boolean, default: true },
       offerInteraction: { type: Boolean, default: true },
       newMessage: { type: Boolean, default: true },
+      question: { type: Boolean, default: true },
       newReview: { type: Boolean, default: true },
       upcomingShipment: { type: Boolean, default: true },
       shipmentUpdates: { type: Boolean, default: true },

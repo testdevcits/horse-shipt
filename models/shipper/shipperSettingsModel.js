@@ -21,6 +21,10 @@ const shipperSettingsSchema = new mongoose.Schema(
         email: { type: Boolean, default: true },
         sms: { type: Boolean, default: true },
       },
+      question: {
+        email: { type: Boolean, default: true },
+        sms: { type: Boolean, default: true },
+      },
       review: {
         email: { type: Boolean, default: true },
         sms: { type: Boolean, default: true },

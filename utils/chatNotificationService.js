@@ -159,4 +159,85 @@ const notifyChatReceiver = async ({
   }
 };
 
-module.exports = { notifyChatReceiver };
+const notifyQuestionReceiver = async ({
+  receiverRole,
+  receiverId,
+  senderRole,
+  shipmentId,
+  action,
+  text,
+}) => {
+  try {
+    const senderLabel = senderRole === "customer" ? "Customer" : "Shipper";
+    const shipmentLabel = await getShipmentLabel(shipmentId);
+    const preview = text || (action === "answered" ? "Answered" : "Question");
+    const title =
+      action === "answered"
+        ? `Question answered for ${shipmentLabel}`
+        : `New shipment question for ${shipmentLabel}`;
+    const body =
+      action === "answered"
+        ? `${senderLabel} answered your question: ${preview}`
+        : `${senderLabel} asked a question: ${preview}`;
+    const emailText =
+      action === "answered"
+        ? `${senderLabel} answered your question for ${shipmentLabel}.\n\n${preview}`
+        : `${senderLabel} asked a question about ${shipmentLabel}.\n\n${preview}`;
+    const smsText =
+      action === "answered"
+        ? `${senderLabel} answered your question for ${shipmentLabel}: ${preview}`
+        : `${senderLabel} asked about ${shipmentLabel}: ${preview}`;
+
+    if (receiverRole === "customer") {
+      const settings =
+        (await CustomerNotification.findOne({ user: receiverId })) ||
+        (await CustomerNotification.create({ user: receiverId }));
+
+      if (settings.settings?.question === false) return;
+
+      const customer = await Customer.findById(receiverId)
+        .select("email phone")
+        .lean();
+      if (!customer) return;
+
+      await Promise.allSettled([
+        sendCustomerNotification(receiverId, "question", { title, body }),
+        sendCustomerEmail({
+          to: customer.email,
+          subject: title,
+          text: emailText,
+        }),
+        sendCustomerSms({
+          to: customer.phone,
+          body: smsText,
+        }),
+      ]);
+      return;
+    }
+
+    if (receiverRole === "shipper") {
+      const settings =
+        (await ShipperSettings.findOne({ shipperId: receiverId })) ||
+        (await ShipperSettings.create({ shipperId: receiverId }));
+
+      const questionSettings = settings.notifications?.question || {
+        email: true,
+        sms: true,
+      };
+
+      const tasks = [];
+      if (questionSettings.email) {
+        tasks.push(sendShipperEmail(receiverId, title, emailText));
+      }
+      if (questionSettings.sms) {
+        tasks.push(sendShipperSms(receiverId, smsText));
+      }
+
+      await Promise.allSettled(tasks);
+    }
+  } catch (error) {
+    console.error("Question notification error:", error.message);
+  }
+};
+
+module.exports = { notifyChatReceiver, notifyQuestionReceiver };

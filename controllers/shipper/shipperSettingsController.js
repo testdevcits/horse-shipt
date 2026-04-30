@@ -14,6 +14,11 @@ exports.getSettings = async (req, res) => {
       settings = await ShipperSettings.create({ shipperId });
     }
 
+    if (!settings.notifications?.question) {
+      settings.notifications.question = { email: true, sms: true };
+      await settings.save();
+    }
+
     return res.status(200).json({
       success: true,
       message: "Shipper settings fetched successfully",
