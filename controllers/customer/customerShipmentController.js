@@ -166,10 +166,7 @@ exports.createShipment = async (req, res) => {
 
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
-      const hasIncomingNote = h.notes !== undefined;
-      const horseNote = hasIncomingNote
-        ? String(h.notes || "").trim()
-        : existingHorse.notes || "";
+      const horseNote = typeof h.notes === "string" ? h.notes.trim() : "";
 
       const horseObj = {
         registeredName: h.registeredName || "",
@@ -665,7 +662,10 @@ exports.updateShipmentByCustomer = async (req, res) => {
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
       const existingHorse = shipment.horses[i] || {};
-      const horseNote = typeof h.notes === "string" ? h.notes.trim() : "";
+      const hasIncomingNote = h.notes !== undefined;
+      const horseNote = hasIncomingNote
+        ? String(h.notes || "").trim()
+        : existingHorse.notes || "";
 
       console.log(`Processing horse index: ${i}`, h);
 
@@ -745,6 +745,175 @@ exports.updateShipmentByCustomer = async (req, res) => {
     console.error("[UPDATE SHIPMENT ERROR FULL]", err);
     console.error("STACK:", err.stack);
 
+    return res.status(500).json({
+      success: false,
+      message: err.message || "Server Error",
+    });
+  }
+};
+
+// ============================================================
+// =========== UPDATE PUBLISHED METADATA ONLY ==================
+// ============================================================
+exports.updateShipmentMetadataByCustomer = async (req, res) => {
+  try {
+    const shipmentId = req.params.shipmentId;
+    const customerId = req.user?._id;
+
+    const shipment = await CustomerShipment.findOne({
+      _id: shipmentId,
+      customer: customerId,
+    });
+
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Shipment not found",
+      });
+    }
+
+    const editableStatuses = [
+      "pending",
+      "open_for_offers",
+      "assigned",
+      "picked",
+      "in_transit",
+    ];
+
+    if (!shipment.publish && shipment.status === "pending") {
+      return res.status(400).json({
+        success: false,
+        message: "Use full shipment edit before publishing",
+      });
+    }
+
+    if (!editableStatuses.includes(shipment.status)) {
+      return res.status(400).json({
+        success: false,
+        message: "Documents and notes can no longer be edited",
+      });
+    }
+
+    const forbiddenFields = [
+      "pickupLocation",
+      "pickupLat",
+      "pickupLng",
+      "pickupStartDate",
+      "pickupEndDate",
+      "deliveryLocation",
+      "deliveryLat",
+      "deliveryLng",
+      "deliveryStartDate",
+      "deliveryEndDate",
+      "numberOfHorses",
+      "publish",
+      "status",
+      "shipper",
+    ];
+
+    const blockedField = forbiddenFields.find((field) => field in req.body);
+    if (blockedField) {
+      return res.status(400).json({
+        success: false,
+        message: `Field '${blockedField}' cannot be updated from metadata endpoint`,
+      });
+    }
+
+    const fileMap = {};
+    (req.files || []).forEach((file) => {
+      fileMap[file.fieldname] = file;
+    });
+
+    let horseData = [];
+    try {
+      horseData = req.body.horses
+        ? Array.isArray(req.body.horses)
+          ? req.body.horses
+          : JSON.parse(req.body.horses)
+        : [];
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid horses data",
+      });
+    }
+
+    if (req.body.additionalInfo !== undefined) {
+      const nextAdditionalInfo = String(req.body.additionalInfo || "").trim();
+      shipment.additionalInfo = nextAdditionalInfo;
+      shipment.additionalInfoLog = appendNoteIfNew(
+        shipment.additionalInfoLog,
+        nextAdditionalInfo,
+        req.user
+      );
+    }
+
+    const updatedHorses = [];
+
+    for (let i = 0; i < shipment.horses.length; i++) {
+      const existingHorse = shipment.horses[i];
+      const incomingHorse = horseData[i] || {};
+      const horseObj = {
+        ...existingHorse.toObject(),
+        documents: { ...existingHorse.documents },
+      };
+
+      if (incomingHorse.generalInfo !== undefined) {
+        horseObj.generalInfo = String(incomingHorse.generalInfo || "");
+      }
+
+      if (incomingHorse.notes !== undefined) {
+        const nextNote = String(incomingHorse.notes || "").trim();
+        horseObj.notes = nextNote;
+        horseObj.notesLog = appendNoteIfNew(
+          horseObj.notesLog,
+          nextNote,
+          req.user
+        );
+      }
+
+      const handleFile = async (field, type) => {
+        const key = `horses[${i}][${field}]`;
+        if (!fileMap[key]) return null;
+
+        const file = fileMap[key];
+        if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
+          throw new Error(`${field} too large (Max 5MB)`);
+        }
+
+        if (!file.buffer && file.path) {
+          const fs = require("fs");
+          file.buffer = fs.readFileSync(file.path);
+        }
+
+        if (file.buffer && isImage(file)) {
+          file.buffer = await processImage(file);
+        }
+
+        return await uploadToCloudinary(file, type);
+      };
+
+      const newCoggins = await handleFile("cogins", "document");
+      const newHealth = await handleFile("healthCertificate", "document");
+      const newOther = await handleFile("otherDocuments", "document");
+
+      if (newCoggins) horseObj.documents.coggins = newCoggins;
+      if (newHealth) horseObj.documents.healthCertificate = newHealth;
+      if (newOther) horseObj.documents.other = newOther;
+
+      updatedHorses.push(horseObj);
+    }
+
+    shipment.horses = updatedHorses;
+    await shipment.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Documents and notes updated successfully",
+      shipment,
+    });
+  } catch (err) {
+    console.error("[UPDATE SHIPMENT METADATA ERROR]", err);
     return res.status(500).json({
       success: false,
       message: err.message || "Server Error",

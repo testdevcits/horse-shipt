@@ -44,6 +44,7 @@ const {
   getUpcomingShipmentsByCustomer,
   getCompletedShipmentsByCustomer,
   updateShipmentByCustomer,
+  updateShipmentMetadataByCustomer,
 } = require("../../controllers/customer/customerShipmentController");
 
 const {
@@ -145,6 +146,13 @@ router.get(
 );
 
 router.get("/shipments/:shipmentId", customerAuth, getShipmentById);
+
+router.patch(
+  "/shipments/:shipmentId/metadata",
+  customerAuth,
+  upload.any(),
+  updateShipmentMetadataByCustomer
+);
 
 router.put(
   "/shipments/:shipmentId",
