@@ -62,10 +62,28 @@ module.exports = (io) => {
   io.on("connection", (socket) => {
     console.log("Socket connected:", socket.id);
 
-    socket.on("joinRoom", async ({ customerId, shipperId }) => {
-      const room = await getOrCreateChatRoom({ customerId, shipperId });
-      socket.join(room._id.toString());
-      socket.emit("roomJoined", room._id);
+    socket.on("joinRoom", async ({ customerId, shipperId, shipmentId }, ack) => {
+      try {
+        if (!shipmentId) {
+          const message = "shipmentId is required to join chat.";
+          if (ack) ack({ success: false, message });
+          socket.emit("chatError", { message });
+          return;
+        }
+
+        const room = await getOrCreateChatRoom({
+          customerId,
+          shipperId,
+          shipmentId,
+        });
+        socket.join(room._id.toString());
+        socket.emit("roomJoined", room._id);
+        if (ack) ack({ success: true, roomId: room._id });
+      } catch (error) {
+        const message = error.message || "Failed to join chat room.";
+        if (ack) ack({ success: false, message });
+        socket.emit("chatError", { message });
+      }
     });
 
     socket.on("sendMessage", async (data, ack) => {

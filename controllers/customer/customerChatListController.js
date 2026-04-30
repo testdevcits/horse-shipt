@@ -1,30 +1,46 @@
-const Shipper = require("../../models/shipper/shipperModel"); // Shipers ka model
+const CustomerShipment = require("../../models/customer/CustomerShipment");
 const formatChatUser = require("../../utils/formatChatUser");
 
+const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit", "delivered"];
+
 /**
- * Fetch Shippers for Chat
+ * Fetch accepted shipment chats for the customer
  */
 exports.getShippersForChat = async (req, res) => {
   try {
-    const shippers = await Shipper.find(
-      { isActive: true },
-      {
-        name: 1,
-        email: 1,
-        profileImage: 1,
-        profilePicture: 1,
-        isLogin: 1,
-      }
-    ).sort({ updatedAt: -1 });
+    const shipments = await CustomerShipment.find({
+      customer: req.user._id,
+      shipper: { $ne: null },
+      status: { $in: CHAT_ALLOWED_STATUSES },
+    })
+      .select(
+        "_id shipmentCode status pickupLocation deliveryLocation shipper updatedAt"
+      )
+      .populate(
+        "shipper",
+        "_id name email profileImage profilePicture isLogin isActive"
+      )
+      .sort({ updatedAt: -1 });
 
-    const formattedShippers = shippers.map((shipper) => {
+    const formattedShippers = shipments
+      .filter((shipment) => shipment.shipper)
+      .map((shipment) => {
+        const shipper = shipment.shipper;
       const formatted = formatChatUser(shipper, "shipper");
 
       return {
         ...formatted,
         isOnline: Boolean(shipper.isLogin),
+          shipmentId: shipment._id,
+          shipmentCode: shipment.shipmentCode,
+          shipmentStatus: shipment.status,
+          pickupLocation: shipment.pickupLocation,
+          deliveryLocation: shipment.deliveryLocation,
+          chatTitle: `${shipment.shipmentCode || "Shipment"} - ${
+            shipper.name || "Shipper"
+          }`,
       };
-    });
+      });
 
     res.status(200).json({
       success: true,

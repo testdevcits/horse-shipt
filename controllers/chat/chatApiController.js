@@ -2,19 +2,30 @@ const sharp = require("sharp");
 const streamifier = require("streamifier");
 const ChatRoom = require("../../models/chat/chatRoomModel");
 const Message = require("../../models/chat/messageModel");
+const CustomerShipment = require("../../models/customer/CustomerShipment");
 const cloudinary = require("../../utils/cloudinary");
 const { getOrCreateChatRoom } = require("./chatController");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 
+const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit", "delivered"];
+
+const inferRole = (req) => {
+  if (req.user?.role) return req.user.role;
+  if (req.originalUrl?.includes("/shipper/")) return "shipper";
+  return "customer";
+};
+
 const getParticipantIds = (req) => {
-  const role = req.user?.role;
+  const role = inferRole(req);
   const userId = req.user?._id;
+  const shipmentId =
+    req.body.shipmentId || req.query.shipmentId || req.params.shipmentId;
   const customerId =
     role === "customer" ? userId : req.body.customerId || req.query.customerId;
   const shipperId =
     role === "shipper" ? userId : req.body.shipperId || req.query.shipperId;
 
-  return { role, userId, customerId, shipperId };
+  return { role, userId, shipmentId, customerId, shipperId };
 };
 
 const ensureRoomParticipant = async ({ roomId, userId, role }) => {
@@ -28,6 +39,53 @@ const ensureRoomParticipant = async ({ roomId, userId, role }) => {
   );
 
   return isParticipant ? room : null;
+};
+
+const canChatOnShipment = (shipment) =>
+  Boolean(
+    shipment?.shipper &&
+      shipment?.customer &&
+      CHAT_ALLOWED_STATUSES.includes(shipment.status)
+  );
+
+const getChatShipment = async ({ shipmentId, userId, role }) => {
+  if (!shipmentId) {
+    const error = new Error("shipmentId is required to open chat.");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const shipment = await CustomerShipment.findById(shipmentId)
+    .populate("customer", "_id name email profileImage profilePicture isLogin")
+    .populate("shipper", "_id name email profileImage profilePicture isLogin");
+
+  if (!shipment) {
+    const error = new Error("Shipment not found.");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!canChatOnShipment(shipment)) {
+    const error = new Error(
+      "Chat is available only after the shipment is accepted."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const customerId = shipment.customer?._id || shipment.customer;
+  const shipperId = shipment.shipper?._id || shipment.shipper;
+  const allowed =
+    (role === "customer" && customerId?.toString() === userId.toString()) ||
+    (role === "shipper" && shipperId?.toString() === userId.toString());
+
+  if (!allowed) {
+    const error = new Error("You are not authorized to open this shipment chat.");
+    error.statusCode = 403;
+    throw error;
+  }
+
+  return { shipment, customerId, shipperId };
 };
 
 const uploadChatImage = async (file) => {
@@ -60,27 +118,43 @@ const uploadChatImage = async (file) => {
 
 exports.getOrCreateRoom = async (req, res) => {
   try {
-    const { customerId, shipperId } = getParticipantIds(req);
+    const { role, userId, shipmentId } = getParticipantIds(req);
+    const { shipment, customerId, shipperId } = await getChatShipment({
+      shipmentId,
+      userId,
+      role,
+    });
 
     if (!customerId || !shipperId) {
       return res.status(400).json({
         success: false,
-        message: "customerId and shipperId are required.",
+        message: "Shipment customer and shipper are required.",
       });
     }
 
-    const room = await getOrCreateChatRoom({ customerId, shipperId });
+    const room = await getOrCreateChatRoom({
+      customerId,
+      shipperId,
+      shipmentId,
+    });
 
     return res.status(200).json({
       success: true,
       room,
       roomId: room._id,
+      shipment: {
+        _id: shipment._id,
+        shipmentCode: shipment.shipmentCode,
+        status: shipment.status,
+        pickupLocation: shipment.pickupLocation,
+        deliveryLocation: shipment.deliveryLocation,
+      },
     });
   } catch (error) {
     console.error("getOrCreateRoom error:", error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
-      message: "Failed to open chat room.",
+      message: error.message || "Failed to open chat room.",
     });
   }
 };
@@ -91,7 +165,7 @@ exports.getRoomMessages = async (req, res) => {
     const room = await ensureRoomParticipant({
       roomId,
       userId: req.user._id,
-      role: req.user.role,
+      role: inferRole(req),
     });
 
     if (!room) {
@@ -121,17 +195,26 @@ exports.getRoomMessages = async (req, res) => {
 exports.sendRoomMessage = async (req, res) => {
   try {
     const { roomId } = req.params;
+    const requestRole = inferRole(req);
     const messageText = (req.body.message || "").trim();
     const room = await ensureRoomParticipant({
       roomId,
       userId: req.user._id,
-      role: req.user.role,
+      role: requestRole,
     });
 
     if (!room) {
       return res.status(403).json({
         success: false,
         message: "You are not authorized to send messages in this chat.",
+      });
+    }
+
+    if (room.shipment) {
+      await getChatShipment({
+        shipmentId: room.shipment,
+        userId: req.user._id,
+        role: requestRole,
       });
     }
 
@@ -147,7 +230,7 @@ exports.sendRoomMessage = async (req, res) => {
     const chatMessage = await Message.create({
       chatRoom: roomId,
       senderId: req.user._id,
-      senderRole: req.user.role,
+      senderRole: requestRole,
       message: messageText,
       media: mediaItem ? [mediaItem] : [],
     });
@@ -164,7 +247,7 @@ exports.sendRoomMessage = async (req, res) => {
       const receiver = room.participants.find(
         (participant) =>
           participant.userId.toString() !== req.user._id.toString() ||
-          participant.role !== req.user.role
+          participant.role !== requestRole
       );
 
       if (receiver) {
@@ -177,7 +260,7 @@ exports.sendRoomMessage = async (req, res) => {
             type: "chat_message",
             title: "New chat message",
             message:
-              req.user.role === "customer"
+              requestRole === "customer"
                 ? "A customer sent you a message"
                 : "A shipper sent you a message",
           },

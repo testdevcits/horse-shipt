@@ -2,6 +2,13 @@ const mongoose = require("mongoose");
 
 const chatRoomSchema = new mongoose.Schema(
   {
+    shipment: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CustomerShipment",
+      default: null,
+      index: true,
+    },
+
     participants: [
       {
         userId: {
@@ -29,5 +36,7 @@ const chatRoomSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+chatRoomSchema.index({ shipment: 1, "participants.userId": 1 });
 
 module.exports = mongoose.model("ChatRoom", chatRoomSchema);
