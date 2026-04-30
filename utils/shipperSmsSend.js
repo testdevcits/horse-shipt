@@ -16,18 +16,20 @@ const sendShipperSms = async (shipperId, message) => {
       return;
     }
 
-    if (!shipper.phone || !shipper.phone.startsWith("+")) {
+    const phone = shipper.mobile || shipper.phone;
+
+    if (!phone || !phone.startsWith("+")) {
       console.warn(`Invalid or missing phone for shipper: ${shipper._id}`);
       return;
     }
 
     await client.messages.create({
       from: process.env.TWILIO_PHONE,
-      to: shipper.phone,
+      to: phone,
       body: message,
     });
 
-    console.log(`SMS sent successfully to ${shipper.phone}`);
+    console.log(`SMS sent successfully to ${phone}`);
   } catch (error) {
     console.error("Error sending shipper SMS:", error.message);
   }

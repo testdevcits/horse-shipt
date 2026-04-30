@@ -13,6 +13,32 @@ const escapeHtml = (value = "") =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
 
+const formatDate = (dateValue) => {
+  if (!dateValue) return "N/A";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatDateRange = (range, fallbackDate) => {
+  const start = range?.start || fallbackDate;
+  const end = range?.end || fallbackDate;
+
+  if (!start && !end) return "N/A";
+
+  const startText = formatDate(start);
+  const endText = formatDate(end);
+
+  if (startText === "N/A") return endText;
+  if (endText === "N/A" || startText === endText) return startText;
+  return `${startText} - ${endText}`;
+};
+
 exports.sendInvitation = async (req, res) => {
   try {
     const { shipmentId, shipperId, message = "" } = req.body;
@@ -81,6 +107,12 @@ exports.sendInvitation = async (req, res) => {
       const shipmentCode = escapeHtml(shipment.shipmentCode || "N/A");
       const pickupLocation = escapeHtml(shipment.pickupLocation || "N/A");
       const deliveryLocation = escapeHtml(shipment.deliveryLocation || "N/A");
+      const pickupDate = escapeHtml(
+        formatDateRange(shipment.pickupDateRange, shipment.pickupDate)
+      );
+      const deliveryDate = escapeHtml(
+        formatDateRange(shipment.deliveryDateRange, shipment.deliveryDate)
+      );
       const safeMessage = escapeHtml(message);
 
       emailSent = await sendEmail({
@@ -94,12 +126,30 @@ exports.sendInvitation = async (req, res) => {
               </div>
               <div style="padding:22px;color:#333;">
                 <p>Hello <strong>${shipperName}</strong>,</p>
-                <p><strong>${customerName}</strong> invited you to review a shipment.</p>
-                <div style="background:#f8f8f8;border-left:4px solid #BF9B53;padding:14px 16px;margin:18px 0;">
-                  <p style="margin:0 0 8px;"><strong>Shipment:</strong> ${shipmentCode}</p>
-                  <p style="margin:0 0 8px;"><strong>Pickup:</strong> ${pickupLocation}</p>
-                  <p style="margin:0;"><strong>Delivery:</strong> ${deliveryLocation}</p>
-                </div>
+                <p><strong>${customerName}</strong> has invited you to track a shipment.</p>
+                <h3 style="margin:20px 0 10px;color:#222;">Shipment Details</h3>
+                <table style="width:100%;border-collapse:collapse;background:#f8f8f8;border-left:4px solid #BF9B53;margin:18px 0;">
+                  <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Shipment Code</strong></td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${shipmentCode}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Pickup</strong></td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${pickupLocation}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Delivery</strong></td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${deliveryLocation}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Pickup Date</strong></td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${pickupDate}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding:10px 12px;"><strong>Delivery Date</strong></td>
+                    <td style="padding:10px 12px;">${deliveryDate}</td>
+                  </tr>
+                </table>
                 ${
                   message
                     ? `<p style="font-size:14px;color:#555;"><strong>Message:</strong> ${safeMessage}</p>`

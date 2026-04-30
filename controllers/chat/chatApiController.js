@@ -6,6 +6,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const cloudinary = require("../../utils/cloudinary");
 const { getOrCreateChatRoom } = require("./chatController");
 const { emitToUser } = require("../../sockets/realtimeSocket");
+const { notifyChatReceiver } = require("../../utils/chatNotificationService");
 
 const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit", "delivered"];
 
@@ -240,15 +241,15 @@ exports.sendRoomMessage = async (req, res) => {
       lastMessageAt: new Date(),
     });
 
+    const receiver = room.participants.find(
+      (participant) =>
+        participant.userId.toString() !== req.user._id.toString() ||
+        participant.role !== requestRole
+    );
+
     const io = req.app.get("io");
     if (io) {
       io.to(roomId).emit("receiveMessage", chatMessage);
-
-      const receiver = room.participants.find(
-        (participant) =>
-          participant.userId.toString() !== req.user._id.toString() ||
-          participant.role !== requestRole
-      );
 
       if (receiver) {
         emitToUser(io, {
@@ -266,6 +267,16 @@ exports.sendRoomMessage = async (req, res) => {
           },
         });
       }
+    }
+
+    if (receiver) {
+      notifyChatReceiver({
+        receiverRole: receiver.role,
+        receiverId: receiver.userId,
+        senderRole: requestRole,
+        messageText: messageText || "Image",
+        shipmentId: room.shipment,
+      });
     }
 
     return res.status(201).json({

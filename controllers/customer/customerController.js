@@ -37,10 +37,12 @@ exports.updateCustomerDetails = async (req, res) => {
     if (phone !== undefined) {
       let cleanedPhone = phone.toString().trim();
 
-      // remove spaces, dashes
-      cleanedPhone = cleanedPhone.replace(/[\s-]/g, "");
+      // Keep leading +, remove spaces, dashes, parentheses and other separators.
+      cleanedPhone = cleanedPhone.startsWith("+")
+        ? `+${cleanedPhone.slice(1).replace(/\D/g, "")}`
+        : cleanedPhone.replace(/\D/g, "");
 
-      // auto add +91 if 10 digit Indian number
+      // Backward compatibility for older Indian-only UI payloads.
       if (/^\d{10}$/.test(cleanedPhone)) {
         cleanedPhone = `+91${cleanedPhone}`;
       }

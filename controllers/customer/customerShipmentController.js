@@ -1005,6 +1005,32 @@ const encryptEmail = (email) => {
   }
 };
 // ---------------- EMAIL FUNCTION ----------------
+const formatShipmentEmailDate = (dateValue) => {
+  if (!dateValue) return "N/A";
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) return "N/A";
+
+  return date.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const formatShipmentEmailDateRange = (range, fallbackDate) => {
+  const start = range?.start || fallbackDate;
+  const end = range?.end || fallbackDate;
+
+  if (!start && !end) return "N/A";
+
+  const startText = formatShipmentEmailDate(start);
+  const endText = formatShipmentEmailDate(end);
+
+  if (startText === "N/A") return endText;
+  if (endText === "N/A" || startText === endText) return startText;
+  return `${startText} - ${endText}`;
+};
+
 const sendRecipientInviteEmail = async ({
   email,
   shipment,
@@ -1044,14 +1070,16 @@ const sendRecipientInviteEmail = async ({
               shipment.deliveryLocation || "N/A"
             }</td></tr>
             <tr><td><strong>Pickup Date</strong></td><td>${
-              shipment.pickupDate
-                ? new Date(shipment.pickupDate).toLocaleDateString()
-                : "N/A"
+              formatShipmentEmailDateRange(
+                shipment.pickupDateRange,
+                shipment.pickupDate
+              )
             }</td></tr>
             <tr><td><strong>Delivery Date</strong></td><td>${
-              shipment.deliveryDate
-                ? new Date(shipment.deliveryDate).toLocaleDateString()
-                : "N/A"
+              formatShipmentEmailDateRange(
+                shipment.deliveryDateRange,
+                shipment.deliveryDate
+              )
             }</td></tr>
           </table>
 

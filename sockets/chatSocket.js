@@ -5,6 +5,7 @@ const { emitToUser } = require("./realtimeSocket");
 const sharp = require("sharp");
 const streamifier = require("streamifier");
 const cloudinary = require("../utils/cloudinary");
+const { notifyChatReceiver } = require("../utils/chatNotificationService");
 
 const MAX_CHAT_IMAGE_SIZE = 10 * 1024 * 1024;
 
@@ -131,6 +132,14 @@ module.exports = (io) => {
                   ? "A customer sent you a message"
                   : "A shipper sent you a message",
             },
+          });
+
+          notifyChatReceiver({
+            receiverRole: receiver.role,
+            receiverId: receiver.userId,
+            senderRole,
+            messageText: trimmedMessage || "Image",
+            shipmentId: room?.shipment,
           });
         }
 
