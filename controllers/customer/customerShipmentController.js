@@ -93,6 +93,28 @@ const processImage = async (file) => {
   }
 };
 
+const getUserName = (user) =>
+  user?.name || user?.fullName || user?.email || "Customer";
+
+const buildNoteEntry = (note, user) => ({
+  note: note.trim(),
+  user: user?._id,
+  userRole: user?.role || "customer",
+  userName: getUserName(user),
+  createdAt: new Date(),
+});
+
+const appendNoteIfNew = (existingLog = [], nextNote, user) => {
+  const note = typeof nextNote === "string" ? nextNote.trim() : "";
+  if (!note) return existingLog || [];
+
+  const log = Array.isArray(existingLog) ? existingLog : [];
+  const lastNote = log.length ? String(log[log.length - 1]?.note || "").trim() : "";
+  if (lastNote === note) return log;
+
+  return [...log, buildNoteEntry(note, user)];
+};
+
 // ---------------- Helper: Fetch Shipment By ID ----------------
 exports.fetchShipmentById = async (shipmentId, userId) => {
   console.log(`[FETCH SHIPMENT] shipmentId: ${shipmentId}, userId: ${userId}`);
@@ -144,6 +166,10 @@ exports.createShipment = async (req, res) => {
 
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
+      const hasIncomingNote = h.notes !== undefined;
+      const horseNote = hasIncomingNote
+        ? String(h.notes || "").trim()
+        : existingHorse.notes || "";
 
       const horseObj = {
         registeredName: h.registeredName || "",
@@ -153,6 +179,8 @@ exports.createShipment = async (req, res) => {
         age: h.age || null,
         sex: h.sex || "",
         generalInfo: h.generalInfo || "",
+        notes: horseNote,
+        notesLog: horseNote ? [buildNoteEntry(horseNote, req.user)] : [],
         requestedStallSize: h.stallType || "Box",
         documents: {},
       };
@@ -220,6 +248,11 @@ exports.createShipment = async (req, res) => {
     }
 
     // ===== CREATE SHIPMENT =====
+    const shipmentNote =
+      typeof req.body.additionalInfo === "string"
+        ? req.body.additionalInfo.trim()
+        : "";
+
     const shipment = new CustomerShipment({
       customer: customerId,
 
@@ -250,7 +283,10 @@ exports.createShipment = async (req, res) => {
       },
 
       numberOfHorses,
-      additionalInfo: req.body.additionalInfo || "",
+      additionalInfo: shipmentNote,
+      additionalInfoLog: shipmentNote
+        ? [buildNoteEntry(shipmentNote, req.user)]
+        : [],
       horses,
 
       publish: req.body.publish === "true" || req.body.publish === true,
@@ -460,18 +496,54 @@ exports.updateShipmentByCustomer = async (req, res) => {
       console.log("Shipment is LOCKED");
 
       if (req.body?.additionalInfo) {
-        shipment.additionalInfo = req.body.additionalInfo;
+        const nextAdditionalInfo = req.body.additionalInfo.trim();
+        shipment.additionalInfo = nextAdditionalInfo;
+        shipment.additionalInfoLog = appendNoteIfNew(
+          shipment.additionalInfoLog,
+          nextAdditionalInfo,
+          req.user
+        );
+      }
+
+      let lockedHorseData = [];
+      try {
+        lockedHorseData = req.body.horses
+          ? Array.isArray(req.body.horses)
+            ? req.body.horses
+            : JSON.parse(req.body.horses)
+          : [];
+      } catch (err) {
+        console.log("Locked horse JSON parse error:", err.message);
+        return res.status(400).json({
+          success: false,
+          message: "Invalid horses data",
+        });
       }
 
       const updatedHorses = [];
 
       for (let i = 0; i < shipment.horses.length; i++) {
         const existingHorse = shipment.horses[i];
+        const incomingHorse = lockedHorseData[i] || {};
 
         const horseObj = {
           ...existingHorse.toObject(),
           documents: { ...existingHorse.documents },
         };
+
+        if (incomingHorse.generalInfo !== undefined) {
+          horseObj.generalInfo = incomingHorse.generalInfo || "";
+        }
+
+        if (incomingHorse.notes !== undefined) {
+          const nextNote = incomingHorse.notes.trim();
+          horseObj.notes = nextNote;
+          horseObj.notesLog = appendNoteIfNew(
+            horseObj.notesLog,
+            nextNote,
+            req.user
+          );
+        }
 
         const handleFile = async (field, type) => {
           const key = `horses[${i}][${field}]`;
@@ -541,7 +613,13 @@ exports.updateShipmentByCustomer = async (req, res) => {
     }
 
     if (body.additionalInfo !== undefined) {
-      shipment.additionalInfo = body.additionalInfo;
+      const nextAdditionalInfo = body.additionalInfo.trim();
+      shipment.additionalInfo = nextAdditionalInfo;
+      shipment.additionalInfoLog = appendNoteIfNew(
+        shipment.additionalInfoLog,
+        nextAdditionalInfo,
+        req.user
+      );
     }
 
     if (body.publish !== undefined) {
@@ -586,6 +664,8 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
     for (let i = 0; i < horseData.length; i++) {
       const h = horseData[i];
+      const existingHorse = shipment.horses[i] || {};
+      const horseNote = typeof h.notes === "string" ? h.notes.trim() : "";
 
       console.log(`Processing horse index: ${i}`, h);
 
@@ -597,6 +677,10 @@ exports.updateShipmentByCustomer = async (req, res) => {
         age: h.age || null,
         sex: h.sex || "",
         generalInfo: h.generalInfo || "",
+        notes: horseNote,
+        notesLog: hasIncomingNote
+          ? appendNoteIfNew(existingHorse.notesLog, horseNote, req.user)
+          : existingHorse.notesLog || [],
         requestedStallSize: h.stallType || "Box",
         documents: {},
       };
@@ -623,8 +707,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
         return await uploadToCloudinary(file, type);
       };
-
-      const existingHorse = shipment.horses[i] || {};
 
       horseObj.photo =
         (await handleFile("photo", "photo")) || existingHorse.photo;

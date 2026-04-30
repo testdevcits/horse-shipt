@@ -1,43 +1,99 @@
-// utils/sendQuoteEmail.js
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 
-/**
- * Send email to a shipper specifically for quotes
- * @param {ObjectId} shipperId - Shipper's MongoDB ID
- * @param {String} subject - Email subject
- * @param {String} text - Email body text
- */
-const sendQuoteEmail = async (shipperId, subject, text) => {
+const sendQuoteEmail = async (shipperId, subject, data) => {
   try {
     const shipper = await Shipper.findById(shipperId);
+
     if (!shipper || !shipper.email) {
       console.warn("[QUOTE MAIL] No valid email for shipper:", shipperId);
       return;
     }
 
     const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === "true",
+      host: process.env.EMAIL_HOST,
+      port: Number(process.env.EMAIL_PORT),
+      secure: true,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
     });
 
+    const html = `
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif;">
+  <div style="padding:20px;">
+    <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:10px;border:1px solid #eee;overflow:hidden;">
+
+      <!-- HEADER -->
+      <div style="background:#BF9B53;padding:18px;text-align:center;">
+        <h2 style="color:white;margin:0;">Horse Shipt</h2>
+      </div>
+
+      <!-- CONTENT -->
+      <div style="padding:24px;">
+
+        <p style="font-size:14px;color:#333;">
+          Hello <strong>${shipper.name || "Shipper"}</strong>,
+        </p>
+
+        <p style="font-size:14px;color:#555;">
+          Your quote has been successfully sent for the shipment.
+        </p>
+
+        <div style="margin:20px 0;padding:16px;background:#f8f8f8;border-radius:8px;">
+          <h4 style="margin:0 0 10px 0;">Quote Summary</h4>
+
+          <p><strong>Shipment Code:</strong> ${data?.shipmentCode || "N/A"}</p>
+          <p><strong>Total Price:</strong> ${data?.currency || "USD"} ${
+      data?.totalPrice
+    }</p>
+          <p><strong>Pickup Time:</strong> ${data?.pickupTime || "-"}</p>
+          <p><strong>Estimated Arrival:</strong> ${
+            data?.estimatedArrivalTime || "-"
+          }</p>
+        </div>
+
+        <div style="margin:20px 0;padding:12px;background:#fff7ed;border-left:4px solid #BF9B53;">
+          <p style="margin:0;font-size:13px;color:#444;">
+            Please wait for customer approval. You will be notified once the quote is accepted.
+          </p>
+        </div>
+
+        <div style="margin:20px 0;">
+          <a href="${process.env.FRONTEND_URL}"
+             style="background:#BF9B53;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;">
+            View Dashboard
+          </a>
+        </div>
+
+        <p style="font-size:14px;color:#333;">
+          Thanks,<br/>
+          <strong>Horse Shipt Team</strong>
+        </p>
+
+      </div>
+
+      <!-- FOOTER -->
+      <div style="background:#f1f1f1;text-align:center;padding:10px;font-size:12px;">
+        © ${new Date().getFullYear()} Horse Shipt
+      </div>
+
+    </div>
+  </div>
+</body>
+    `;
+
     await transporter.sendMail({
-      from: `"HorseShipt" <${process.env.SMTP_USER}>`,
+      from: process.env.EMAIL_FROM,
       to: shipper.email,
-      subject,
-      text,
+      subject: subject || "Quote Sent Successfully - Horse Shipt",
+      html,
     });
 
-    console.log(
-      `[QUOTE MAIL] Email sent to ${shipper.email} with subject: "${subject}"`
-    );
+    console.log("[QUOTE MAIL] Email sent to:", shipper.email);
   } catch (error) {
-    console.error("[QUOTE MAIL ERROR] Failed to send email:", error);
+    console.error("[QUOTE MAIL ERROR]", error.message);
   }
 };
 

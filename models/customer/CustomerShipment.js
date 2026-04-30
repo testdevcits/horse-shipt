@@ -7,6 +7,18 @@ const locationSchema = new mongoose.Schema({
   updatedAt: { type: Date, default: Date.now },
 });
 
+// ---------------- Chronological Notes Schema ----------------
+const noteLogSchema = new mongoose.Schema(
+  {
+    note: { type: String, required: true },
+    user: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+    userRole: { type: String, default: "customer" },
+    userName: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 // ---------------- Horse Snapshot Schema ----------------
 const horseSchema = new mongoose.Schema(
   {
@@ -64,6 +76,8 @@ const horseSchema = new mongoose.Schema(
     },
 
     generalInfo: { type: String, default: "" },
+    notes: { type: String, default: "" },
+    notesLog: { type: [noteLogSchema], default: [] },
   },
   { _id: false }
 );
@@ -151,6 +165,7 @@ const shipmentSchema = new mongoose.Schema(
     },
 
     additionalInfo: { type: String, default: "" },
+    additionalInfoLog: { type: [noteLogSchema], default: [] },
 
     // ---------------- Live Tracking ----------------
     currentLocation: { type: locationSchema, default: null },
