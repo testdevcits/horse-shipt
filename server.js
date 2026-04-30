@@ -258,6 +258,7 @@ app.set("io", io);
 
 // Attach socket logic
 require("./sockets/chatSocket")(io);
+require("./sockets/realtimeSocket")(io);
 
 // Debug socket connections
 io.on("connection", (socket) => {

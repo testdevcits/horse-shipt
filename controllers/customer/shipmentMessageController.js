@@ -1,5 +1,6 @@
 const ShipmentMessage = require("../../models/ShipmentMessage");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const { emitToUser } = require("../../sockets/realtimeSocket");
 
 // ----------------------------------------------------
 // Customer Send Message
@@ -44,6 +45,20 @@ exports.sendMessage = async (req, res) => {
     });
 
     await newMessage.save();
+
+    if (shipment.shipper?._id) {
+      emitToUser(req.app.get("io"), {
+        role: "shipper",
+        userId: shipment.shipper._id,
+        event: "horse_shipt:shipment_message_created",
+        payload: newMessage,
+        notification: {
+          type: "shipment_message",
+          title: "New shipment message",
+          message: `${shipment.customer.name || "A customer"} sent a shipment message.`,
+        },
+      });
+    }
 
     return res.status(201).json({
       success: true,

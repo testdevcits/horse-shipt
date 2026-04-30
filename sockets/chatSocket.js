@@ -1,5 +1,7 @@
 const Message = require("../models/chat/messageModel");
+const ChatRoom = require("../models/chat/chatRoomModel");
 const { getOrCreateChatRoom } = require("../controllers/chat/chatController");
+const { emitToUser } = require("./realtimeSocket");
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
@@ -22,6 +24,30 @@ module.exports = (io) => {
       });
 
       io.to(roomId).emit("receiveMessage", msg);
+
+      const room = await ChatRoom.findById(roomId).lean();
+      const receiver = room?.participants?.find(
+        (participant) =>
+          participant.userId.toString() !== senderId.toString() ||
+          participant.role !== senderRole
+      );
+
+      if (receiver) {
+        emitToUser(io, {
+          role: receiver.role,
+          userId: receiver.userId,
+          event: "horse_shipt:chat_message_created",
+          payload: msg,
+          notification: {
+            type: "chat_message",
+            title: "New chat message",
+            message:
+              senderRole === "customer"
+                ? "A customer sent you a message"
+                : "A shipper sent you a message",
+          },
+        });
+      }
     });
 
     socket.on("disconnect", () => {

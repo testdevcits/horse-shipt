@@ -3,6 +3,7 @@ const CustomerShipment = require("../../models/shipper/ShipperShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const { sendShipperEmail } = require("../../utils/shipperMailSend");
 const { sendShipperSms } = require("../../utils/shipperSmsSend");
+const { emitToUser } = require("../../sockets/realtimeSocket");
 
 // ----------------------------------------------------
 // Shipper Send Message
@@ -51,6 +52,18 @@ exports.sendMessage = async (req, res) => {
     });
 
     await newMessage.save();
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: shipment.customer._id,
+      event: "horse_shipt:shipment_message_created",
+      payload: newMessage,
+      notification: {
+        type: "shipment_message",
+        title: "New shipment message",
+        message: `${shipment.shipper.name || "A shipper"} sent a shipment message.`,
+      },
+    });
 
     // ------------------------------------------------
     // 🔔 Send Notification (Based on Shipper Settings)

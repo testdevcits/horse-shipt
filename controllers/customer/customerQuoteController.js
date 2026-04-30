@@ -12,6 +12,7 @@ const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 
 const Stripe = require("stripe");
 const { notifyQuote } = require("../../utils/notifyQuote/notifyQuote");
+const { emitToUser } = require("../../sockets/realtimeSocket");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /* =========================================================
@@ -204,6 +205,33 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         console.error("[ERROR] Notification failed:", err.message);
       }
     }
+
+    emitToUser(req.app.get("io"), {
+      role: "shipper",
+      userId: quote.shipper._id,
+      event: "horse_shipt:quote_accepted",
+      payload: {
+        quote,
+        shipmentId: quote.shipment._id,
+        shipmentCode: quote.shipment.shipmentCode,
+      },
+      notification: {
+        type: "quote_accepted",
+        title: "Quote accepted",
+        message: `${quote.shipment.customer.name || "A customer"} accepted your quote.`,
+      },
+    });
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: customerId,
+      event: "horse_shipt:quote_accepted",
+      payload: {
+        quote,
+        shipmentId: quote.shipment._id,
+        shipmentCode: quote.shipment.shipmentCode,
+      },
+    });
 
     // ---------------- RESPONSE ----------------
     return res.status(200).json({
@@ -572,6 +600,22 @@ exports.cancelQuote = async (req, res) => {
     await quote.save();
 
     console.log("Quote updated successfully");
+
+    emitToUser(req.app.get("io"), {
+      role: "shipper",
+      userId: quote.shipper,
+      event: "horse_shipt:quote_cancelled",
+      payload: {
+        quote,
+        shipmentId: quote.shipment._id,
+        cancelledBy: "customer",
+      },
+      notification: {
+        type: "quote_cancelled",
+        title: "Quote cancelled",
+        message: "A customer cancelled a quote.",
+      },
+    });
 
     /* ---------------- RESPONSE ---------------- */
     return res.status(200).json({

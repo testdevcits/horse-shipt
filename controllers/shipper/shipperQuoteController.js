@@ -9,6 +9,7 @@ const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
+const { emitToUser } = require("../../sockets/realtimeSocket");
 
 // ==========================================================
 // SHIPPER CANCEL QUOTE / ASSIGNED SHIPMENT
@@ -150,6 +151,22 @@ exports.shipperCancelQuote = async (req, res) => {
 
     shipment.status = "cancelled";
     await shipment.save();
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: shipment.customer,
+      event: "horse_shipt:quote_cancelled",
+      payload: {
+        quote,
+        shipmentId: shipment._id,
+        cancelledBy: "shipper",
+      },
+      notification: {
+        type: "quote_cancelled",
+        title: "Quote cancelled",
+        message: "A shipper cancelled an accepted quote.",
+      },
+    });
 
     console.log("[COMPLETE] Done");
 
@@ -389,6 +406,24 @@ exports.addQuote = async (req, res) => {
       }
     }
 
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: shipmentExists.customer._id,
+      event: "horse_shipt:quote_created",
+      payload: {
+        quote,
+        shipmentId: shipmentExists._id,
+        shipmentCode: shipmentExists.shipmentCode,
+      },
+      notification: {
+        type: "quote_created",
+        title: "New quote received",
+        message: `${shipper.name || "A shipper"} submitted a quote for ${
+          shipmentExists.shipmentCode || "your shipment"
+        }`,
+      },
+    });
+
     console.log("=====================================");
 
     return res.status(201).json({
@@ -501,6 +536,27 @@ exports.assignVehicleToQuote = async (req, res) => {
     vehicle.driverStatus = "BUSY";
 
     await vehicle.save();
+
+    const shipmentForQuote = await CustomerShipment.findById(
+      quote.shipment
+    ).select("customer shipmentCode");
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: shipmentForQuote?.customer,
+      event: "horse_shipt:quote_vehicle_assigned",
+      payload: {
+        quote,
+        shipmentId: quote.shipment,
+      },
+      notification: {
+        type: "vehicle_assigned",
+        title: "Vehicle assigned",
+        message: `Your shipper assigned a vehicle for ${
+          shipmentForQuote?.shipmentCode || "your shipment"
+        }.`,
+      },
+    });
 
     console.log("[VEHICLE ASSIGNED] Success", {
       quoteId: quote._id,

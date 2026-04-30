@@ -3,6 +3,7 @@ const Shipment = require("../../models/customer/CustomerShipment");
 const Customer = require("../../models/customer/customerModel");
 const Shipper = require("../../models/shipper/shipperModel");
 const sendEmail = require("../../utils/sendShipmentInviteEmail");
+const { emitToUser } = require("../../sockets/realtimeSocket");
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -114,6 +115,43 @@ exports.sendInvitation = async (req, res) => {
         `,
       });
     }
+
+    const io = req.app.get("io");
+    emitToUser(io, {
+      role: "shipper",
+      userId: shipperId,
+      event: "horse_shipt:shipment_invitation_created",
+      payload: {
+          ...invitation.toObject(),
+          shipment: {
+            _id: shipment._id,
+            shipmentCode: shipment.shipmentCode,
+            status: shipment.status,
+            pickupLocation: shipment.pickupLocation,
+            deliveryLocation: shipment.deliveryLocation,
+            pickupDateRange: shipment.pickupDateRange,
+            deliveryDateRange: shipment.deliveryDateRange,
+            horses: shipment.horses || [],
+            numberOfHorses: shipment.numberOfHorses,
+            estimatedDistance: shipment.estimatedDistance,
+            transportType: shipment.transportType,
+          },
+          customer: customer
+            ? {
+                _id: customer._id,
+                name: customer.name,
+                email: customer.email,
+              }
+            : req.user.id,
+      },
+      notification: {
+        type: "shipment_invitation",
+        title: "New shipment invitation",
+        message: `${customer?.name || "A customer"} invited you to shipment ${
+          shipment.shipmentCode || ""
+        }`,
+      },
+    });
 
     return res.json({
       success: true,
