@@ -854,31 +854,22 @@ exports.cancelSubscription = async (req, res) => {
     }
 
     // ============================
-    // CASE 1: FREE TRIAL ONLY (NO PAYMENT STARTED)
+    // CASE 1: TRIAL PERIOD
+    // Business rule: trial subscriptions cannot be canceled manually.
     // ============================
-    if (
-      stripeSub.status === "trialing" &&
-      stripeSub.cancel_at_period_end === false
-    ) {
-      await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
-        cancel_at_period_end: true,
-      });
-
-      subscription.status = "canceled";
-      subscription.cancelAtPeriodEnd = true;
-      subscription.canceledAt = new Date().toISOString();
-      subscription.cancelReason = reason;
-
-      await subscription.save();
-
-      return res.json({
-        success: true,
-        message: "Trial canceled successfully. You will not be charged.",
+    if (stripeSub.status === "trialing") {
+      return res.status(400).json({
+        success: false,
+        code: "TRIAL_CANCELLATION_NOT_ALLOWED",
+        message:
+          "You are currently in the free trial period. Cancellation is not available until the trial ends.",
         data: {
           plan: "monthly",
-          status: "canceled",
-          cancelAtPeriodEnd: true,
-          accessValidTill: subscription.currentPeriodEnd,
+          status: "trialing",
+          trialEnd: stripeSub.trial_end
+            ? new Date(stripeSub.trial_end * 1000).toISOString()
+            : subscription.trialEnd,
+          cancelAllowed: false,
         },
       });
     }
@@ -897,7 +888,7 @@ exports.cancelSubscription = async (req, res) => {
     }
 
     // ============================
-    // CASE 3: ACTIVE SUBSCRIPTION
+    // CASE 3: ACTIVE / PAST DUE SUBSCRIPTION
     // ============================
     const updatedStripeSub = await stripe.subscriptions.update(
       subscription.stripeSubscriptionId,
