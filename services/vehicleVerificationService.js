@@ -22,7 +22,6 @@ async function verifyVehicleAsync(vehicleId, vin) {
       "verificationMeta.verificationSource": "NHTSA_API",
     });
   } catch (error) {
-    console.log("Vehicle verification failed:", error.message);
   }
 }
 

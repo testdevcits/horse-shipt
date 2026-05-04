@@ -165,8 +165,6 @@ router.put(
   customerAuth,
   upload.any(),
   (req, res, next) => {
-    console.log("=== Shipment Update Debug ===");
-    console.log("Body:", req.body);
     console.log(
       "Files:",
       (req.files || []).map((f) => ({

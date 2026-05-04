@@ -11,6 +11,9 @@ const adminAuth = require("../../middleware/admin/adminAuth");
 // Get all shippers
 router.get("/all", adminAuth, adminShipperController.getAllShippers);
 
+// Get full shipper profile and operational data
+router.get("/:id/full-data", adminAuth, adminShipperController.getShipperFullData);
+
 // Get single shipper by ID
 router.get("/:id", adminAuth, adminShipperController.getShipperById);
 

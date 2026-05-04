@@ -12,22 +12,18 @@ const transporter = nodemailer.createTransport({
 });
 
 // -------------------- DEBUG --------------------
-console.log("SMTP_USER:", process.env.SMTP_USER);
-console.log("SMTP_PASS:", process.env.SMTP_PASS ? "Loaded" : "Missing");
 
 // -------------------- VERIFY CONNECTION --------------------
 transporter.verify((error) => {
   if (error) {
     console.error("SMTP ERROR:", error.message);
   } else {
-    console.log("SMTP ready");
   }
 });
 
 // -------------------- SEND OTP MAIL --------------------
 exports.sendOtpMail = async (email, otp) => {
   try {
-    console.log("Sending OTP to:", email);
 
     const info = await transporter.sendMail({
       from: `"HorseShipt" <${process.env.SMTP_USER}>`,
@@ -51,8 +47,6 @@ exports.sendOtpMail = async (email, otp) => {
 </div>
       `,
     });
-
-    console.log("OTP email sent:", info.response);
   } catch (error) {
     console.error("OTP MAIL ERROR:", error.message);
     throw error;

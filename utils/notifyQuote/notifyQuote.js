@@ -70,8 +70,6 @@ const notifyQuote = async ({
           subject: `Quote Accepted by ${customerName}`,
           html,
         });
-
-        console.log("[INFO] Email sent:", shipperEmail);
       } catch (emailError) {
         console.error("[ERROR] Email failed:", emailError.message);
       }
@@ -83,16 +81,12 @@ const notifyQuote = async ({
         const message = `Hi ${customerName}, your quote for ${shipment.shipmentCode} is accepted. Amount: ${quote.totalPrice} ${quote.currency}. View here: https://horse-shipt-frontend.vercel.app/shipper/shipments`;
 
         await sendSMS({ phone: phoneToUse, message });
-
-        console.log("[INFO] SMS sent:", phoneToUse);
       } catch (smsError) {
         console.error("[ERROR] SMS failed:", smsError.message);
       }
     } else {
       console.warn("[WARN] Invalid or missing phone, SMS skipped");
     }
-
-    console.log("[INFO] Notification process completed");
   } catch (err) {
     console.error("[ERROR] notifyQuote failed:", err.message);
   }

@@ -16,14 +16,11 @@ exports.markShipmentDelivered = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    console.log("MARK DELIVERY REQUEST:", shipmentId);
-
     const shipment = await CustomerShipment.findById(shipmentId).populate(
       "customer"
     );
 
     if (!shipment) {
-      console.log("Shipment not found");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
@@ -31,7 +28,6 @@ exports.markShipmentDelivered = async (req, res) => {
     }
 
     if (shipment.status === "delivered" || shipment.deliveryOtpVerified) {
-      console.log("Shipment already delivered");
       return res.status(400).json({
         success: false,
         message: "Shipment already delivered",
@@ -39,7 +35,6 @@ exports.markShipmentDelivered = async (req, res) => {
     }
 
     if (shipment.shipper && shipment.shipper.toString() !== req.user.id) {
-      console.log("Unauthorized shipper");
       return res.status(403).json({
         success: false,
         message: "Unauthorized action",
@@ -57,8 +52,6 @@ exports.markShipmentDelivered = async (req, res) => {
     shipment.deliveryOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
     await shipment.save();
-
-    console.log("OTP generated:", otp);
 
     const subject = "Shipment Delivery OTP";
     const message = `
@@ -97,14 +90,10 @@ exports.verifyDeliveryOtp = async (req, res) => {
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
-    console.log("=====================================");
-    console.log("[VERIFY DELIVERY OTP] Start", { shipmentId, otp });
-
     // ================= FETCH SHIPMENT =================
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
-      console.log("[ERROR] Shipment not found");
       return res
         .status(404)
         .json({ success: false, message: "Shipment not found" });
@@ -129,7 +118,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     // ================= VALIDATION =================
     if (shipment.deliveryOtpVerified) {
-      console.log("[ERROR] Already delivered");
       return res
         .status(400)
         .json({ success: false, message: "Shipment already delivered" });
@@ -150,8 +138,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
       return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
-    console.log("[OTP VERIFIED SUCCESSFULLY]");
-
     // ================= FIND QUOTE =================
     const quote = await ShipmentQuote.findOne({
       shipment: shipmentId,
@@ -159,7 +145,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }).populate("shipper");
 
     if (!quote) {
-      console.log("[ERROR] Quote not found");
       return res
         .status(404)
         .json({ success: false, message: "Accepted quote not found" });
@@ -174,7 +159,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     });
 
     if (quote.paymentStatus !== "paid") {
-      console.log("[ERROR] Payment not completed");
       return res
         .status(400)
         .json({ success: false, message: "Payment not completed yet" });
@@ -189,11 +173,8 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
-    console.log("[SHIPMENT DELIVERED]", shipment._id);
-
     // ================= FREE VEHICLE =================
     if (quote.vehicle) {
-      console.log("[FREE VEHICLE START]", quote.vehicle);
 
       const vehicle = await ShipperVehicle.findById(quote.vehicle);
 
@@ -213,15 +194,12 @@ exports.verifyDeliveryOtp = async (req, res) => {
           currentShipment: vehicle.currentShipment,
         });
       } else {
-        console.log("[WARNING] Vehicle not found");
       }
     } else {
-      console.log("[WARNING] No vehicle linked to quote");
     }
 
     // ================= FREE DRIVER =================
     if (quote.assignedDriver) {
-      console.log("[FREE DRIVER START]", quote.assignedDriver);
 
       const driver = await Driver.findById(quote.assignedDriver);
 
@@ -239,15 +217,12 @@ exports.verifyDeliveryOtp = async (req, res) => {
           status: driver.driverStatus,
         });
       } else {
-        console.log("[WARNING] Driver not found");
       }
     } else {
-      console.log("[WARNING] No driver linked to quote");
     }
 
     // ================= STRIPE PAYOUT =================
     try {
-      console.log("[STRIPE] Start payout");
 
       const paymentIntent = await stripe.paymentIntents.retrieve(
         quote.stripePaymentIntentId
@@ -291,13 +266,10 @@ exports.verifyDeliveryOtp = async (req, res) => {
         source_transaction: charge.id,
       });
 
-      console.log("[TRANSFER SUCCESS]", transfer.id);
-
       quote.stripeTransferId = transfer.id;
       quote.payoutStatus = "transferred";
       quote.paymentReleasedAt = new Date();
     } catch (err) {
-      console.log("[TRANSFER FAILED]", err.message);
 
       quote.payoutStatus = "pending";
       quote.payoutError = err.message;
@@ -306,10 +278,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
     // ================= FINAL QUOTE =================
     quote.tripStatus = "completed";
     await quote.save();
-
-    console.log("[QUOTE FINAL UPDATED]", quote._id);
-
-    console.log("=====================================");
 
     return res.json({
       success: true,
@@ -330,8 +298,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
 exports.getShipmentDeliveryStatus = async (req, res) => {
   try {
     const { shipmentId } = req.params;
-
-    console.log("GET DELIVERY STATUS:", shipmentId);
 
     const shipment = await CustomerShipment.findById(shipmentId);
 

@@ -54,8 +54,6 @@ const sendQuoteSms = async (shipperId, options = {}) => {
       return;
     }
 
-    console.log("[DEBUG] SMS phoneToUse:", phoneToUse);
-
     // ---------------- MESSAGE ----------------
     let message = options.message;
 
@@ -91,8 +89,6 @@ const sendQuoteSms = async (shipperId, options = {}) => {
       from: process.env.TWILIO_PHONE,
       to: phoneToUse,
     });
-
-    console.log(`[SUCCESS] SMS sent to ${phoneToUse} (SID: ${sms.sid})`);
     return sms;
   } catch (err) {
     console.error("[ERROR] sendQuoteSms failed:", err.message);

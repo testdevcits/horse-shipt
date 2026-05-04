@@ -53,9 +53,7 @@ const uploadToCloudinary = async (file, type = "photo") => {
 const deleteFromCloudinary = async (public_id) => {
   if (!public_id) return;
   try {
-    console.log(`[DELETE] Cloudinary public_id: ${public_id}`);
     await cloudinary.uploader.destroy(public_id, { resource_type: "auto" });
-    console.log("[DELETE SUCCESS]");
   } catch (err) {
     console.error("[DELETE ERROR]", err);
   }
@@ -117,21 +115,16 @@ const appendNoteIfNew = (existingLog = [], nextNote, user) => {
 
 // ---------------- Helper: Fetch Shipment By ID ----------------
 exports.fetchShipmentById = async (shipmentId, userId) => {
-  console.log(`[FETCH SHIPMENT] shipmentId: ${shipmentId}, userId: ${userId}`);
   if (!mongoose.Types.ObjectId.isValid(shipmentId)) return null;
 
   const shipment = await CustomerShipment.findById(shipmentId);
   if (!shipment) {
-    console.log("[FETCH SHIPMENT] Not found");
     return null;
   }
 
   if (shipment.customer.toString() !== userId.toString()) {
-    console.log("[FETCH SHIPMENT] Unauthorized access");
     return null;
   }
-
-  console.log("[FETCH SHIPMENT] Found");
   return shipment;
 };
 
@@ -438,18 +431,11 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
 
 exports.updateShipmentByCustomer = async (req, res) => {
   try {
-    console.log("=== UPDATE SHIPMENT START ===");
 
     const shipmentId = req.params.shipmentId;
     const customerId = req.user?._id;
 
-    console.log("Shipment ID:", shipmentId);
-    console.log("Customer ID:", customerId);
-    console.log("Request Body:", req.body);
-    console.log("Request Files:", req.files);
-
     if (!shipmentId || !customerId) {
-      console.log("Missing shipmentId or customerId");
       return res.status(400).json({
         success: false,
         message: "Invalid request",
@@ -460,8 +446,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
       _id: shipmentId,
       customer: customerId,
     });
-
-    console.log("Fetched Shipment:", shipment ? "FOUND" : "NOT FOUND");
 
     if (!shipment) {
       return res.status(404).json({
@@ -475,22 +459,16 @@ exports.updateShipmentByCustomer = async (req, res) => {
       shipment.status
     );
 
-    console.log("Shipment Status:", shipment.status);
-    console.log("Is Locked:", isLocked);
-
     // ===== FILE MAP =====
     const fileMap = {};
     (req.files || []).forEach((file) => {
       fileMap[file.fieldname] = file;
     });
 
-    console.log("File Map Keys:", Object.keys(fileMap));
-
     // =========================================================
     // CASE 1: LOCKED
     // =========================================================
     if (isLocked) {
-      console.log("Shipment is LOCKED");
 
       if (req.body?.additionalInfo) {
         const nextAdditionalInfo = req.body.additionalInfo.trim();
@@ -510,7 +488,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
             : JSON.parse(req.body.horses)
           : [];
       } catch (err) {
-        console.log("Locked horse JSON parse error:", err.message);
         return res.status(400).json({
           success: false,
           message: "Invalid horses data",
@@ -547,7 +524,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
           if (!fileMap[key]) return null;
 
           const file = fileMap[key];
-          console.log(`Processing file: ${key}`);
 
           if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
             throw new Error(`${field} too large`);
@@ -580,8 +556,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
       await shipment.save();
 
-      console.log("LOCKED shipment updated");
-
       return res.status(200).json({
         success: true,
         message: "Only documents and notes updated (shipment locked)",
@@ -592,13 +566,9 @@ exports.updateShipmentByCustomer = async (req, res) => {
     // =========================================================
     // CASE 2: NOT LOCKED
     // =========================================================
-    console.log("Shipment is NOT LOCKED");
 
     // ===== SAFE BODY =====
     const body = req.body || {};
-
-    console.log("pickupLocation:", body.pickupLocation);
-    console.log("deliveryLocation:", body.deliveryLocation);
 
     // ===== BASIC FIELDS (SAFE FIX) =====
     if (body.pickupLocation !== undefined) {
@@ -648,14 +618,11 @@ exports.updateShipmentByCustomer = async (req, res) => {
           : JSON.parse(body.horses)
         : [];
     } catch (err) {
-      console.log("Horse JSON parse error:", err.message);
       return res.status(400).json({
         success: false,
         message: "Invalid horses data",
       });
     }
-
-    console.log("Horse Data Length:", horseData.length);
 
     const updatedHorses = [];
 
@@ -666,8 +633,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
       const horseNote = hasIncomingNote
         ? String(h.notes || "").trim()
         : existingHorse.notes || "";
-
-      console.log(`Processing horse index: ${i}`, h);
 
       const horseObj = {
         registeredName: h.registeredName || "",
@@ -690,7 +655,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
         if (!fileMap[key]) return null;
 
         const file = fileMap[key];
-        console.log(`Uploading file: ${key}`);
 
         if (getFileSizeBytes(file) > MAX_FILE_SIZE) {
           throw new Error(`${field} too large`);
@@ -733,8 +697,6 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
     // ===== SAVE =====
     await shipment.save();
-
-    console.log("Shipment updated successfully");
 
     return res.status(200).json({
       success: true,
@@ -965,7 +927,6 @@ const IV_LENGTH = 16;
 
 const encryptEmail = (email) => {
   try {
-    console.log("Encrypting email:", email);
 
     if (!email || typeof email !== "string") {
       throw new Error("Invalid email for encryption");
@@ -983,8 +944,6 @@ const encryptEmail = (email) => {
 
     const iv = crypto.randomBytes(IV_LENGTH);
 
-    console.log("Using ENCRYPTION_KEY:", ENCRYPTION_KEY);
-
     const cipher = crypto.createCipheriv(
       "aes-256-cbc",
       Buffer.from(ENCRYPTION_KEY, "hex"),
@@ -995,8 +954,6 @@ const encryptEmail = (email) => {
     encrypted += cipher.final("hex");
 
     const finalData = iv.toString("hex") + ":" + encrypted;
-
-    console.log("Encryption successful");
 
     return finalData;
   } catch (err) {
@@ -1038,8 +995,6 @@ const sendRecipientInviteEmail = async ({
   link, // receive link from publishShipment
 }) => {
   try {
-    console.log("Preparing email for:", email);
-    console.log("Invite link:", link);
 
     if (!email || typeof email !== "string") {
       throw new Error("Invalid email");
@@ -1109,8 +1064,6 @@ const sendRecipientInviteEmail = async ({
       subject: `Shipment Invite from ${customerName}`,
       html,
     });
-
-    console.log("Recipient email sent:", email);
   } catch (err) {
     console.error("Email send error:", err.message);
   }
@@ -1121,10 +1074,7 @@ exports.publishShipment = async (req, res) => {
   try {
     const { shipmentId } = req.params;
 
-    console.log("➡️ Incoming publish request for shipmentId:", shipmentId);
-
     if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
-      console.log("Invalid shipment ID");
       return res.status(400).json({ message: "Invalid shipment ID" });
     }
 
@@ -1133,15 +1083,11 @@ exports.publishShipment = async (req, res) => {
       customer: req.user._id,
     });
 
-    console.log("Shipment fetched:", shipment?._id);
-
     if (!shipment) {
-      console.log("Shipment not found");
       return res.status(404).json({ message: "Shipment not found" });
     }
 
     if (shipment.publish) {
-      console.log("Shipment already published");
       return res.status(400).json({ message: "Shipment already published" });
     }
 
@@ -1150,10 +1096,7 @@ exports.publishShipment = async (req, res) => {
     shipment.status = "open_for_offers";
     shipment.publishedAt = new Date();
 
-    console.log("Shipment marked as published");
-
     // ---------------- RECIPIENT LOGIC ----------------
-    console.log("Raw recipientEmail:", shipment.recipientEmail);
 
     if (
       shipment.recipientEmail &&
@@ -1161,10 +1104,7 @@ exports.publishShipment = async (req, res) => {
     ) {
       const normalizedEmail = shipment.recipientEmail.toLowerCase().trim();
 
-      console.log("Normalized Email:", normalizedEmail);
-
       if (!normalizedEmail) {
-        console.log("Email became empty after normalization");
         throw new Error("Invalid recipient email");
       }
 
@@ -1173,8 +1113,6 @@ exports.publishShipment = async (req, res) => {
       shipment.inviteToken = token;
       shipment.inviteTokenExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-      console.log("Invite token generated:", token);
-
       // link recipient to existing user if present
       const existingUser = await Customer.findOne({
         email: normalizedEmail,
@@ -1182,9 +1120,7 @@ exports.publishShipment = async (req, res) => {
 
       if (existingUser) {
         shipment.recipientUser = existingUser._id;
-        console.log("Existing user linked:", existingUser._id);
       } else {
-        console.log("No existing user found for email");
       }
 
       // send invite email once
@@ -1200,8 +1136,6 @@ exports.publishShipment = async (req, res) => {
 
         const link = `${process.env.FRONTEND_URL}/invite/${token}?e=${encryptedEmail}`;
 
-        console.log("Invite link generated:", link);
-
         await sendRecipientInviteEmail({
           email: normalizedEmail,
           shipment,
@@ -1209,19 +1143,13 @@ exports.publishShipment = async (req, res) => {
           link,
         });
 
-        console.log("Invite email sent");
-
         shipment.recipientInviteSent = true;
       } else {
-        console.log("⚠️ Invite already sent, skipping email");
       }
     } else {
-      console.log("⚠️ recipientEmail missing or invalid");
     }
 
     await shipment.save();
-
-    console.log("Shipment saved successfully");
 
     res.json({
       success: true,
@@ -1241,7 +1169,6 @@ exports.publishShipment = async (req, res) => {
 // ============================================================
 exports.deleteShipment = async (req, res) => {
   try {
-    console.log(`[DELETE SHIPMENT] Shipment ID: ${req.params.shipmentId}`);
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
@@ -1271,7 +1198,6 @@ exports.deleteShipment = async (req, res) => {
     }
 
     await shipment.deleteOne();
-    console.log("[DELETE SHIPMENT] Shipment deleted:", shipment._id);
 
     res
       .status(200)
@@ -1306,8 +1232,6 @@ exports.updateShipmentLocation = async (req, res) => {
     shipment.currentLocation = newLocation;
     shipment.locationHistory.push(newLocation);
     await shipment.save();
-
-    console.log("[UPDATE LOCATION] Location updated");
     res
       .status(200)
       .json({ success: true, currentLocation: shipment.currentLocation });
@@ -1340,7 +1264,6 @@ exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
     });
 
     await webpush.sendNotification(notif.subscription, payload);
-    console.log("[NOTIFY ACCEPTED] Notification sent");
   } catch (err) {
     console.error("[NOTIFY ACCEPTED ERROR]", err);
   }
@@ -1351,7 +1274,6 @@ exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
 // ============================================================
 exports.getAvailableShipments = async (req, res) => {
   try {
-    console.log("[AVAILABLE SHIPMENTS] Fetching open shipments");
     const shipments = await CustomerShipment.find({
       publish: true,
       status: "open_for_offers",
@@ -1359,8 +1281,6 @@ exports.getAvailableShipments = async (req, res) => {
     })
       .populate("customer", "name phone")
       .sort({ publishedAt: -1 });
-
-    console.log(`[AVAILABLE SHIPMENTS] Found ${shipments.length}`);
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[AVAILABLE SHIPMENTS ERROR]", err);

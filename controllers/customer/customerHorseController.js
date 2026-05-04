@@ -9,10 +9,6 @@ exports.createHorse = async (req, res) => {
   try {
     const customerId = req.user._id;
 
-    console.log("----- Create Horse Request -----");
-    console.log("User ID:", customerId);
-    console.log("Request Body:", req.body);
-
     const {
       registeredName,
       barnName,
@@ -91,8 +87,6 @@ exports.createHorse = async (req, res) => {
 
     // Save horse
     const horse = await Horse.create(horseData);
-
-    console.log("Horse saved:", horse._id);
 
     return res.status(201).json({
       success: true,

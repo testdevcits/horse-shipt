@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
+const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 
 /**
  * Send email to a shipper by ID
@@ -32,9 +33,14 @@ const sendShipperEmail = async (shipperId, subject, text) => {
       to: shipper.email,
       subject,
       text,
+      html: baseTemplate({
+        title: subject || "Horse Shipt Notification",
+        preheader: text,
+        body: `<p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`,
+        buttonText: "Open Horse Shipt",
+        buttonUrl: process.env.FRONTEND_URL,
+      }),
     });
-
-    console.log(`Email sent successfully to ${shipper.email}`);
   } catch (error) {
     console.error("Error sending shipper email:", error);
   }

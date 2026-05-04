@@ -28,8 +28,6 @@ const sendShipperSms = async (shipperId, message) => {
       to: phone,
       body: message,
     });
-
-    console.log(`SMS sent successfully to ${phone}`);
   } catch (error) {
     console.error("Error sending shipper SMS:", error.message);
   }

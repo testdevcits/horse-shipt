@@ -22,9 +22,6 @@ exports.shipperCancelQuote = async (req, res) => {
     const shipperId = req.user._id;
     const { quoteId } = req.body;
 
-    console.log("======================================");
-    console.log("[SHIPPER CANCEL] Start", { shipperId, quoteId });
-
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
 
     if (!quote) {
@@ -93,8 +90,6 @@ exports.shipperCancelQuote = async (req, res) => {
           cancellationFee: cancellationFee.toString(),
         },
       });
-
-      console.log("[SUCCESS] Charge:", chargeIntent.id);
     } catch (err) {
       shipper.accountStatus = "RESTRICTED";
       shipper.lastPaymentFailure = new Date();
@@ -126,8 +121,6 @@ exports.shipperCancelQuote = async (req, res) => {
       if (refund.status !== "succeeded") {
         throw new Error("Refund failed");
       }
-
-      console.log("[SUCCESS] Refund:", refund.id);
     } catch (err) {
       return res.status(500).json({
         success: false,
@@ -168,8 +161,6 @@ exports.shipperCancelQuote = async (req, res) => {
       },
     });
 
-    console.log("[COMPLETE] Done");
-
     return res.status(200).json({
       success: true,
       message: "Cancelled, refunded, and charged",
@@ -189,9 +180,6 @@ exports.shipperCancelQuote = async (req, res) => {
 exports.addQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
-
-    console.log("=====================================");
-    console.log("[ADD QUOTE] Start", { shipperId });
 
     // ----------------- CHECK SHIPPER -----------------
     const shipper = await Shipper.findById(shipperId);
@@ -329,8 +317,6 @@ exports.addQuote = async (req, res) => {
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
-    console.log("[PDF UPLOADED]", uploadResult.secure_url);
-
     // ----------------- CREATE QUOTE -----------------
     const quote = await ShipmentQuote.create({
       shipment,
@@ -366,8 +352,6 @@ exports.addQuote = async (req, res) => {
       cancellationWindowDays: Number(cancellationWindowDays),
       cancellationLastDate,
     });
-
-    console.log("[QUOTE CREATED]", quote._id);
 
     // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
@@ -424,8 +408,6 @@ exports.addQuote = async (req, res) => {
       },
     });
 
-    console.log("=====================================");
-
     return res.status(201).json({
       success: true,
       message: "Quote sent successfully",
@@ -446,9 +428,6 @@ exports.assignVehicleToQuote = async (req, res) => {
   try {
     const shipperId = req.user._id;
     const { quoteId, vehicleId } = req.body;
-
-    console.log("=====================================");
-    console.log("[ASSIGN VEHICLE] Start", { quoteId, vehicleId, shipperId });
 
     // ---------------- VALIDATION ----------------
     if (!quoteId || !vehicleId) {
@@ -660,8 +639,6 @@ exports.deleteQuote = async (req, res) => {
     const shipperId = req.user._id;
     const { quoteId } = req.params;
 
-    console.log("[DELETE QUOTE] Start", { shipperId, quoteId });
-
     // ---------------- VALIDATION ----------------
     if (!quoteId) {
       return res.status(400).json({
@@ -674,7 +651,6 @@ exports.deleteQuote = async (req, res) => {
     const quote = await ShipmentQuote.findById(quoteId);
 
     if (!quote) {
-      console.log("[DELETE QUOTE] Quote not found:", quoteId);
       return res.status(404).json({
         success: false,
         message: "Quote not found",
@@ -697,7 +673,6 @@ exports.deleteQuote = async (req, res) => {
 
     // Cannot delete accepted quote
     if (quote.status === "accepted") {
-      console.log("[DELETE QUOTE] Attempt to delete accepted quote");
       return res.status(400).json({
         success: false,
         message: "Accepted quote cannot be deleted",
@@ -706,7 +681,6 @@ exports.deleteQuote = async (req, res) => {
 
     // Cannot delete cancelled quote (optional)
     if (quote.status === "cancelled") {
-      console.log("[DELETE QUOTE] Attempt to delete cancelled quote");
       return res.status(400).json({
         success: false,
         message: "Cancelled quote cannot be deleted",
@@ -719,7 +693,6 @@ exports.deleteQuote = async (req, res) => {
         await cloudinary.uploader.destroy(quote.contract.public_id, {
           resource_type: "raw",
         });
-        console.log("[DELETE QUOTE] Contract file deleted from cloudinary");
       } catch (err) {
         console.error(
           "[DELETE QUOTE] Failed to delete contract file:",
@@ -730,8 +703,6 @@ exports.deleteQuote = async (req, res) => {
 
     // ---------------- DELETE QUOTE ----------------
     await ShipmentQuote.findByIdAndDelete(quoteId);
-
-    console.log("[DELETE QUOTE] Success", quoteId);
 
     // ---------------- RESPONSE ----------------
     return res.status(200).json({

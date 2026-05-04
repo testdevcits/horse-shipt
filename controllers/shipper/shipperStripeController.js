@@ -207,7 +207,6 @@ exports.stripeWebhook = async (req, res) => {
 
   try {
     const data = event.data.object;
-    console.log("Stripe Event:", event.type);
 
     const SubscriptionModel = require("../../models/shipper/subscriptionModel");
 
@@ -281,7 +280,6 @@ exports.stripeWebhook = async (req, res) => {
         });
 
         if (!shipper) {
-          console.log("⚠️ No shipper found");
           break;
         }
 
@@ -408,7 +406,6 @@ exports.stripeWebhook = async (req, res) => {
       }
 
       default:
-        console.log(`Unhandled event: ${event.type}`);
     }
 
     return res.json({ received: true });
@@ -455,8 +452,6 @@ exports.createStripeCustomer = async (req, res) => {
 
     shipper.stripeCustomerId = customer.id;
     await shipper.save();
-
-    console.log("Stripe customer created:", customer.id);
 
     res.json({
       success: true,
@@ -508,8 +503,6 @@ exports.createSetupIntent = async (req, res) => {
       customer: stripeCustomerId,
       payment_method_types: ["card"],
     });
-
-    console.log("SetupIntent created:", setupIntent.id);
 
     return res.json({
       success: true,
@@ -570,7 +563,6 @@ exports.savePaymentMethod = async (req, res) => {
     shipper.cardExpYear = paymentMethod.card.exp_year;
 
     if (shipper.accountStatus === "RESTRICTED") {
-      console.log("[ACCOUNT] Removing restriction after card update");
 
       shipper.accountStatus = "ACTIVE";
       shipper.lastPaymentFailure = null;

@@ -15,7 +15,6 @@ cloudinary.config({
 // ===================================================
 exports.getShipperProfile = async (req, res) => {
   try {
-    console.log("[GET SHIPPER PROFILE] Start", req.user.id);
 
     const shipper = await Shipper.findById(req.user.id)
       .select(
@@ -26,7 +25,6 @@ exports.getShipperProfile = async (req, res) => {
       .lean();
 
     if (!shipper) {
-      console.log("[ERROR] Shipper not found:", req.user.id);
       return res.status(404).json({
         success: false,
         message: "Shipper not found",
@@ -79,8 +77,6 @@ exports.getShipperProfile = async (req, res) => {
         bannerImage: resolvedBannerImage,
       },
     });
-
-    console.log("[GET SHIPPER PROFILE] Success");
   } catch (error) {
     console.error("[GET SHIPPER PROFILE ERROR]", error);
 

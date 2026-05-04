@@ -142,7 +142,6 @@ SHIPPER → Add / Update Google Review Link
 */
 exports.updateGoogleReviewLink = async (req, res) => {
   try {
-    console.log("=== Google Review Update Started ===");
 
     const shipperId = req.user?.id;
     const { googleReviewLink } = req.body;
@@ -174,8 +173,6 @@ exports.updateGoogleReviewLink = async (req, res) => {
         new: true,
       }
     );
-
-    console.log("DB Stored Link:", result?.googleReviewLink);
 
     return res.status(200).json({
       success: true,

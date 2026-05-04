@@ -35,8 +35,6 @@ const sendSMS = async ({ phone, message }) => {
       throw new Error("Missing Twilio env config");
     }
 
-    console.log("[DEBUG] Sending SMS →", formattedPhone);
-
     const client = twilio(TWILIO_SID, TWILIO_AUTH_TOKEN);
 
     const response = await client.messages.create({
@@ -44,8 +42,6 @@ const sendSMS = async ({ phone, message }) => {
       from: TWILIO_PHONE,
       to: formattedPhone,
     });
-
-    console.log("[SUCCESS] SMS sent:", response.sid);
 
     return response;
   } catch (err) {

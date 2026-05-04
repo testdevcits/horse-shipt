@@ -288,8 +288,6 @@ exports.verifyOtp = async (req, res) => {
     const userId = req.user._id;
     const { paymentId, pkLive, skLive, otp } = req.body;
 
-    console.log("[VERIFY OTP] Incoming Body:", req.body);
-
     if (!paymentId || !pkLive || !skLive || !otp) {
       return res.status(400).json({
         success: false,
@@ -330,8 +328,6 @@ exports.verifyOtp = async (req, res) => {
     payment.lastUpdatedByOtp = true;
     payment.otp = null; // clear OTP
     await payment.save();
-
-    console.log("[VERIFY OTP] Payment updated successfully", payment);
 
     res.status(200).json({
       success: true,

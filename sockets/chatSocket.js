@@ -61,7 +61,6 @@ const uploadChatImage = async (attachment) => {
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
-    console.log("Socket connected:", socket.id);
 
     socket.on("joinRoom", async ({ customerId, shipperId, shipmentId }, ack) => {
       try {
@@ -156,7 +155,6 @@ module.exports = (io) => {
     });
 
     socket.on("disconnect", () => {
-      console.log("Socket disconnected:", socket.id);
     });
   });
 };

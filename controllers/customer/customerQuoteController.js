@@ -461,14 +461,10 @@ exports.cancelQuote = async (req, res) => {
     const { quoteId } = req.params;
     const customerId = req.user._id;
 
-    console.log("Cancel Quote API called");
-    console.log("QuoteId:", quoteId, "CustomerId:", customerId);
-
     /* ---------------- FIND QUOTE ---------------- */
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
 
     if (!quote) {
-      console.log("Quote not found");
       return res.status(404).json({
         success: false,
         message: "Quote not found",
@@ -484,7 +480,6 @@ exports.cancelQuote = async (req, res) => {
 
     /* ---------------- AUTH CHECK ---------------- */
     if (quote.shipment.customer.toString() !== customerId.toString()) {
-      console.log("Unauthorized access");
       return res.status(403).json({
         success: false,
         message: "Unauthorized",
@@ -493,7 +488,6 @@ exports.cancelQuote = async (req, res) => {
 
     /* ---------------- ALREADY CANCELLED ---------------- */
     if (quote.isCancelled) {
-      console.log("⚠️ Already cancelled");
       return res.status(400).json({
         success: false,
         message: "Quote already cancelled",
@@ -504,7 +498,6 @@ exports.cancelQuote = async (req, res) => {
 
     /* ---------------- CANCELLATION WINDOW CHECK ---------------- */
     if (quote.cancellationLastDate && now > quote.cancellationLastDate) {
-      console.log("Cancellation window expired:", quote.cancellationLastDate);
       return res.status(400).json({
         success: false,
         message:
@@ -516,14 +509,11 @@ exports.cancelQuote = async (req, res) => {
     let settings = await PlatformSettings.findOne();
 
     if (!settings) {
-      console.log("No settings found, using default");
       settings = {
         platformFeePercent: 5,
         platformFeeFlat: 0,
       };
     }
-
-    console.log("⚙️ Platform Settings:", settings);
 
     /* ---------------- CALCULATE PLATFORM FEE ---------------- */
     const percentFee = (quote.totalPrice * settings.platformFeePercent) / 100;
@@ -558,14 +548,12 @@ exports.cancelQuote = async (req, res) => {
 
         /* -------- HOLD -------- */
         if (paymentIntent.status === "requires_capture") {
-          console.log("Payment on HOLD → canceling intent");
 
           await stripe.paymentIntents.cancel(paymentIntent.id);
 
           refundStatus = "processed";
         } else if (paymentIntent.status === "succeeded") {
           /* -------- CAPTURED -------- */
-          console.log("Payment CAPTURED → issuing refund");
 
           await stripe.refunds.create({
             payment_intent: paymentIntent.id,
@@ -575,10 +563,8 @@ exports.cancelQuote = async (req, res) => {
           refundStatus = "processed";
         } else if (paymentIntent.status === "requires_payment_method") {
           /* -------- NOT PAID -------- */
-          console.log("Payment not completed → no refund");
           refundStatus = "not_required";
         } else {
-          console.log("⚠️ Unknown payment status:", paymentIntent.status);
           refundStatus = "pending";
         }
       } catch (err) {
@@ -586,7 +572,6 @@ exports.cancelQuote = async (req, res) => {
         refundStatus = "failed";
       }
     } else {
-      console.log("No PaymentIntent found → no refund");
     }
 
     /* ---------------- UPDATE QUOTE ---------------- */
@@ -598,8 +583,6 @@ exports.cancelQuote = async (req, res) => {
     quote.status = "rejected";
 
     await quote.save();
-
-    console.log("Quote updated successfully");
 
     emitToUser(req.app.get("io"), {
       role: "shipper",

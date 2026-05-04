@@ -1,21 +1,43 @@
 const Shipper = require("../../models/shipper/shipperModel");
+const Driver = require("../../models/shipper/Driver");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
+const ShipperPreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
+const ShipperContract = require("../../models/shipper/shipperContractModel");
+const CustomerShipment = require("../../models/customer/CustomerShipment");
+const { buildPagination, sendPaginated } = require("../../utils/adminQuery");
 
 // ================================
 //  GET ALL SHIPPERS
 // ================================
 exports.getAllShippers = async (req, res) => {
   try {
-    const shippers = await Shipper.find({})
-      .select("-password") // hide password
-      .sort({ createdAt: -1 });
+    const { page, limit, skip } = buildPagination(req.query);
+    const { search, status } = req.query;
+    const filter = {};
 
-    res.status(200).json({
-      success: true,
-      count: shippers.length,
-      data: shippers,
-    });
+    if (status === "active") filter.isActive = true;
+    if (status === "inactive") filter.isActive = false;
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { mobile: { $regex: search, $options: "i" } },
+        { uniqueId: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [shippers, total] = await Promise.all([
+      Shipper.find(filter)
+      .select("-password") // hide password
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Shipper.countDocuments(filter),
+    ]);
+
+    return sendPaginated(res, { data: shippers, total, page, limit });
   } catch (error) {
-    console.error("Error fetching shippers:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -35,12 +57,43 @@ exports.getShipperById = async (req, res) => {
         .json({ success: false, message: "Shipper not found" });
     }
 
-    res.status(200).json({ success: true, data: shipper });
+    const [shipments, quotes, vehicles, drivers, preferredAreas, contracts] =
+      await Promise.all([
+        CustomerShipment.find({ shipper: id })
+          .populate("customer", "name email uniqueId phone")
+          .sort({ createdAt: -1 }),
+        ShipmentQuote.find({ shipper: id })
+          .populate("shipment", "shipmentCode pickupLocation deliveryLocation status")
+          .populate("assignedDriver", "name email phone")
+          .populate("vehicle", "name make model licensePlate")
+          .sort({ createdAt: -1 }),
+        ShipperVehicle.find({ shipper: id }).sort({ createdAt: -1 }),
+        Driver.find({ shipper: id }).select("-password").sort({ createdAt: -1 }),
+        ShipperPreferredArea.find({ shipper: id }).sort({ createdAt: -1 }),
+        ShipperContract.find({ shipper: id })
+          .populate("customer", "name email uniqueId")
+          .populate("shipment", "shipmentCode status")
+          .sort({ createdAt: -1 }),
+      ]);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        shipper,
+        shipments,
+        quotes,
+        vehicles,
+        drivers,
+        preferredAreas,
+        contracts,
+      },
+    });
   } catch (error) {
-    console.error("Error fetching shipper:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+exports.getShipperFullData = exports.getShipperById;
 
 // ================================
 //  UPDATE SHIPPER BY ID
@@ -69,7 +122,6 @@ exports.updateShipperById = async (req, res) => {
       data: updatedShipper,
     });
   } catch (error) {
-    console.error("Error updating shipper:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -100,7 +152,6 @@ exports.toggleShipperStatus = async (req, res) => {
       data: shipper,
     });
   } catch (error) {
-    console.error("Error toggling shipper status:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -125,7 +176,6 @@ exports.deleteShipper = async (req, res) => {
       message: "Shipper deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting shipper:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

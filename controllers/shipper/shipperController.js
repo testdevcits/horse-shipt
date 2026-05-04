@@ -11,13 +11,9 @@ exports.updateProfile = async (req, res) => {
 
     let { firstName, lastName, mobile, description, locale } = req.body;
 
-    console.log("=====================================");
-    console.log("[UPDATE PROFILE] Start", { userId: user._id, mobile });
-
     // MOBILE NORMALIZATION (GLOBAL)
     // -------------------------
     if (mobile) {
-      console.log("[MOBILE RAW INPUT]", mobile);
 
       mobile = mobile.toString().trim();
 
@@ -33,7 +29,6 @@ exports.updateProfile = async (req, res) => {
       const mobileRegex = /^\+[1-9]\d{7,14}$/;
 
       if (!mobileRegex.test(mobile)) {
-        console.log("[ERROR] Invalid international mobile");
         return res.status(400).json({
           success: false,
           message: "Invalid mobile number",
@@ -97,13 +92,11 @@ exports.updateProfile = async (req, res) => {
     // PROFILE IMAGE
     // -------------------------
     if (req.file) {
-      console.log("[PROFILE IMAGE UPDATE]");
 
       if (user.profilePicture) {
         const oldPath = path.join(__dirname, "../../", user.profilePicture);
         if (fs.existsSync(oldPath)) {
           fs.unlinkSync(oldPath);
-          console.log("[OLD IMAGE REMOVED]");
         }
       }
 
@@ -114,9 +107,6 @@ exports.updateProfile = async (req, res) => {
     // SAVE
     // -------------------------
     await user.save();
-
-    console.log("[PROFILE UPDATED SUCCESSFULLY]");
-    console.log("=====================================");
 
     return res.status(200).json({
       success: true,

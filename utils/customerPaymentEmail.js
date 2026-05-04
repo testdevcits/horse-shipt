@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 
 const sendCustomerPaymentEmail = async (to, subject, text, html = null) => {
   try {
@@ -13,22 +14,23 @@ const sendCustomerPaymentEmail = async (to, subject, text, html = null) => {
       },
     });
 
-    // Optional: verify SMTP connection
     await transporter.verify();
-    console.log("[CUSTOMER PAYMENT EMAIL] SMTP connection successful");
 
-    // Mail options
     const mailOptions = {
       from: `"HorseShipt" <${process.env.SMTP_USER}>`,
       to,
       subject,
       text,
-      ...(html && { html }), // add HTML if provided
+      html:
+        html ||
+        baseTemplate({
+          title: subject || "Payment Verification",
+          preheader: text,
+          body: `<p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`,
+        }),
     };
 
-    // Send email
-    const info = await transporter.sendMail(mailOptions);
-    console.log(`[CUSTOMER PAYMENT EMAIL] Sent: ${info.messageId}`);
+    await transporter.sendMail(mailOptions);
   } catch (err) {
     console.error("[CUSTOMER PAYMENT EMAIL] Error:", err);
     throw err; // throw so API can handle it

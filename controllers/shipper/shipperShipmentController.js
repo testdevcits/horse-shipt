@@ -428,7 +428,6 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
 
 exports.getAllPublishedShipmentsForMap = async (req, res) => {
   try {
-    console.log("[SHIPPER MAP] Fetching shipments for map");
 
     /* ===============================
        Pagination Params

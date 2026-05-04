@@ -18,8 +18,6 @@ const sendEmail = async (options) => {
       from: process.env.EMAIL_FROM, // use EMAIL_FROM
       ...options,
     });
-
-    console.log("[INFO] Email sent:", info.messageId);
     return info;
   } catch (err) {
     console.error("[ERROR] sendEmail failed:", err.message);

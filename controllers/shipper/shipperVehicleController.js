@@ -95,7 +95,6 @@ exports.addVehicle = async (req, res) => {
       try {
         verifyVehicleAsync(vehicle._id, vinNumber);
       } catch (err) {
-        console.log("Verification Trigger Error:", err);
       }
     }
 
@@ -342,8 +341,6 @@ exports.assignDriverToVehicle = async (req, res) => {
   try {
     const shipperId = req.user._id;
     const { vehicleId, driverId } = req.body;
-
-    console.log("[ASSIGN DRIVER] Start", { vehicleId, driverId });
 
     // ================= VALIDATION =================
     if (!vehicleId || !driverId) {

@@ -18,8 +18,6 @@ const sendDeliveryMail = async (to, subject, message) => {
     };
 
     await transporter.sendMail(mailOptions);
-
-    console.log("Delivery OTP Email sent");
   } catch (error) {
     console.error("Delivery Mail Error:", error);
   }

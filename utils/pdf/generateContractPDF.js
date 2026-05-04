@@ -123,19 +123,7 @@ async function generateContractPDF({
 
       sectionTitle("Shipment Details");
       drawRow("Pickup Location:", shipment?.pickupLocation);
-      drawRow(
-        "Pickup Date:",
-        shipment?.pickupDate
-          ? new Date(shipment.pickupDate).toDateString()
-          : "N/A"
-      );
       drawRow("Delivery Location:", shipment?.deliveryLocation);
-      drawRow(
-        "Delivery Date:",
-        shipment?.deliveryDate
-          ? new Date(shipment.deliveryDate).toDateString()
-          : "N/A"
-      );
       drawRow("Number of Horses:", shipment?.numberOfHorses?.toString());
 
       sectionTitle("Shipper & Quote Details");

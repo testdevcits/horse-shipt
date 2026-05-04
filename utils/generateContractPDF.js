@@ -32,7 +32,7 @@ async function generateContractPDF({
 
       doc.text(`Shipment ID: ${shipment._id}`);
       doc.text(`Pickup: ${shipment.pickupLocation}`);
-      doc.text(`Dropoff: ${shipment.dropoffLocation}`);
+      doc.text(`Delivery: ${shipment.deliveryLocation || shipment.dropoffLocation}`);
       doc.text(`Shipment Type: ${shipment.shipmentType}`);
       doc.text(`Total Price: ${totalPrice}`);
       doc.moveDown();

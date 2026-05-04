@@ -1,19 +1,47 @@
 const Customer = require("../../models/customer/customerModel");
+const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const { buildPagination, sendPaginated } = require("../../utils/adminQuery");
+
+const redactPaymentSecret = (payment) => {
+  const doc = payment.toObject ? payment.toObject() : payment;
+  return {
+    ...doc,
+    pkLive: doc.pkLive ? `${doc.pkLive.slice(0, 8)}...` : null,
+    skLive: doc.skLive ? "********" : null,
+    otp: undefined,
+  };
+};
 
 exports.getAllCustomers = async (req, res) => {
   try {
-    const customers = await Customer.find({})
-      .select("-password")
-      .sort({ createdAt: -1 });
+    const { page, limit, skip } = buildPagination(req.query);
+    const { search, status } = req.query;
+    const filter = {};
 
-    res.status(200).json({
-      success: true,
-      count: customers.length,
-      data: customers,
-    });
+    if (status === "active") filter.isActive = true;
+    if (status === "inactive") filter.isActive = false;
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
+        { uniqueId: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const [customers, total] = await Promise.all([
+      Customer.find(filter)
+      .select("-password")
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Customer.countDocuments(filter),
+    ]);
+
+    return sendPaginated(res, { data: customers, total, page, limit });
   } catch (error) {
-    console.error("Error fetching customers:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -30,22 +58,89 @@ exports.getCustomerById = async (req, res) => {
         .json({ success: false, message: "Customer not found" });
     }
 
-    const shipments = await CustomerShipment.find({ customer: id })
+    const [shipments, payments, quotes] = await Promise.all([
+      CustomerShipment.find({ customer: id })
       .populate("shipper", "name email uniqueId phone")
-      .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 }),
+      CustomerPayment.find({ userId: id, softDeleted: { $ne: true } }).sort({
+        createdAt: -1,
+      }),
+      ShipmentQuote.find()
+        .populate({
+          path: "shipment",
+          match: { customer: id },
+          select: "shipmentCode customer pickupLocation deliveryLocation status",
+        })
+        .populate("shipper", "name email uniqueId companyName")
+        .sort({ createdAt: -1 }),
+    ]);
 
     res.status(200).json({
       success: true,
       data: {
         customer,
         shipments,
+        payments: payments.map(redactPaymentSecret),
+        quotes: quotes.filter((quote) => quote.shipment),
       },
     });
   } catch (error) {
-    console.error("Error fetching customer:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+exports.getCustomerPayments = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = await Customer.findById(id).select("_id name email uniqueId");
+
+    if (!customer) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Customer not found" });
+    }
+
+    const [paymentSettings, transactions] = await Promise.all([
+      CustomerPayment.find({ userId: id, softDeleted: { $ne: true } }).sort({
+        createdAt: -1,
+      }),
+      ShipmentQuote.find({ paymentStatus: { $in: ["paid", "pending"] } })
+        .populate({
+          path: "shipment",
+          match: { customer: id },
+          select: "shipmentCode customer pickupLocation deliveryLocation status",
+        })
+        .populate("shipper", "name email uniqueId companyName")
+        .sort({ createdAt: -1 }),
+    ]);
+
+    const customerTransactions = transactions.filter((quote) => quote.shipment);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        customer,
+        paymentSettings: paymentSettings.map(redactPaymentSecret),
+        transactions: customerTransactions,
+        summary: {
+          totalPaid: customerTransactions
+            .filter((quote) => quote.paymentStatus === "paid")
+            .reduce((sum, quote) => sum + (quote.totalPrice || 0), 0),
+          paidTransactions: customerTransactions.filter(
+            (quote) => quote.paymentStatus === "paid"
+          ).length,
+          pendingTransactions: customerTransactions.filter(
+            (quote) => quote.paymentStatus === "pending"
+          ).length,
+        },
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+exports.getCustomerFullData = exports.getCustomerById;
 
 exports.updateCustomerById = async (req, res) => {
   try {
@@ -75,7 +170,6 @@ exports.updateCustomerById = async (req, res) => {
       data: updatedCustomer,
     });
   } catch (error) {
-    console.error("Error updating customer:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -103,7 +197,6 @@ exports.toggleCustomerStatus = async (req, res) => {
       data: customer,
     });
   } catch (error) {
-    console.error("Error toggling customer status:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
@@ -125,7 +218,6 @@ exports.deleteCustomer = async (req, res) => {
       message: "Customer deleted successfully",
     });
   } catch (error) {
-    console.error("Error deleting customer:", error);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

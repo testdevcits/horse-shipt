@@ -143,8 +143,6 @@ if (!fs.existsSync(uploadPath)) {
   fs.mkdirSync(uploadPath, { recursive: true });
 }
 
-console.log("Upload Path:", uploadPath);
-
 app.use("/uploads/profilePictures", express.static(uploadPath));
 app.use("/assets", express.static(path.join(__dirname, "assets")));
 
@@ -159,6 +157,7 @@ const shipmentQuestionRoutes = require("./routes/common/shipmentQuestion.routes"
 const shipmentTrackingRoutes = require("./routes/common/shipmentTracking.routes");
 
 const adminRoutes = require("./routes/admin/admin.routes");
+const adminDashboardRoutes = require("./routes/admin/adminDashboard.routes");
 const adminBreedRoutes = require("./routes/admin/breed.routes");
 const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
 const adminCustomerRoutes = require("./routes/admin/adminCustomer.routes");
@@ -183,6 +182,7 @@ app.use("/api/tracking", shipmentTrackingRoutes);
 
 // Admin APIs
 app.use("/api/admin", adminRoutes);
+app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
 app.use("/api/admin/shippers", adminShipperRoutes);
 app.use("/api/admin/customers", adminCustomerRoutes);
@@ -261,26 +261,11 @@ app.set("io", io);
 require("./sockets/chatSocket")(io);
 require("./sockets/realtimeSocket")(io);
 
-// Debug socket connections
-io.on("connection", (socket) => {
-  console.log("Socket Connected:", socket.id);
-
-  socket.on("disconnect", () => {
-    console.log("Socket Disconnected:", socket.id);
-  });
-});
-
 // -------------------------
 // Start Server
 // -------------------------
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT, () => {
-  console.log(
-    `Server running in ${
-      process.env.NODE_ENV || "development"
-    } mode on port ${PORT}`
-  );
-});
+server.listen(PORT);
 
 module.exports = app;

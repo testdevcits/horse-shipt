@@ -5,6 +5,7 @@ const adminShipmentController = require("../../controllers/admin/admin.shipmentC
 const adminAuth = require("../../middleware/admin/adminAuth");
 
 router.get("/all", adminAuth, adminShipmentController.getAllShipments);
+router.get("/:id/tracking", adminAuth, adminShipmentController.getShipmentTracking);
 router.get("/:id", adminAuth, adminShipmentController.getShipmentById);
 
 module.exports = router;

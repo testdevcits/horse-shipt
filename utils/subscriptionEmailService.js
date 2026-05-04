@@ -88,8 +88,6 @@ const sendSubscriptionEmail = async ({
       subject: "Subscription Activated - Horse Shipt",
       html,
     });
-
-    console.log("Subscription email sent to:", shipper.email);
   } catch (error) {
     console.error("Email error:", error.message);
   }

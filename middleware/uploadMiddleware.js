@@ -18,7 +18,6 @@ if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
 try {
   if (!fs.existsSync(uploadPath)) {
     fs.mkdirSync(uploadPath, { recursive: true });
-    console.log("Upload folder ready:", uploadPath);
   }
 } catch (err) {
   console.error("Error creating upload folder:", err.message);

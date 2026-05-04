@@ -130,7 +130,6 @@ exports.acceptShipment = async (req, res) => {
 // ====================================================
 exports.startTrip = async (req, res) => {
   try {
-    console.log("=== START TRIP INIT ===");
 
     const driverId = req.driver._id;
     const { quoteId } = req.body;
@@ -151,11 +150,8 @@ exports.startTrip = async (req, res) => {
       });
     }
 
-    console.log("Current Trip Status:", quote.tripStatus);
-
     // ✅ FIX: allow if already started / inTransit
     if (["started", "inTransit"].includes(quote.tripStatus)) {
-      console.log("Trip already active, skipping start");
 
       return res.json({
         success: true,
@@ -212,17 +208,12 @@ exports.startTrip = async (req, res) => {
 // ====================================================
 exports.updateDriverLocation = async (req, res) => {
   try {
-    console.log("=== DRIVER LOCATION UPDATE START ===");
 
     const driverId = req.driver?._id;
     const { lat, lng, speed = 0, heading = 0 } = req.body;
 
-    console.log("Driver ID:", driverId);
-    console.log("Incoming Location:", { lat, lng, speed, heading });
-
     // ================= VALIDATION =================
     if (lat === undefined || lng === undefined) {
-      console.log("Missing lat/lng");
       return res.status(400).json({
         success: false,
         message: "Latitude and Longitude required",
@@ -232,22 +223,15 @@ exports.updateDriverLocation = async (req, res) => {
     // ================= FIND DRIVER =================
     const driver = await Driver.findById(driverId);
 
-    console.log("Driver Found:", !!driver);
-
     if (!driver || !driver.isActive) {
-      console.log("Driver not found or inactive");
       return res.status(404).json({
         success: false,
         message: "Driver not found or inactive",
       });
     }
 
-    console.log("Driver isActive:", driver.isActive);
-    console.log("Tracking Enabled:", driver.isTrackingEnabled);
-
     // ================= TRACKING CHECK =================
     if (!driver.isTrackingEnabled) {
-      console.log("Tracking is disabled for this driver");
       return res.status(400).json({
         success: false,
         message: "Tracking is disabled for this driver",
@@ -259,8 +243,6 @@ exports.updateDriverLocation = async (req, res) => {
       assignedDriver: driverId,
       tripStatus: { $in: ["started", "inTransit"] },
     });
-
-    console.log("Active Shipment Found:", !!activeShipment);
 
     // ================= PREPARE LOCATION =================
     const locationPayload = {
@@ -275,8 +257,6 @@ exports.updateDriverLocation = async (req, res) => {
       updatedAt: new Date(),
     };
 
-    console.log("Location Payload:", locationPayload);
-
     // ================= UPDATE DRIVER =================
     await Driver.findByIdAndUpdate(driverId, {
       currentLocation: locationPayload,
@@ -284,18 +264,13 @@ exports.updateDriverLocation = async (req, res) => {
       driverStatus: activeShipment ? "onTrip" : "available",
     });
 
-    console.log("Driver location updated");
-
     // ================= UPDATE SHIPMENT =================
     if (activeShipment) {
       activeShipment.currentLocation = locationPayload;
       activeShipment.tripStatus = "inTransit";
 
       await activeShipment.save();
-      console.log("Shipment location updated");
     }
-
-    console.log("=== DRIVER LOCATION UPDATE END ===");
 
     return res.json({
       success: true,
@@ -544,7 +519,6 @@ exports.driverSendDeliveryOtp = async (req, res) => {
       "Quote Driver:",
       quote.assignedDriver?.toString() || quote.vehicle?.driver?._id?.toString()
     );
-    console.log("Logged Driver:", loggedDriverId?.toString());
 
     // ---------------- DRIVER CHECK ----------------
     const assignedDriverId = quote.assignedDriver || quote.vehicle?.driver?._id;
@@ -610,21 +584,15 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     const { shipmentId } = req.params;
     const { otp } = req.body;
 
-    console.log("=====================================");
-    console.log("[DRIVER VERIFY OTP] Start", { shipmentId, otp });
-
     // ---------------- GET SHIPMENT ----------------
     const shipment = await CustomerShipment.findById(shipmentId);
 
     if (!shipment) {
-      console.log("[ERROR] Shipment not found");
       return res.status(404).json({
         success: false,
         message: "Shipment not found",
       });
     }
-
-    console.log("[SHIPMENT FOUND]", shipment._id);
 
     const loggedDriverId = req.driver?._id?.toString();
 
@@ -635,7 +603,6 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     }).populate("shipper");
 
     if (!quote) {
-      console.log("[ERROR] Quote not found");
       return res.status(404).json({
         success: false,
         message: "Accepted quote not found",
@@ -644,13 +611,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
 
     const assignedDriverId = quote.assignedDriver?.toString();
 
-    console.log("===== DRIVER VERIFY DEBUG =====");
-    console.log("Logged Driver:", loggedDriverId);
-    console.log("Assigned Driver:", assignedDriverId);
-    console.log("================================");
-
     if (!assignedDriverId || assignedDriverId !== loggedDriverId) {
-      console.log("[ERROR] Unauthorized driver");
       return res.status(403).json({
         success: false,
         message: "Unauthorized driver",
@@ -659,7 +620,6 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
 
     // ---------------- VALIDATION ----------------
     if (shipment.deliveryOtpVerified) {
-      console.log("[ERROR] Already delivered");
       return res.status(400).json({
         success: false,
         message: "Already delivered",
@@ -667,7 +627,6 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     }
 
     if (!otp || shipment.deliveryOtp !== String(otp)) {
-      console.log("[ERROR] Invalid OTP");
       return res.status(400).json({
         success: false,
         message: "Invalid OTP",
@@ -678,7 +637,6 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
       !shipment.deliveryOtpExpires ||
       shipment.deliveryOtpExpires < new Date()
     ) {
-      console.log("[ERROR] OTP expired");
       return res.status(400).json({
         success: false,
         message: "OTP expired",
@@ -686,14 +644,11 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     }
 
     if (quote.paymentStatus !== "paid") {
-      console.log("[ERROR] Payment not done");
       return res.status(400).json({
         success: false,
         message: "Payment not completed yet",
       });
     }
-
-    console.log("[OTP VERIFIED SUCCESSFULLY]");
 
     // ================= MARK DELIVERY FIRST =================
     shipment.status = "delivered";
@@ -704,47 +659,35 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
 
     await shipment.save();
 
-    console.log("[SHIPMENT DELIVERED]");
-
     // ================= FREE VEHICLE =================
     if (quote.vehicle) {
-      console.log("[FREE VEHICLE START]", quote.vehicle);
 
       const vehicle = await ShipperVehicle.findById(quote.vehicle);
 
       if (vehicle) {
-        console.log("[VEHICLE BEFORE FREE]", vehicle.currentShipment);
 
         vehicle.currentShipment = null;
         vehicle.driverStatus = "AVAILABLE";
 
         await vehicle.save();
-
-        console.log("[VEHICLE FREED SUCCESS]");
       } else {
-        console.log("[WARNING] Vehicle not found");
       }
     }
 
     // ================= FREE DRIVER =================
     if (quote.assignedDriver) {
-      console.log("[FREE DRIVER START]", quote.assignedDriver);
 
       const driver = await Driver.findById(quote.assignedDriver);
 
       if (driver) {
         driver.driverStatus = "available";
         await driver.save();
-
-        console.log("[DRIVER FREED SUCCESS]");
       } else {
-        console.log("[WARNING] Driver not found");
       }
     }
 
     // ================= PAYOUT (NON-BLOCKING) =================
     try {
-      console.log("[STRIPE PAYOUT START]");
 
       const paymentIntent = await stripe.paymentIntents.retrieve(
         quote.stripePaymentIntentId
@@ -778,13 +721,10 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
         source_transaction: charge.id,
       });
 
-      console.log("[TRANSFER SUCCESS]", transfer.id);
-
       quote.stripeTransferId = transfer.id;
       quote.payoutStatus = "transferred";
       quote.paymentReleasedAt = new Date();
     } catch (err) {
-      console.log("[TRANSFER FAILED]", err.message);
 
       quote.payoutStatus = "pending";
       quote.payoutError = err.message;
@@ -793,9 +733,6 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     // ================= FINAL QUOTE =================
     quote.tripStatus = "completed";
     await quote.save();
-
-    console.log("[QUOTE UPDATED]");
-    console.log("=====================================");
 
     return res.json({
       success: true,

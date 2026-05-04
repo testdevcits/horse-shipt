@@ -1,5 +1,6 @@
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../../models/admin/payment/platformSettings");
+const { buildPagination, sendPaginated } = require("../../../utils/adminQuery");
 
 exports.getPaymentSummary = async (req, res) => {
   try {
@@ -35,8 +36,6 @@ exports.getPaymentSummary = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Payment summary error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to fetch payment summary",
@@ -49,9 +48,16 @@ exports.getPaymentSummary = async (req, res) => {
 ===================================================== */
 exports.getAllTransactions = async (req, res) => {
   try {
-    const payments = await ShipmentQuote.find({
+    const { page, limit, skip } = buildPagination(req.query);
+    const { status } = req.query;
+    const filter = {
       paymentStatus: { $in: ["paid", "pending"] },
-    })
+    };
+
+    if (status) filter.paymentStatus = status;
+
+    const [payments, total] = await Promise.all([
+      ShipmentQuote.find(filter)
       .populate({
         path: "shipment",
         populate: {
@@ -60,16 +66,14 @@ exports.getAllTransactions = async (req, res) => {
         },
       })
       .populate("shipper", "name email companyName")
-      .sort({ createdAt: -1 });
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      ShipmentQuote.countDocuments(filter),
+    ]);
 
-    return res.status(200).json({
-      success: true,
-      total: payments.length,
-      data: payments,
-    });
+    return sendPaginated(res, { data: payments, total, page, limit });
   } catch (error) {
-    console.error("Transaction list error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to fetch transactions",
