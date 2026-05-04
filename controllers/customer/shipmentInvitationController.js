@@ -63,6 +63,29 @@ exports.sendInvitation = async (req, res) => {
       });
     }
 
+    if (shipment.customer?.toString() !== req.user.id?.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: "You can only invite shippers to your own shipment.",
+      });
+    }
+
+    if (!shipment.publish) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please publish this shipment before inviting shippers. Draft shipments are not visible to shippers.",
+      });
+    }
+
+    if (!["open_for_offers", "pending"].includes(shipment.status)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invitations can only be sent while the shipment is open for offers.",
+      });
+    }
+
     if (!shipper) {
       return res.status(404).json({
         success: false,

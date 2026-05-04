@@ -996,10 +996,8 @@ exports.getSubscriptionPlan = async (req, res) => {
     const hasUsedTrial =
       shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
 
-    let trialDays = 0;
-    if (!hasUsedTrial) {
-      trialDays = 30;
-    }
+    const TRIAL_DAYS = 30;
+    let trialDays = hasUsedTrial ? 0 : TRIAL_DAYS;
 
     // ============================
     // DEFAULT VALUES
@@ -1008,6 +1006,9 @@ exports.getSubscriptionPlan = async (req, res) => {
     let subscriptionStatus = null;
     let cancelAtPeriodEnd = false;
     let subscriptionEndDate = null;
+    let trialActive = false;
+    let remainingTrialDays = 0;
+    let trialEndDate = null;
 
     // ============================
     // GET ACTIVE SUBSCRIPTION
@@ -1026,6 +1027,28 @@ exports.getSubscriptionPlan = async (req, res) => {
 
       subscriptionStatus = sub.status;
       cancelAtPeriodEnd = sub.cancel_at_period_end || false;
+
+      if (sub.status === "trialing" && sub.trial_end) {
+        const nowTs = Math.floor(Date.now() / 1000);
+        remainingTrialDays = Math.max(
+          Math.ceil((sub.trial_end - nowTs) / (60 * 60 * 24)),
+          0
+        );
+        trialActive = remainingTrialDays > 0;
+        trialDays = remainingTrialDays || TRIAL_DAYS;
+
+        const trialDateObj = new Date(sub.trial_end * 1000);
+        trialEndDate = {
+          iso: trialDateObj.toISOString(),
+          us: trialDateObj.toLocaleString("en-US", {
+            month: "short",
+            day: "2-digit",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        };
+      }
 
       // ============================
       // NEXT BILLING DATE
@@ -1102,7 +1125,10 @@ exports.getSubscriptionPlan = async (req, res) => {
         monthly,
         trialDays,
         hasUsedTrial,
-        trialEligible: !hasUsedTrial,
+        trialEligible: trialActive || !hasUsedTrial,
+        trialActive,
+        remainingTrialDays,
+        trialEndDate,
         currency: monthly.currency,
 
         subscriptionStatus,

@@ -566,7 +566,7 @@ exports.getMyQuotes = async (req, res) => {
     const quotes = await ShipmentQuote.find({ shipper: shipperId })
       .populate(
         "shipment",
-        "pickupLocation deliveryLocation status pickupDate deliveryDate numberOfHorses shipmentCode"
+        "pickupLocation deliveryLocation status pickupDate deliveryDate pickupDateRange deliveryDateRange numberOfHorses shipmentCode horses transportType estimatedDistance"
       )
       .populate("vehicle")
       .populate("shipper", "name email")
