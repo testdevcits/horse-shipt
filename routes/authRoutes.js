@@ -19,6 +19,8 @@ const redirectOAuthError = (res, message) => {
 // Local auth
 // ------------------------
 router.post("/signup", authController.signup);
+router.post("/signup/verify-otp", authController.verifySignupOtp);
+router.post("/signup/resend-otp", authController.resendSignupOtp);
 router.post("/login", authController.login);
 router.post("/logout", authController.logout);
 

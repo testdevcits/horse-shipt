@@ -156,6 +156,14 @@ const quoteSchema = new mongoose.Schema(
       public_id: { type: String, default: null },
     },
 
+    shipperContract: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+      originalName: { type: String, default: "" },
+      mimeType: { type: String, default: "" },
+      uploadedAt: { type: Date, default: null },
+    },
+
     shipperSignature: {
       type: String,
       default: null,

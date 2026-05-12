@@ -317,6 +317,23 @@ exports.addQuote = async (req, res) => {
       streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
     });
 
+    let shipperContract = null;
+
+    if (req.file) {
+      const contractUpload = await cloudinary.uploader.upload(req.file.path, {
+        folder: "shipper_quote_contracts",
+        resource_type: "raw",
+      });
+
+      shipperContract = {
+        url: contractUpload.secure_url,
+        public_id: contractUpload.public_id,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        uploadedAt: new Date(),
+      };
+    }
+
     // ----------------- CREATE QUOTE -----------------
     const quote = await ShipmentQuote.create({
       shipment,
@@ -343,6 +360,8 @@ exports.addQuote = async (req, res) => {
         url: uploadResult.secure_url,
         public_id: uploadResult.public_id,
       },
+
+      shipperContract,
 
       shipperSignature,
       customerSignature: null,
