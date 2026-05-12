@@ -48,6 +48,18 @@ const shipmentQuestionSchema = new mongoose.Schema(
       default: null,
     },
 
+    readByCustomerAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    readByShipperAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
     // ================= STATUS =================
 
     status: {

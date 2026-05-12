@@ -32,6 +32,20 @@ const attachShipperQuestionSummary = async (shipments, shipperId) => {
         answered: {
           $sum: { $cond: [{ $eq: ["$status", "answered"] }, 1, 0] },
         },
+        unreadForShipper: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$status", "answered"] },
+                  { $eq: ["$readByShipperAt", null] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
       },
     },
   ]);
@@ -41,6 +55,7 @@ const attachShipperQuestionSummary = async (shipments, shipperId) => {
       total: item.total || 0,
       pending: item.pending || 0,
       answered: item.answered || 0,
+      unreadForShipper: item.unreadForShipper || 0,
     };
     return acc;
   }, {});
@@ -51,6 +66,7 @@ const attachShipperQuestionSummary = async (shipments, shipperId) => {
       total: 0,
       pending: 0,
       answered: 0,
+      unreadForShipper: 0,
     },
   }));
 };
@@ -192,7 +208,13 @@ exports.getAvailableShipments = async (req, res) => {
 
     const cachedData = cache.get(cacheKey);
     if (cachedData) {
-      return res.status(200).json({ success: true, shipments: cachedData });
+      const shipmentsWithFreshQuestions = await attachShipperQuestionSummary(
+        cachedData,
+        req.user.id
+      );
+      return res
+        .status(200)
+        .json({ success: true, shipments: shipmentsWithFreshQuestions });
     }
 
     /* ===============================

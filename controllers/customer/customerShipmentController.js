@@ -134,6 +134,20 @@ const attachQuestionSummary = async (shipments) => {
         answered: {
           $sum: { $cond: [{ $eq: ["$status", "answered"] }, 1, 0] },
         },
+        unreadForCustomer: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $eq: ["$status", "pending"] },
+                  { $eq: ["$readByCustomerAt", null] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
       },
     },
   ]);
@@ -143,6 +157,7 @@ const attachQuestionSummary = async (shipments) => {
       total: item.total || 0,
       pending: item.pending || 0,
       answered: item.answered || 0,
+      unreadForCustomer: item.unreadForCustomer || 0,
     };
     return acc;
   }, {});
@@ -153,6 +168,7 @@ const attachQuestionSummary = async (shipments) => {
       total: 0,
       pending: 0,
       answered: 0,
+      unreadForCustomer: 0,
     },
   }));
 };

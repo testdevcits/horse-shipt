@@ -30,6 +30,7 @@ exports.askQuestion = async (req, res) => {
       shipperId,
       customerId: shipment.customer,
       question: question.trim(),
+      readByShipperAt: new Date(),
     });
 
     notifyQuestionReceiver({
@@ -102,6 +103,8 @@ exports.answerQuestion = async (req, res) => {
     questionDoc.answer = answer.trim();
     questionDoc.status = "answered";
     questionDoc.answeredAt = new Date();
+    questionDoc.readByCustomerAt = questionDoc.readByCustomerAt || new Date();
+    questionDoc.readByShipperAt = null;
 
     await questionDoc.save();
 
@@ -186,6 +189,16 @@ exports.getShipmentQuestions = async (req, res) => {
         })
         .sort({ createdAt: -1 })
         .lean();
+
+      await ShipmentQuestion.updateMany(
+        {
+          shipmentId,
+          customerId: userId,
+          status: "pending",
+          readByCustomerAt: null,
+        },
+        { $set: { readByCustomerAt: new Date() } }
+      );
     }
     // ================= SHIPPER VIEW =================
     else {
@@ -200,6 +213,16 @@ exports.getShipmentQuestions = async (req, res) => {
         shipperId: userId,
         status: "pending",
       }).sort({ createdAt: -1 });
+
+      await ShipmentQuestion.updateMany(
+        {
+          shipmentId,
+          shipperId: userId,
+          status: "answered",
+          readByShipperAt: null,
+        },
+        { $set: { readByShipperAt: new Date() } }
+      );
     }
 
     return res.json({
