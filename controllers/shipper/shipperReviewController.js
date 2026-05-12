@@ -460,11 +460,14 @@ exports.getTopRatedShippers = async (req, res) => {
       return {
         id: s._id,
         name: shipperInfo?.name || "Unknown",
-        profileImage: shipperInfo?.profileImage?.url || "/default-avatar.png",
+        profileImage:
+          shipperInfo?.profileImage?.url ||
+          shipperInfo?.profilePicture ||
+          "/default-avatar.png",
         rating: Number(s.averageRating.toFixed(1)),
         reviewCount: s.totalReviews || 0,
         reviewText: s.latestReview || `${s.totalReviews} Reviews`,
-        region: shipperInfo?.region || "Unknown",
+        region: shipperInfo?.locale?.address || "Available",
         googleReviewLink: shipperInfo?.googleReviewLink || null,
       };
     });
@@ -571,11 +574,15 @@ exports.getShipperProfileDetail = async (req, res) => {
     const response = {
       id: shipper._id,
       name: shipper.name,
-      profileImage: shipper.profileImage?.url || "/default-avatar.png",
+      profileImage:
+        shipper.profileImage?.url ||
+        shipper.profilePicture ||
+        "/default-avatar.png",
       bannerImage: shipper.bannerImage?.url || null,
       rating: Number((ratingData.avgRating || 0).toFixed(1)),
       totalReviews: ratingData.totalReviews,
-      region: shipper.region || "Unknown",
+      region: shipper.locale?.address || "Available",
+      locale: shipper.locale || null,
       email: shipper.email,
       googleReviewLink: shipper.googleReviewLink,
       completedShipments: stats.totalAccepted,
