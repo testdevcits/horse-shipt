@@ -249,7 +249,7 @@ exports.getReviewsByShipper = async (req, res) => {
     });
 
     const shipper = await Shipper.findById(shipperId).select(
-      "name averageRating googleReviewLink"
+      "name averageRating googleReviewLink profileImage profilePicture locale"
     );
 
     return res.status(200).json({
@@ -443,8 +443,16 @@ exports.getTopRatedShippers = async (req, res) => {
       _id: { $in: topShippers.map((s) => s._id) },
     });
 
+    const reviewedShipperIds = new Set(topShippers.map((s) => s._id.toString()));
+    const fallbackShippers = await Shipper.find({
+      isActive: true,
+      _id: { $nin: topShippers.map((s) => s._id) },
+    })
+      .sort({ createdAt: -1 })
+      .limit(Math.max(0, 10 - topShippers.length));
+
     // Map ratings with shipper info into ShipperReviewCard format
-    const result = topShippers.map((s) => {
+    const reviewedResults = topShippers.map((s) => {
       const shipperInfo = populatedShippers.find(
         (sh) => sh._id.toString() === s._id.toString()
       );
@@ -454,11 +462,27 @@ exports.getTopRatedShippers = async (req, res) => {
         name: shipperInfo?.name || "Unknown",
         profileImage: shipperInfo?.profileImage?.url || "/default-avatar.png",
         rating: Number(s.averageRating.toFixed(1)),
-        reviewText: s.latestReview || `${s.totalReviews} Reviews`, // show latest review if available
+        reviewCount: s.totalReviews || 0,
+        reviewText: s.latestReview || `${s.totalReviews} Reviews`,
         region: shipperInfo?.region || "Unknown",
         googleReviewLink: shipperInfo?.googleReviewLink || null,
       };
     });
+
+    const fallbackResults = fallbackShippers
+      .filter((shipper) => !reviewedShipperIds.has(shipper._id.toString()))
+      .map((shipper) => ({
+        id: shipper._id,
+        name: shipper.name || shipper.companyName || shipper.email || "Shipper",
+        profileImage: shipper.profileImage?.url || shipper.profilePicture || "/default-avatar.png",
+        rating: Number(shipper.averageRating || 0),
+        reviewCount: 0,
+        reviewText: "New shipper in the network",
+        region: shipper.locale?.address || "Available",
+        googleReviewLink: shipper.googleReviewLink || null,
+      }));
+
+    const result = [...reviewedResults, ...fallbackResults].slice(0, 10);
 
     res.status(200).json({ success: true, data: result });
   } catch (error) {

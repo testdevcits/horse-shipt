@@ -2,6 +2,7 @@ const Customer = require("../../models/customer/customerModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
 const cloudinary = require("../../utils/cloudinary");
 const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const webpush = require("web-push");
@@ -111,6 +112,49 @@ const appendNoteIfNew = (existingLog = [], nextNote, user) => {
   if (lastNote === note) return log;
 
   return [...log, buildNoteEntry(note, user)];
+};
+
+const attachQuestionSummary = async (shipments) => {
+  const plainShipments = shipments.map((shipment) =>
+    typeof shipment.toObject === "function" ? shipment.toObject() : shipment
+  );
+  const shipmentIds = plainShipments.map((shipment) => shipment._id);
+
+  if (!shipmentIds.length) return plainShipments;
+
+  const questionCounts = await ShipmentQuestion.aggregate([
+    { $match: { shipmentId: { $in: shipmentIds } } },
+    {
+      $group: {
+        _id: "$shipmentId",
+        total: { $sum: 1 },
+        pending: {
+          $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+        },
+        answered: {
+          $sum: { $cond: [{ $eq: ["$status", "answered"] }, 1, 0] },
+        },
+      },
+    },
+  ]);
+
+  const summaryByShipment = questionCounts.reduce((acc, item) => {
+    acc[item._id.toString()] = {
+      total: item.total || 0,
+      pending: item.pending || 0,
+      answered: item.answered || 0,
+    };
+    return acc;
+  }, {});
+
+  return plainShipments.map((shipment) => ({
+    ...shipment,
+    questionSummary: summaryByShipment[shipment._id.toString()] || {
+      total: 0,
+      pending: 0,
+      answered: 0,
+    },
+  }));
 };
 
 // ---------------- Helper: Fetch Shipment By ID ----------------
@@ -324,8 +368,8 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
     }).sort({ createdAt: -1 });
-    // console.log(`[GET SHIPMENTS] Found ${shipments.length} shipments`);
-    res.status(200).json({ success: true, shipments });
+    const shipmentsWithQuestions = await attachQuestionSummary(shipments);
+    res.status(200).json({ success: true, shipments: shipmentsWithQuestions });
   } catch (err) {
     console.error("[GET SHIPMENTS ERROR]", err);
     res.status(500).json({ success: false, message: "Server Error" });
@@ -390,7 +434,9 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
     });
 
     // ================= FINAL RESPONSE =================
-    const finalShipments = shipments.map((s) => {
+    const shipmentsWithQuestions = await attachQuestionSummary(shipments);
+
+    const finalShipments = shipmentsWithQuestions.map((s) => {
       return {
         ...s,
 
