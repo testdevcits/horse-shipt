@@ -9,6 +9,51 @@ const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const shipperMailSend = require("../../utils/shipperMailSend");
 const shipperSmsSend = require("../../utils/shipperSmsSend");
 const shipperModel = require("../../models/shipper/shipperModel");
+const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
+
+const attachShipperQuestionSummary = async (shipments, shipperId) => {
+  const shipmentIds = shipments.map((shipment) => shipment._id);
+  if (!shipmentIds.length || !shipperId) return shipments;
+
+  const questionCounts = await ShipmentQuestion.aggregate([
+    {
+      $match: {
+        shipmentId: { $in: shipmentIds },
+        shipperId: new mongoose.Types.ObjectId(shipperId),
+      },
+    },
+    {
+      $group: {
+        _id: "$shipmentId",
+        total: { $sum: 1 },
+        pending: {
+          $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] },
+        },
+        answered: {
+          $sum: { $cond: [{ $eq: ["$status", "answered"] }, 1, 0] },
+        },
+      },
+    },
+  ]);
+
+  const summaryByShipment = questionCounts.reduce((acc, item) => {
+    acc[item._id.toString()] = {
+      total: item.total || 0,
+      pending: item.pending || 0,
+      answered: item.answered || 0,
+    };
+    return acc;
+  }, {});
+
+  return shipments.map((shipment) => ({
+    ...shipment,
+    questionSummary: summaryByShipment[shipment._id.toString()] || {
+      total: 0,
+      pending: 0,
+      answered: 0,
+    },
+  }));
+};
 
 /* =========================================================
    GET ALL ASSIGNED SHIPMENTS (FOR SHIPPER DASHBOARD)
@@ -132,6 +177,7 @@ exports.getAvailableShipments = async (req, res) => {
     const cacheKey =
       "shipments_" +
       JSON.stringify({
+        shipperId: req.user.id,
         pickupDistance,
         dropoffDistance,
         stallSize,
@@ -281,6 +327,11 @@ exports.getAvailableShipments = async (req, res) => {
     /* ===============================
        CACHE SAVE
     =================================*/
+    shipmentsWithDistance = await attachShipperQuestionSummary(
+      shipmentsWithDistance,
+      req.user.id
+    );
+
     cache.set(cacheKey, shipmentsWithDistance);
 
     res.status(200).json({
