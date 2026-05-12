@@ -32,8 +32,6 @@ const sendQuoteEmail = async (shipperId, subject, data) => {
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;background:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;">
           <tr><td style="padding:12px;"><strong>Shipment Code:</strong> ${escapeHtml(data?.shipmentCode || "N/A")}</td></tr>
           <tr><td style="padding:0 12px 12px;"><strong>Total Price:</strong> ${escapeHtml(data?.currency || "USD")} ${escapeHtml(data?.totalPrice || 0)}</td></tr>
-          <tr><td style="padding:0 12px 12px;"><strong>Pickup Time:</strong> ${escapeHtml(data?.pickupTime || "-")}</td></tr>
-          <tr><td style="padding:0 12px 12px;"><strong>Estimated Arrival:</strong> ${escapeHtml(data?.estimatedArrivalTime || "-")}</td></tr>
         </table>
       `,
     });

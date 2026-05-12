@@ -111,8 +111,6 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         currency: quote.currency,
         paymentMethod: quote.paymentMethod,
         paymentDue: quote.paymentDue,
-        pickupTime: quote.pickupTime,
-        estimatedArrivalTime: quote.estimatedArrivalTime,
         estimatedDeliveryDays: quote.estimatedDeliveryDays,
         transportType: quote.transportType,
         stallsRequired: quote.stallsRequired,

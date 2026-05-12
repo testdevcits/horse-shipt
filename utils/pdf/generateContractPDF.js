@@ -137,9 +137,6 @@ async function generateContractPDF({
       );
       drawRow("Payment Method:", quote?.paymentMethod);
       drawRow("Payment Due:", quote?.paymentDue);
-      drawRow("Pickup Time:", quote?.pickupTime);
-      drawRow("Estimated Arrival:", quote?.estimatedArrivalTime);
-
       if (quote?.notes) {
         sectionTitle("Notes");
         doc.font("Roboto").fontSize(10).fillColor("#2E86AB").text(quote.notes, {

@@ -3,6 +3,7 @@ const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const Shipper = require("../../models/shipper/shipperModel");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const PendingSignup = require("../../models/PendingSignup");
 
 const startOfMonth = (date) =>
   new Date(date.getFullYear(), date.getMonth(), 1);
@@ -66,6 +67,8 @@ exports.getDashboardOverview = async (req, res) => {
       shipperMonthly,
       shipmentMonthly,
       paymentMonthly,
+      pendingSignupCount,
+      pendingSignups,
     ] = await Promise.all([
       Customer.countDocuments(),
       Shipper.countDocuments(),
@@ -115,6 +118,11 @@ exports.getDashboardOverview = async (req, res) => {
           },
         },
       ]),
+      PendingSignup.countDocuments(),
+      PendingSignup.find()
+        .select("name email role createdAt lastSentAt otpExpiresAt attempts")
+        .sort({ createdAt: -1 })
+        .limit(6),
     ]);
 
     const bucketMap = buckets.reduce((acc, bucket) => {
@@ -158,6 +166,7 @@ exports.getDashboardOverview = async (req, res) => {
           deliveredShipments,
           paidTransactions: paidQuotes.length,
           pendingPayments,
+          pendingSignups: pendingSignupCount,
           totalPayments,
           platformEarnings,
         },
@@ -182,6 +191,7 @@ exports.getDashboardOverview = async (req, res) => {
         recent: {
           shipments: recentShipments,
           payments: recentPayments,
+          pendingSignups,
         },
       },
     });

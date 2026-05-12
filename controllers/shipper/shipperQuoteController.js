@@ -206,8 +206,6 @@ exports.addQuote = async (req, res) => {
       currency = "USD",
       paymentMethod,
       paymentDue,
-      pickupTime,
-      estimatedArrivalTime,
       estimatedDeliveryDays,
       notes,
       shipperSignature,
@@ -220,8 +218,6 @@ exports.addQuote = async (req, res) => {
       !totalPrice ||
       !paymentMethod ||
       !paymentDue ||
-      !pickupTime ||
-      !estimatedArrivalTime ||
       !shipperSignature ||
       cancellationWindowDays === undefined ||
       cancellationWindowDays === null ||
@@ -291,8 +287,6 @@ exports.addQuote = async (req, res) => {
         currency,
         paymentMethod,
         paymentDue,
-        pickupTime,
-        estimatedArrivalTime,
         estimatedDeliveryDays,
         notes,
         cancellationWindowDays,
@@ -346,8 +340,6 @@ exports.addQuote = async (req, res) => {
       currency,
       paymentMethod,
       paymentDue,
-      pickupTime,
-      estimatedArrivalTime,
       estimatedDeliveryDays,
       notes,
 

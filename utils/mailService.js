@@ -24,24 +24,23 @@ transporter.verify((error) => {
 // -------------------- SEND OTP MAIL --------------------
 exports.sendOtpMail = async (email, otp) => {
   try {
-
-    const info = await transporter.sendMail({
+    await transporter.sendMail({
       from: `"HorseShipt" <${process.env.SMTP_USER}>`,
       to: email,
-      subject: "Verify Your Account - OTP",
+      subject: "Verify your HorseShipt email",
       html: `
-<div style="font-family: Arial, sans-serif; background:#f9fafb; padding:20px;">
-  <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:10px;border:1px solid #BF9B53;">
-    <div style="background:#BF9B53;color:#fff;padding:20px;text-align:center;">
-      <h2>Email Verification</h2>
+<div style="font-family: Arial, sans-serif; background:#f6f7fb; padding:28px;">
+  <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:14px;border:1px solid #eadfca;overflow:hidden;">
+    <div style="background:#BF9B53;color:#fff;padding:22px 24px;text-align:center;">
+      <h2 style="margin:0;font-size:22px;">HorseShipt Email Verification</h2>
     </div>
-    <div style="padding:24px;text-align:center;">
-      <p>Hello,</p>
-      <p>Use the OTP below to verify your account:</p>
-      <div style="font-size:28px;font-weight:bold;color:#BF9B53;margin:20px 0;">
+    <div style="padding:28px 24px;text-align:center;color:#1f2937;">
+      <p style="font-size:15px;margin:0 0 10px;">Use this one-time code to finish creating your account.</p>
+      <div style="display:inline-block;font-size:34px;letter-spacing:8px;font-weight:800;color:#BF9B53;background:#fff8ea;border:1px dashed #BF9B53;border-radius:12px;padding:14px 18px;margin:18px 0;">
         ${otp}
       </div>
-      <p style="font-size:12px;color:#777;">Valid for 5 minutes</p>
+      <p style="font-size:13px;color:#6b7280;margin:8px 0 0;">This OTP is valid for 5 minutes.</p>
+      <p style="font-size:12px;color:#9ca3af;margin:18px 0 0;">If you did not request this, you can safely ignore this email.</p>
     </div>
   </div>
 </div>

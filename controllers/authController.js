@@ -393,6 +393,18 @@ exports.login = async (req, res) => {
     const user = await Model.findOne({ email });
 
     if (!user) {
+      const pendingSignup = await PendingSignup.findOne({ email, role });
+      if (pendingSignup) {
+        await sendPendingSignupOtp(pendingSignup);
+        return res.status(403).json({
+          success: false,
+          requiresOtp: true,
+          message: "Email verification is pending. OTP resent to your email.",
+          errors: ["Please verify your email to finish signup"],
+          data: { email, role },
+        });
+      }
+
       return res.status(401).json({
         success: false,
         errors: ["Invalid credentials"],
