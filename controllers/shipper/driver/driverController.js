@@ -64,10 +64,13 @@ exports.getDriverAssignedShipments = async (req, res) => {
 
     const shipments = await ShipmentQuote.find({
       assignedDriver: driverId,
-      tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
-      .populate("shipment")
-      .populate("vehicle")
+      .populate(
+        "shipment",
+        "_id shipmentCode pickupLocation deliveryLocation pickupDate deliveryDate pickupDateRange deliveryDateRange numberOfHorses horses currentLocation pickupCoords deliveryCoords status deliveredAt"
+      )
+      .populate("vehicle", "_id vehicleNumber vehicleType transportType trailerType numberOfStalls stallSize")
+      .sort({ createdAt: -1 })
       .lean();
 
     res.json({
