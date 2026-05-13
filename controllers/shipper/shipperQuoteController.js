@@ -409,6 +409,7 @@ exports.addQuote = async (req, res) => {
         quote,
         shipmentId: shipmentExists._id,
         shipmentCode: shipmentExists.shipmentCode,
+        shipperName: shipper.name,
       },
       notification: {
         type: "quote_created",

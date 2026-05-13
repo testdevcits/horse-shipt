@@ -36,9 +36,19 @@ const shipmentInvitationSchema = new mongoose.Schema(
       required: true,
     },
 
+    pickupCoords: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+    },
+
     deliveryLocation: {
       type: String,
       required: true,
+    },
+
+    deliveryCoords: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
     },
 
     // ============================

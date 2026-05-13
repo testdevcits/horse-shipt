@@ -1,5 +1,14 @@
 const getUserRoom = ({ role, userId }) => `horse_shipt:${role}:${userId}`;
 const getShipmentRoom = (shipmentId) => `horse_shipt:shipment:${shipmentId}`;
+const UserNotification = require("../models/common/UserNotification");
+
+const toPlainPayload = (payload) => {
+  try {
+    return JSON.parse(JSON.stringify(payload));
+  } catch {
+    return null;
+  }
+};
 
 const emitToUser = (io, { role, userId, event, payload, notification }) => {
   if (!io || !role || !userId || !event) return;
@@ -8,12 +17,27 @@ const emitToUser = (io, { role, userId, event, payload, notification }) => {
   io.to(room).emit(event, payload);
 
   if (notification) {
-    io.to(room).emit("horse_shipt:notification", {
+    const data = toPlainPayload(payload);
+    const notificationPayload = {
       event,
       ...notification,
-      data: payload,
+      data,
       createdAt: new Date().toISOString(),
+    };
+
+    UserNotification.create({
+      role,
+      user: userId,
+      event,
+      type: notification.type || "notification",
+      title: notification.title || "Notification",
+      message: notification.message,
+      data,
+    }).catch((error) => {
+      console.error("Persist notification error:", error.message);
     });
+
+    io.to(room).emit("horse_shipt:notification", notificationPayload);
   }
 };
 

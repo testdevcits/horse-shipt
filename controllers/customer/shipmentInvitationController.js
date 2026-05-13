@@ -114,7 +114,9 @@ exports.sendInvitation = async (req, res) => {
       // snapshot
       shipmentCode: shipment.shipmentCode,
       pickupLocation: shipment.pickupLocation,
+      pickupCoords: shipment.pickupCoords,
       deliveryLocation: shipment.deliveryLocation,
+      deliveryCoords: shipment.deliveryCoords,
       message,
     });
 
@@ -202,7 +204,9 @@ exports.sendInvitation = async (req, res) => {
             shipmentCode: shipment.shipmentCode,
             status: shipment.status,
             pickupLocation: shipment.pickupLocation,
+            pickupCoords: shipment.pickupCoords,
             deliveryLocation: shipment.deliveryLocation,
+            deliveryCoords: shipment.deliveryCoords,
             pickupDateRange: shipment.pickupDateRange,
             deliveryDateRange: shipment.deliveryDateRange,
             horses: shipment.horses || [],

@@ -26,6 +26,10 @@ const {
   getSettings,
   updateSetting,
 } = require("../../controllers/customer/customerNotificationController");
+const {
+  getMyNotifications,
+  markMyNotificationsRead,
+} = require("../../controllers/common/userNotificationController");
 
 const {
   subscribeToPush,
@@ -110,6 +114,8 @@ router.post("/payment/verify-otp", customerAuth, verifyOtp);
 
 router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
+router.get("/notification-activity", customerAuth, getMyNotifications);
+router.patch("/notification-activity/read", customerAuth, markMyNotificationsRead);
 
 // ====================================================
 // PUSH NOTIFICATIONS

@@ -79,6 +79,10 @@ const {
   updateSettings,
   getSettingsById,
 } = require("../../controllers/shipper/shipperSettingsController");
+const {
+  getMyNotifications,
+  markMyNotificationsRead,
+} = require("../../controllers/common/userNotificationController");
 
 // -------- Drivers (Shipper Admin) --------
 const {
@@ -253,6 +257,8 @@ router.get("/settings", shipperAuth, getSettings);
 router.post("/settings/update-notifications", shipperAuth, updateSettings);
 
 router.get("/settings/:shipperId", shipperAuth, getSettingsById);
+router.get("/notification-activity", shipperAuth, getMyNotifications);
+router.patch("/notification-activity/read", shipperAuth, markMyNotificationsRead);
 
 // ====================================================
 // preferred-areas ROUTES

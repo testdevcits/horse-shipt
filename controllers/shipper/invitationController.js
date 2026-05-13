@@ -8,7 +8,7 @@ exports.getMyInvitations = async (req, res) => {
       .populate({
         path: "shipment",
         select:
-          "shipmentCode status pickupLocation deliveryLocation pickupDateRange deliveryDateRange horses numberOfHorses estimatedDistance transportType",
+          "shipmentCode status pickupLocation pickupCoords deliveryLocation deliveryCoords pickupDateRange deliveryDateRange horses numberOfHorses estimatedDistance transportType",
       })
       .populate({
         path: "customer",
