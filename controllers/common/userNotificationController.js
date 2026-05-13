@@ -6,23 +6,38 @@ exports.getMyNotifications = async (req, res) => {
   try {
     const role = getRole(req);
     const user = req.user._id;
+    const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const skip = (page - 1) * limit;
 
-    const notifications = await UserNotification.find({ role, user })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .lean();
+    const query = { role, user };
 
-    const unreadCount = await UserNotification.countDocuments({
-      role,
-      user,
-      read: false,
-    });
+    const [notifications, unreadCount, total] = await Promise.all([
+      UserNotification.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      UserNotification.countDocuments({
+        ...query,
+        read: false,
+      }),
+      UserNotification.countDocuments(query),
+    ]);
+
+    const totalPages = Math.max(Math.ceil(total / limit), 1);
 
     return res.json({
       success: true,
       data: notifications,
       unreadCount,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+        hasNextPage: page < totalPages,
+      },
     });
   } catch (error) {
     console.error("Get notifications error:", error);
