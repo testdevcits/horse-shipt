@@ -29,6 +29,7 @@ const {
 const {
   getMyNotifications,
   markMyNotificationsRead,
+  deleteMyNotification,
 } = require("../../controllers/common/userNotificationController");
 
 const {
@@ -116,6 +117,11 @@ router.get("/notifications", customerAuth, getSettings);
 router.put("/notifications/:type", customerAuth, updateSetting);
 router.get("/notification-activity", customerAuth, getMyNotifications);
 router.patch("/notification-activity/read", customerAuth, markMyNotificationsRead);
+router.delete(
+  "/notification-activity/:notificationId",
+  customerAuth,
+  deleteMyNotification
+);
 
 // ====================================================
 // PUSH NOTIFICATIONS

@@ -55,3 +55,35 @@ exports.markMyNotificationsRead = async (req, res) => {
     });
   }
 };
+
+exports.deleteMyNotification = async (req, res) => {
+  try {
+    const role = getRole(req);
+    const user = req.user._id;
+    const { notificationId } = req.params;
+
+    const deleted = await UserNotification.findOneAndDelete({
+      _id: notificationId,
+      role,
+      user,
+    });
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Notification deleted",
+    });
+  } catch (error) {
+    console.error("Delete notification error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete notification",
+    });
+  }
+};

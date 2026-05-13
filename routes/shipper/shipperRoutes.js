@@ -82,6 +82,7 @@ const {
 const {
   getMyNotifications,
   markMyNotificationsRead,
+  deleteMyNotification,
 } = require("../../controllers/common/userNotificationController");
 
 // -------- Drivers (Shipper Admin) --------
@@ -259,6 +260,11 @@ router.post("/settings/update-notifications", shipperAuth, updateSettings);
 router.get("/settings/:shipperId", shipperAuth, getSettingsById);
 router.get("/notification-activity", shipperAuth, getMyNotifications);
 router.patch("/notification-activity/read", shipperAuth, markMyNotificationsRead);
+router.delete(
+  "/notification-activity/:notificationId",
+  shipperAuth,
+  deleteMyNotification
+);
 
 // ====================================================
 // preferred-areas ROUTES
