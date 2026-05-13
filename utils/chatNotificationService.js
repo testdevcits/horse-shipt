@@ -2,12 +2,14 @@ const nodemailer = require("nodemailer");
 const twilio = require("twilio");
 const Customer = require("../models/customer/customerModel");
 const Shipper = require("../models/shipper/shipperModel");
-const CustomerNotification = require("../models/customer/CustomerNotificationModel");
-const ShipperSettings = require("../models/shipper/shipperSettingsModel");
 const CustomerShipment = require("../models/customer/CustomerShipment");
 const { sendCustomerNotification } = require("./customerNotifications");
 const { sendShipperEmail } = require("./shipperMailSend");
 const { sendShipperSms } = require("./shipperSmsSend");
+const {
+  getShipperChannelSettings,
+  isCustomerNotificationEnabled,
+} = require("./notificationPreferences");
 
 const isValidE164 = (phone = "") => /^\+[1-9]\d{9,14}$/.test(phone);
 
@@ -72,11 +74,8 @@ const getShipmentLabel = async (shipmentId) => {
 };
 
 const notifyCustomer = async ({ customerId, title, body, emailText, smsText }) => {
-  const settings =
-    (await CustomerNotification.findOne({ user: customerId })) ||
-    (await CustomerNotification.create({ user: customerId }));
-
-  if (settings.settings?.newMessage === false) return;
+  const enabled = await isCustomerNotificationEnabled(customerId, "newMessage");
+  if (!enabled) return;
 
   const customer = await Customer.findById(customerId).select("email phone").lean();
   if (!customer) return;
@@ -96,14 +95,7 @@ const notifyCustomer = async ({ customerId, title, body, emailText, smsText }) =
 };
 
 const notifyShipper = async ({ shipperId, title, emailText, smsText }) => {
-  const settings =
-    (await ShipperSettings.findOne({ shipperId })) ||
-    (await ShipperSettings.create({ shipperId }));
-
-  const messageSettings = settings.notifications?.message || {
-    email: true,
-    sms: true,
-  };
+  const messageSettings = await getShipperChannelSettings(shipperId, "message");
 
   const tasks = [];
   if (messageSettings.email) {
@@ -189,11 +181,8 @@ const notifyQuestionReceiver = async ({
         : `${senderLabel} asked about ${shipmentLabel}: ${preview}`;
 
     if (receiverRole === "customer") {
-      const settings =
-        (await CustomerNotification.findOne({ user: receiverId })) ||
-        (await CustomerNotification.create({ user: receiverId }));
-
-      if (settings.settings?.question === false) return;
+      const enabled = await isCustomerNotificationEnabled(receiverId, "question");
+      if (!enabled) return;
 
       const customer = await Customer.findById(receiverId)
         .select("email phone")
@@ -216,14 +205,10 @@ const notifyQuestionReceiver = async ({
     }
 
     if (receiverRole === "shipper") {
-      const settings =
-        (await ShipperSettings.findOne({ shipperId: receiverId })) ||
-        (await ShipperSettings.create({ shipperId: receiverId }));
-
-      const questionSettings = settings.notifications?.question || {
-        email: true,
-        sms: true,
-      };
+      const questionSettings = await getShipperChannelSettings(
+        receiverId,
+        "question"
+      );
 
       const tasks = [];
       if (questionSettings.email) {

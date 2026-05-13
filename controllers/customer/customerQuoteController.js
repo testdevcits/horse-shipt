@@ -13,6 +13,9 @@ const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 const Stripe = require("stripe");
 const { notifyQuote } = require("../../utils/notifyQuote/notifyQuote");
 const { emitToUser } = require("../../sockets/realtimeSocket");
+const {
+  getShipperChannelSettings,
+} = require("../../utils/notificationPreferences");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /* =========================================================
@@ -186,12 +189,19 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     // ---------------- NOTIFICATIONS ----------------
     const shipperEmail = quote.shipper?.email;
     const shipperPhone = quote.shipper?.mobile || quote.shipper?.phone;
+    const quoteNotificationSettings = await getShipperChannelSettings(
+      quote.shipper._id,
+      "quote"
+    );
 
-    if (shipperEmail || shipperPhone) {
+    if (
+      (quoteNotificationSettings.email && shipperEmail) ||
+      (quoteNotificationSettings.sms && shipperPhone)
+    ) {
       try {
         await notifyQuote({
-          shipperEmail,
-          shipperPhone,
+          shipperEmail: quoteNotificationSettings.email ? shipperEmail : null,
+          shipperPhone: quoteNotificationSettings.sms ? shipperPhone : null,
           customerName: quote.shipment.customer.name,
           shipment: quote.shipment,
           quote: {

@@ -1,6 +1,9 @@
 const getUserRoom = ({ role, userId }) => `horse_shipt:${role}:${userId}`;
 const getShipmentRoom = (shipmentId) => `horse_shipt:shipment:${shipmentId}`;
 const UserNotification = require("../models/common/UserNotification");
+const {
+  isInAppNotificationEnabled,
+} = require("../utils/notificationPreferences");
 
 const toPlainPayload = (payload) => {
   try {
@@ -25,19 +28,31 @@ const emitToUser = (io, { role, userId, event, payload, notification }) => {
       createdAt: new Date().toISOString(),
     };
 
-    UserNotification.create({
+    isInAppNotificationEnabled({
       role,
-      user: userId,
-      event,
-      type: notification.type || "notification",
-      title: notification.title || "Notification",
-      message: notification.message,
-      data,
-    }).catch((error) => {
-      console.error("Persist notification error:", error.message);
-    });
+      userId,
+      type: notification.type || event,
+    })
+      .then((enabled) => {
+        if (!enabled) return;
 
-    io.to(room).emit("horse_shipt:notification", notificationPayload);
+        UserNotification.create({
+          role,
+          user: userId,
+          event,
+          type: notification.type || "notification",
+          title: notification.title || "Notification",
+          message: notification.message,
+          data,
+        }).catch((error) => {
+          console.error("Persist notification error:", error.message);
+        });
+
+        io.to(room).emit("horse_shipt:notification", notificationPayload);
+      })
+      .catch((error) => {
+        console.error("Notification preference error:", error.message);
+      });
   }
 };
 

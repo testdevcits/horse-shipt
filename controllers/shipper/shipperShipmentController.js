@@ -6,8 +6,8 @@ const cache = new NodeCache({ stdTTL: 30 }); // keep opportunity results fresh d
 const ShipperShipment = require("../../models/shipper/ShipperShipment");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
-const shipperMailSend = require("../../utils/shipperMailSend");
-const shipperSmsSend = require("../../utils/shipperSmsSend");
+const { sendShipperEmail } = require("../../utils/shipperMailSend");
+const { sendShipperSms } = require("../../utils/shipperSmsSend");
 const shipperModel = require("../../models/shipper/shipperModel");
 const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
 
@@ -417,9 +417,9 @@ exports.acceptShipment = async (req, res) => {
     if (settings?.notifications?.shipment) {
       const msg = `New shipment assigned.\nPickup: ${customerShipment.pickupLocation}\nDelivery: ${customerShipment.deliveryLocation}`;
       if (settings.notifications.shipment.email)
-        await shipperMailSend(shipperId, "Shipment Assigned", msg);
+        await sendShipperEmail(shipperId, "Shipment Assigned", msg);
       if (settings.notifications.shipment.sms)
-        await shipperSmsSend(shipperId, msg);
+        await sendShipperSms(shipperId, msg);
     }
 
     res.status(200).json({

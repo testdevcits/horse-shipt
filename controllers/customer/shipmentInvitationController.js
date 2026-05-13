@@ -4,6 +4,9 @@ const Customer = require("../../models/customer/customerModel");
 const Shipper = require("../../models/shipper/shipperModel");
 const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const { emitToUser } = require("../../sockets/realtimeSocket");
+const {
+  getShipperChannelSettings,
+} = require("../../utils/notificationPreferences");
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -122,7 +125,12 @@ exports.sendInvitation = async (req, res) => {
 
     let emailSent = false;
 
-    if (shipper.email) {
+    const opportunitySettings = await getShipperChannelSettings(
+      shipperId,
+      "opportunity"
+    );
+
+    if (shipper.email && opportunitySettings.email) {
       const dashboardUrl = `${
         process.env.FRONTEND_URL || process.env.REACT_APP_FRONTEND_URL || ""
       }/shipper/dashboard`;

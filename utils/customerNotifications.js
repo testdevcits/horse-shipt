@@ -1,5 +1,8 @@
 const webpush = require("web-push");
-const CustomerNotification = require("../models/customer/CustomerNotificationModel");
+const {
+  getCustomerNotificationSettings,
+  isCustomerNotificationEnabled,
+} = require("./notificationPreferences");
 
 // VAPID keys
 webpush.setVapidDetails(
@@ -16,10 +19,10 @@ webpush.setVapidDetails(
  */
 const sendCustomerNotification = async (userId, type, payload) => {
   try {
-    const userSettings = await CustomerNotification.findOne({ user: userId });
+    const userSettings = await getCustomerNotificationSettings(userId);
+    const enabled = await isCustomerNotificationEnabled(userId, type);
 
-    if (!userSettings) return; // No settings for this user
-    if (!userSettings.settings[type]) return; // User disabled this notification
+    if (!enabled) return; // User disabled this notification
 
     if (userSettings.subscription) {
       await webpush.sendNotification(
