@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 // --------------------------- imports ---------------------------
 const NodeCache = require("node-cache");
-const cache = new NodeCache({ stdTTL: 600 }); // TTL = 10 min
+const cache = new NodeCache({ stdTTL: 30 }); // keep opportunity results fresh during active quoting
 const ShipperShipment = require("../../models/shipper/ShipperShipment");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
