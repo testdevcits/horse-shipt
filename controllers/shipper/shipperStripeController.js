@@ -540,10 +540,23 @@ exports.savePaymentMethod = async (req, res) => {
       paymentMethodId,
     });
 
-    // Attach payment method
-    await stripe.paymentMethods.attach(paymentMethodId, {
-      customer: shipper.stripeCustomerId,
-    });
+    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+
+    if (
+      paymentMethod.customer &&
+      paymentMethod.customer !== shipper.stripeCustomerId
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Payment method belongs to another Stripe customer",
+      });
+    }
+
+    if (!paymentMethod.customer) {
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: shipper.stripeCustomerId,
+      });
+    }
 
     // Set default
     await stripe.customers.update(shipper.stripeCustomerId, {
@@ -551,9 +564,6 @@ exports.savePaymentMethod = async (req, res) => {
         default_payment_method: paymentMethodId,
       },
     });
-
-    // Get card details
-    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
 
     // Save card info
     shipper.paymentMethodId = paymentMethodId;
@@ -580,6 +590,10 @@ exports.savePaymentMethod = async (req, res) => {
       success: true,
       message:
         "Card saved successfully. Account activated if previously restricted.",
+      cardBrand: shipper.cardBrand,
+      cardLast4: shipper.cardLast4,
+      cardExpMonth: shipper.cardExpMonth,
+      cardExpYear: shipper.cardExpYear,
     });
   } catch (error) {
     console.error("[SAVE PAYMENT ERROR]", error);
