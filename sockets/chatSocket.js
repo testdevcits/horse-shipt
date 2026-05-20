@@ -122,7 +122,12 @@ module.exports = (io) => {
             role: receiver.role,
             userId: receiver.userId,
             event: "horse_shipt:chat_message_created",
-            payload: msg,
+            payload: {
+              message: msg,
+              shipmentId: room?.shipment,
+              customerId: room?.customer,
+              shipperId: room?.shipper,
+            },
             notification: {
               type: "chat_message",
               title: "New chat message",

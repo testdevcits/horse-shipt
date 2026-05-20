@@ -256,7 +256,12 @@ exports.sendRoomMessage = async (req, res) => {
           role: receiver.role,
           userId: receiver.userId,
           event: "horse_shipt:chat_message_created",
-          payload: chatMessage,
+          payload: {
+            message: chatMessage,
+            shipmentId: room.shipment,
+            customerId: room.customer,
+            shipperId: room.shipper,
+          },
           notification: {
             type: "chat_message",
             title: "New chat message",
