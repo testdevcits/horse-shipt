@@ -2,12 +2,12 @@ const nodemailer = require("nodemailer");
 
 // -------------------- TRANSPORTER (USE WORKING SMTP CONFIG) --------------------
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: process.env.SMTP_SECURE === "true", // true for 465, false for 587
+  host: process.env.EMAIL_HOST,
+  port: Number(process.env.EMAIL_PORT) || 465,
+  secure: Number(process.env.EMAIL_PORT) === 465,
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
   },
 });
 
@@ -25,7 +25,8 @@ transporter.verify((error) => {
 exports.sendOtpMail = async (email, otp) => {
   try {
     await transporter.sendMail({
-      from: `"HorseShipt" <${process.env.SMTP_USER}>`,
+      from:
+        process.env.EMAIL_FROM || `"HorseShipt" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verify your HorseShipt email",
       html: `
