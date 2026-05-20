@@ -115,6 +115,11 @@ async function generateContractPDF({
         doc.y = endY + 5; // spacing after row
       };
 
+      const drawOptionalRow = (label, value) => {
+        if (value === undefined || value === null || value === "") return;
+        drawRow(label, value);
+      };
+
       /* ===================== CONTENT ===================== */
 
       sectionTitle("Customer Information");
@@ -129,8 +134,8 @@ async function generateContractPDF({
       sectionTitle("Shipper & Quote Details");
       drawRow("Shipper Name:", shipper?.name);
       drawRow("Shipper Email:", shipper?.email);
-      drawRow("Vehicle:", vehicle?.vehicleNumber);
-      drawRow("Transport Type:", vehicle?.transportType);
+      drawOptionalRow("Vehicle:", vehicle?.vehicleNumber);
+      drawOptionalRow("Transport Type:", vehicle?.transportType);
       drawRow(
         "Total Price:",
         `${quote?.totalPrice || 0} ${quote?.currency || ""}`
