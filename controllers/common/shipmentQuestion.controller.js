@@ -1,5 +1,6 @@
 const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const { emitToUser } = require("../../sockets/realtimeSocket");
 const { notifyQuestionReceiver } = require("../../utils/chatNotificationService");
 
 // ========================================================
@@ -31,6 +32,24 @@ exports.askQuestion = async (req, res) => {
       customerId: shipment.customer,
       question: question.trim(),
       readByShipperAt: new Date(),
+    });
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: shipment.customer,
+      event: "horse_shipt:shipment_question",
+      payload: {
+        question: newQuestion,
+        shipmentId,
+        shipmentCode: shipment.shipmentCode,
+      },
+      notification: {
+        type: "question",
+        title: "New shipment question",
+        message: `A shipper asked a question about ${
+          shipment.shipmentCode || "your shipment"
+        }.`,
+      },
     });
 
     notifyQuestionReceiver({
@@ -107,6 +126,28 @@ exports.answerQuestion = async (req, res) => {
     questionDoc.readByShipperAt = null;
 
     await questionDoc.save();
+
+    const shipment = await CustomerShipment.findById(questionDoc.shipmentId)
+      .select("shipmentCode")
+      .lean();
+
+    emitToUser(req.app.get("io"), {
+      role: "shipper",
+      userId: questionDoc.shipperId,
+      event: "horse_shipt:shipment_question_answered",
+      payload: {
+        question: questionDoc,
+        shipmentId: questionDoc.shipmentId,
+        shipmentCode: shipment?.shipmentCode,
+      },
+      notification: {
+        type: "question",
+        title: "Question answered",
+        message: `A customer answered your question about ${
+          shipment?.shipmentCode || "a shipment"
+        }.`,
+      },
+    });
 
     notifyQuestionReceiver({
       receiverRole: "shipper",
