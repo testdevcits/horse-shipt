@@ -98,6 +98,9 @@ const {
   getTopRatedShippers,
   getShipperProfileDetail,
 } = require("../../controllers/shipper/shipperReviewController");
+const {
+  getReceivedCustomerReviews,
+} = require("../../controllers/customer/customerReviewController");
 // ====================================================
 // PAYMENT ROUTES
 // ====================================================
@@ -328,6 +331,7 @@ router.delete("/reviews/:reviewId", customerAuth, deleteMyReview);
 
 // Get My Reviews
 router.get("/reviews", customerAuth, getMyReviews);
+router.get("/reviews/received", customerAuth, getReceivedCustomerReviews);
 
 router.get("/shipper/:shipperId", getReviewsByShipper);
 // ======= NEW: Top Rated Shippers =======

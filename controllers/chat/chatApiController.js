@@ -8,7 +8,7 @@ const { getOrCreateChatRoom } = require("./chatController");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { notifyChatReceiver } = require("../../utils/chatNotificationService");
 
-const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit", "delivered"];
+const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit"];
 
 const inferRole = (req) => {
   if (req.user?.role) return req.user.role;
@@ -68,7 +68,9 @@ const getChatShipment = async ({ shipmentId, userId, role }) => {
 
   if (!canChatOnShipment(shipment)) {
     const error = new Error(
-      "Chat is available only after the shipment is accepted."
+      shipment?.status === "delivered"
+        ? "Chat is locked after shipment completion."
+        : "Chat is available only after the shipment is accepted."
     );
     error.statusCode = 403;
     throw error;
@@ -212,11 +214,18 @@ exports.sendRoomMessage = async (req, res) => {
     }
 
     if (room.shipment) {
-      await getChatShipment({
+      const shipment = await getChatShipment({
         shipmentId: room.shipment,
         userId: req.user._id,
         role: requestRole,
       });
+
+      if (shipment.shipment?.status === "delivered") {
+        return res.status(403).json({
+          success: false,
+          message: "Chat is locked after shipment completion.",
+        });
+      }
     }
 
     if (!messageText && !req.file) {
@@ -291,7 +300,7 @@ exports.sendRoomMessage = async (req, res) => {
     });
   } catch (error) {
     console.error("sendRoomMessage error:", error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || "Failed to send message.",
     });

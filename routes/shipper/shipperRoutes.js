@@ -131,6 +131,10 @@ const {
   updateGoogleReviewLink,
   getGoogleReviewLink,
 } = require("../../controllers/shipper/shipperReviewController");
+const {
+  addCustomerReview,
+  getMyCustomerReviews,
+} = require("../../controllers/customer/customerReviewController");
 
 // -------- STRIPE ROUTES --------
 const {
@@ -397,6 +401,8 @@ router.post(
 // Shipper → Add / Update Google Review Link
 router.put("/reviews/google-link", shipperAuth, updateGoogleReviewLink);
 router.get("/reviews/google-link", shipperAuth, getGoogleReviewLink);
+router.post("/customer-reviews", shipperAuth, addCustomerReview);
+router.get("/customer-reviews/mine", shipperAuth, getMyCustomerReviews);
 
 // ================= STRIPE ACCOUNT =================
 router.post("/stripe/create-account", shipperAuth, createStripeAccount);

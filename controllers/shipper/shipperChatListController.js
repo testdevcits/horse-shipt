@@ -1,7 +1,7 @@
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const formatChatUser = require("../../utils/formatChatUser");
 
-const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit", "delivered"];
+const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit"];
 
 /**
  * Shipper → accepted shipment chats

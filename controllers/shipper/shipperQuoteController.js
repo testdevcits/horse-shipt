@@ -576,10 +576,15 @@ exports.getMyQuotes = async (req, res) => {
   try {
     const shipperId = req.user._id;
     const quotes = await ShipmentQuote.find({ shipper: shipperId })
-      .populate(
-        "shipment",
-        "pickupLocation deliveryLocation status pickupDate deliveryDate pickupDateRange deliveryDateRange numberOfHorses shipmentCode horses transportType estimatedDistance"
-      )
+      .populate({
+        path: "shipment",
+        select:
+          "pickupLocation deliveryLocation status pickupDate deliveryDate pickupDateRange deliveryDateRange numberOfHorses shipmentCode horses transportType estimatedDistance customer",
+        populate: {
+          path: "customer",
+          select: "name email profileImage profilePicture",
+        },
+      })
       .populate("vehicle")
       .populate("shipper", "name email")
       .sort({ createdAt: -1 });
