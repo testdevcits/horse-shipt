@@ -57,8 +57,9 @@ exports.getShipperProfile = async (req, res) => {
       reviewStatus: "approved",
       isHidden: false,
     })
+      .populate("customerId", "name email profileImage profilePicture")
       .sort({ createdAt: -1 })
-      .select("customerName rating reviewText createdAt source")
+      .select("customerName rating reviewText createdAt source customerId")
       .lean();
 
     const averageRating =

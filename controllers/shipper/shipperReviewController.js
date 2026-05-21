@@ -237,7 +237,7 @@ exports.getReviewsByShipper = async (req, res) => {
       isHidden: false,
       reviewStatus: "approved",
     })
-      .populate("customerId", "name email profileImage")
+      .populate("customerId", "name email profileImage profilePicture")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
