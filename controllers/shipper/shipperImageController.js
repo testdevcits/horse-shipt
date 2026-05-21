@@ -1,5 +1,6 @@
 const cloudinary = require("cloudinary").v2;
 const Shipper = require("../../models/shipper/shipperModel");
+const Review = require("../../models/shipper/review.model");
 
 // -----------------------------
 // Cloudinary Configuration
@@ -51,6 +52,21 @@ exports.getShipperProfile = async (req, res) => {
     const resolvedBannerImage =
       shipper.bannerImage?.url || "/images/default_banner.png";
 
+    const reviews = await Review.find({
+      shipperId: shipper._id,
+      reviewStatus: "approved",
+      isHidden: false,
+    })
+      .sort({ createdAt: -1 })
+      .select("customerName rating reviewText createdAt source")
+      .lean();
+
+    const averageRating =
+      reviews.length > 0
+        ? reviews.reduce((sum, review) => sum + review.rating, 0) /
+          reviews.length
+        : 0;
+
     console.log("[IMAGE RESOLUTION]", {
       profileImage: resolvedProfileImage,
       bannerImage: resolvedBannerImage,
@@ -75,6 +91,9 @@ exports.getShipperProfile = async (req, res) => {
         mobile: shipper.mobile || "",
         profileImage: resolvedProfileImage,
         bannerImage: resolvedBannerImage,
+        rating: Number(averageRating.toFixed(1)),
+        totalReviews: reviews.length,
+        reviews,
       },
     });
   } catch (error) {
