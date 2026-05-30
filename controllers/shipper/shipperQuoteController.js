@@ -585,7 +585,17 @@ exports.getMyQuotes = async (req, res) => {
           select: "name email profileImage profilePicture",
         },
       })
-      .populate("vehicle")
+      .populate({
+        path: "vehicle",
+        populate: {
+          path: "driver",
+          select: "name email phone profileImage driverStatus",
+        },
+      })
+      .populate(
+        "assignedDriver",
+        "name email phone profileImage driverStatus currentLocation"
+      )
       .populate("shipper", "name email")
       .sort({ createdAt: -1 });
 
