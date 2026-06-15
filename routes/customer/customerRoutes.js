@@ -179,16 +179,6 @@ router.put(
   "/shipments/:shipmentId",
   customerAuth,
   upload.any(),
-  (req, res, next) => {
-    console.log(
-      "Files:",
-      (req.files || []).map((f) => ({
-        fieldname: f.fieldname,
-        originalname: f.originalname,
-      }))
-    );
-    next();
-  },
   updateShipmentByCustomer
 );
 

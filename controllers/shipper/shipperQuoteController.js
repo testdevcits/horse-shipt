@@ -223,10 +223,6 @@ exports.addQuote = async (req, res) => {
       cancellationWindowDays === null ||
       isNaN(Number(cancellationWindowDays))
     ) {
-      console.log("[ERROR] Missing required fields", {
-        cancellationWindowDays,
-      });
-
       return res.status(400).json({
         success: false,
         message:
@@ -266,11 +262,6 @@ exports.addQuote = async (req, res) => {
       bookingDate.getTime() +
         Number(cancellationWindowDays) * 24 * 60 * 60 * 1000
     );
-
-    console.log("[CANCELLATION]", {
-      days: cancellationWindowDays,
-      lastDate: cancellationLastDate,
-    });
 
     // ----------------- GENERATE PDF -----------------
     const pdfBuffer = await generateContractPDF({
@@ -549,12 +540,6 @@ exports.assignVehicleToQuote = async (req, res) => {
       },
     });
 
-    console.log("[VEHICLE ASSIGNED] Success", {
-      quoteId: quote._id,
-      vehicleId,
-      driverId: vehicle.driver._id,
-    });
-
     return res.status(200).json({
       success: true,
       message: "Vehicle and driver assigned successfully",
@@ -686,10 +671,6 @@ exports.deleteQuote = async (req, res) => {
 
     // ---------------- AUTH CHECK ----------------
     if (quote.shipper.toString() !== shipperId.toString()) {
-      console.log("[DELETE QUOTE] Unauthorized access", {
-        quoteOwner: quote.shipper,
-        shipperId,
-      });
       return res.status(403).json({
         success: false,
         message: "Unauthorized",

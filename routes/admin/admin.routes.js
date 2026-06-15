@@ -30,6 +30,9 @@ router.post("/reset-password", adminController.resetPasswordWithOtp);
 // Get admin profile
 router.get("/profile", adminAuth, adminController.getAdminProfile);
 
+// Update admin profile
+router.put("/profile", adminAuth, adminController.updateAdminProfile);
+
 // Change password (logged-in admin)
 router.post("/change-password", adminAuth, adminController.changePassword);
 

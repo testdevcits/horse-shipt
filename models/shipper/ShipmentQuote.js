@@ -38,6 +38,35 @@ const quoteSchema = new mongoose.Schema(
       min: 0,
     },
 
+    originalPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    negotiatedPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+
+    negotiationStatus: {
+      type: String,
+      enum: ["none", "pending", "confirmed", "rejected"],
+      default: "none",
+      index: true,
+    },
+
+    negotiationConfirmedAt: {
+      type: Date,
+      default: null,
+    },
+
+    negotiationUpdatedAt: {
+      type: Date,
+      default: null,
+    },
+
     currency: {
       type: String,
       default: "USD",

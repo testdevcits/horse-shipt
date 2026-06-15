@@ -12,6 +12,29 @@ const {
   sendSubscriptionEmail,
 } = require("../../utils/subscriptionEmailService");
 
+const LIVE_SUBSCRIPTION_STATUSES = [
+  "active",
+  "trialing",
+  "past_due",
+  "incomplete",
+  "unpaid",
+  "paused",
+];
+
+const getInvoiceSubscriptionId = (invoice) =>
+  invoice
+    ? invoice.subscription ||
+      invoice.subscription_details?.subscription ||
+      invoice.lines?.data?.[0]?.subscription ||
+      null
+    : null;
+
+const normalizeStripeId = (value) => {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  return value.id || null;
+};
+
 // ==========================================================
 // GET PLATFORM COUNTRY
 // ==========================================================
@@ -535,11 +558,6 @@ exports.savePaymentMethod = async (req, res) => {
       });
     }
 
-    console.log("[CARD UPDATE] Start", {
-      shipperId: shipper._id,
-      paymentMethodId,
-    });
-
     const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
 
     if (
@@ -580,11 +598,6 @@ exports.savePaymentMethod = async (req, res) => {
     }
 
     await shipper.save();
-
-    console.log(
-      "[SUCCESS] Card saved & account status:",
-      shipper.accountStatus
-    );
 
     res.json({
       success: true,
@@ -662,24 +675,79 @@ exports.createSubscription = async (req, res) => {
     // ============================
     const stripeSubs = await stripe.subscriptions.list({
       customer: shipper.stripeCustomerId,
-      limit: 10,
+      status: "all",
+      limit: 100,
+      expand: ["data.items.data.price"],
     });
 
     const nowTs = Math.floor(Date.now() / 1000);
 
-    const activeSub = stripeSubs.data.find((sub) => {
-      const validStatus = ["active", "trialing", "past_due"].includes(
-        sub.status
-      );
-      const validTime =
-        sub.current_period_end && sub.current_period_end > nowTs;
-      return validStatus && validTime;
+    const existingLiveSub = stripeSubs.data.find((sub) => {
+      if (!LIVE_SUBSCRIPTION_STATUSES.includes(sub.status)) return false;
+      if (sub.status === "incomplete_expired" || sub.status === "canceled") {
+        return false;
+      }
+
+      const stillInPeriod =
+        !sub.current_period_end || sub.current_period_end > nowTs;
+      const cancelStillValid =
+        sub.cancel_at_period_end &&
+        sub.current_period_end &&
+        sub.current_period_end > nowTs;
+
+      return stillInPeriod || cancelStillValid;
     });
 
-    if (activeSub) {
+    if (existingLiveSub) {
+      const price = existingLiveSub.items?.data?.[0]?.price || {};
+      await subscriptionModel.findOneAndUpdate(
+        { stripeSubscriptionId: existingLiveSub.id },
+        {
+          shipperId: shipper._id,
+          stripeCustomerId: shipper.stripeCustomerId,
+          stripeSubscriptionId: existingLiveSub.id,
+          stripePriceId: price.id || null,
+          planName: "Shipper Monthly Plan",
+          amount: price?.unit_amount ? price.unit_amount / 100 : 0,
+          currency: price?.currency || "usd",
+          interval: "month",
+          status: existingLiveSub.status,
+          trialStart: existingLiveSub.trial_start
+            ? new Date(existingLiveSub.trial_start * 1000).toISOString()
+            : null,
+          trialEnd: existingLiveSub.trial_end
+            ? new Date(existingLiveSub.trial_end * 1000).toISOString()
+            : null,
+          currentPeriodStart: existingLiveSub.current_period_start
+            ? new Date(existingLiveSub.current_period_start * 1000).toISOString()
+            : null,
+          currentPeriodEnd: existingLiveSub.current_period_end
+            ? new Date(existingLiveSub.current_period_end * 1000).toISOString()
+            : null,
+          cancelAtPeriodEnd: existingLiveSub.cancel_at_period_end || false,
+          canceledAt: existingLiveSub.canceled_at
+            ? new Date(existingLiveSub.canceled_at * 1000).toISOString()
+            : null,
+        },
+        { upsert: true, new: true }
+      );
+
       return res.status(400).json({
         success: false,
-        message: "Subscription already exists or is active",
+        code: "SUBSCRIPTION_ALREADY_EXISTS",
+        message:
+          "A live Stripe subscription already exists for this shipper. Please use the existing subscription instead of creating a duplicate.",
+        data: {
+          stripeSubscriptionId: existingLiveSub.id,
+          status: existingLiveSub.status,
+          currentPeriodEnd: existingLiveSub.current_period_end
+            ? new Date(existingLiveSub.current_period_end * 1000).toISOString()
+            : null,
+          trialEnd: existingLiveSub.trial_end
+            ? new Date(existingLiveSub.trial_end * 1000).toISOString()
+            : null,
+          cancelAtPeriodEnd: existingLiveSub.cancel_at_period_end || false,
+        },
       });
     }
 
@@ -1373,10 +1441,13 @@ exports.getBillingHistory = async (req, res) => {
     // ============================
     // FORMAT INVOICES (SUBSCRIPTION - MONTHLY)
     // ============================
+    const invoiceById = new Map(invoices.data.map((inv) => [inv.id, inv]));
+
     const subscriptionData = invoices.data.map((inv) => {
       const linePeriod = inv.lines?.data?.[0]?.period || {};
       const periodStart = linePeriod.start || inv.period_start;
       const periodEnd = linePeriod.end || inv.period_end;
+      const stripeSubscriptionId = getInvoiceSubscriptionId(inv);
       const amount = inv.amount_paid / 100;
       const isNoChargeInvoice = amount === 0;
       const isSubscriptionCreate = inv.billing_reason === "subscription_create";
@@ -1384,6 +1455,7 @@ exports.getBillingHistory = async (req, res) => {
 
       return {
         id: inv.id,
+        stripeSubscriptionId,
 
         planType: "monthly",
 
@@ -1422,6 +1494,9 @@ exports.getBillingHistory = async (req, res) => {
     // ============================
     const paymentData = charges.data.map((ch) => ({
       id: ch.id,
+      stripeSubscriptionId: getInvoiceSubscriptionId(
+        invoiceById.get(normalizeStripeId(ch.invoice))
+      ),
 
       planType: "monthly",
 

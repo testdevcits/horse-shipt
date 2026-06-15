@@ -21,7 +21,7 @@ const notifyShipper = async ({
 }) => {
   try {
     const notify = await getShipperChannelSettings(shipperId, type);
-    if (!notify) return console.log(`Unknown notification type: ${type}`);
+    if (!notify) return;
 
     if (notify.email) await sendShipperEmail(shipperId, emailSubject, emailContent);
     if (notify.sms) await sendShipperSms(shipperId, smsContent);

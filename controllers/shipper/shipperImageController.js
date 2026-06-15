@@ -32,12 +32,6 @@ exports.getShipperProfile = async (req, res) => {
       });
     }
 
-    console.log("[SHIPPER DATA FOUND]", {
-      id: shipper._id,
-      email: shipper.email,
-      accountStatus: shipper.accountStatus,
-    });
-
     // ================================
     // Profile Image Resolution Priority
     // ================================
@@ -67,11 +61,6 @@ exports.getShipperProfile = async (req, res) => {
         ? reviews.reduce((sum, review) => sum + review.rating, 0) /
           reviews.length
         : 0;
-
-    console.log("[IMAGE RESOLUTION]", {
-      profileImage: resolvedProfileImage,
-      bannerImage: resolvedBannerImage,
-    });
 
     res.status(200).json({
       success: true,

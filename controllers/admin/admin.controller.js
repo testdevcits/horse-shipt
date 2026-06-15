@@ -232,6 +232,51 @@ exports.getAdminProfile = async (req, res, next) => {
 };
 
 // =================================================
+//  UPDATE ADMIN PROFILE
+// =================================================
+exports.updateAdminProfile = async (req, res, next) => {
+  try {
+    const { name, email } = req.body;
+
+    if (!name || !email) {
+      return res.status(400).json({
+        success: false,
+        message: "Name and email are required",
+      });
+    }
+
+    const existing = await HorseAdmin.findOne({
+      email: email.toLowerCase().trim(),
+      _id: { $ne: req.admin.id },
+    });
+
+    if (existing) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is already used by another admin",
+      });
+    }
+
+    const admin = await HorseAdmin.findByIdAndUpdate(
+      req.admin.id,
+      {
+        name: name.trim(),
+        email: email.toLowerCase().trim(),
+      },
+      { new: true, runValidators: true }
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Profile updated successfully",
+      admin,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
 //  LOGOUT
 // =================================================
 exports.logoutAdmin = async (req, res) => {

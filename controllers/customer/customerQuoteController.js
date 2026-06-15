@@ -479,13 +479,6 @@ exports.cancelQuote = async (req, res) => {
       });
     }
 
-    console.log("Quote found:", {
-      totalPrice: quote.totalPrice,
-      status: quote.status,
-      isCancelled: quote.isCancelled,
-      paymentIntentId: quote.stripePaymentIntentId,
-    });
-
     /* ---------------- AUTH CHECK ---------------- */
     if (quote.shipment.customer.toString() !== customerId.toString()) {
       return res.status(403).json({
@@ -532,14 +525,6 @@ exports.cancelQuote = async (req, res) => {
 
     const refundAmount = Math.max(quote.totalPrice - platformFee, 0);
 
-    console.log("Fee Calculation:", {
-      totalPrice: quote.totalPrice,
-      percentFee,
-      flatFee,
-      platformFee,
-      refundAmount,
-    });
-
     let refundStatus = "not_required";
 
     /* ---------------- STRIPE HANDLING ---------------- */
@@ -548,11 +533,6 @@ exports.cancelQuote = async (req, res) => {
         const paymentIntent = await stripe.paymentIntents.retrieve(
           quote.stripePaymentIntentId
         );
-
-        console.log("Stripe PaymentIntent:", {
-          id: paymentIntent.id,
-          status: paymentIntent.status,
-        });
 
         /* -------- HOLD -------- */
         if (paymentIntent.status === "requires_capture") {

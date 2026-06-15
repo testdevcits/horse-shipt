@@ -29,11 +29,6 @@ const notifyQuote = async ({
   try {
     const phoneToUse = formatPhone(shipperPhone);
 
-    console.log("[DEBUG] notifyQuote:", {
-      email: shipperEmail,
-      phone: phoneToUse,
-    });
-
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
       try {

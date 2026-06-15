@@ -309,10 +309,6 @@ exports.verifyOtp = async (req, res) => {
 
     // Check OTP match
     if (!payment.otp || payment.otp !== trimmedOtp) {
-      console.log("[VERIFY OTP] OTP mismatch", {
-        providedOtp: trimmedOtp,
-        storedOtp: payment.otp,
-      });
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
