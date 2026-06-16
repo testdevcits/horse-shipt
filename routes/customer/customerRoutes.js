@@ -100,6 +100,7 @@ const {
 } = require("../../controllers/shipper/shipperReviewController");
 const {
   getReceivedCustomerReviews,
+  getPublicHappyConsumers,
 } = require("../../controllers/customer/customerReviewController");
 // ====================================================
 // PAYMENT ROUTES
@@ -143,16 +144,6 @@ router.post(
   customerAuth,
   upload.any(), // temp storage for Cloudinary
   (req, res, next) => {
-    // console.log("=== Shipment Create Debug ===");
-    // console.log("User ID:", req.user._id);
-    // console.log("Body:", req.body);
-    // console.log(
-    //   "Files received:",
-    //   req.files.map((f) => ({
-    //     fieldname: f.fieldname,
-    //     originalname: f.originalname,
-    //   }))
-    // );
     next();
   },
   createShipment
@@ -309,6 +300,8 @@ router.delete("/horses/:horseId", customerAuth, deleteHorse);
 // ====================================================
 // CUSTOMER REVIEW ROUTES
 // ====================================================
+
+router.get("/happy-consumers", getPublicHappyConsumers);
 
 // Add Review (Manual Rating)
 router.post("/reviews", customerAuth, addReview);

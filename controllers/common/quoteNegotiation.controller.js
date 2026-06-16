@@ -124,6 +124,13 @@ exports.createNegotiation = async (req, res) => {
       });
     }
 
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        message: "Negotiation reason is required",
+      });
+    }
+
     await QuoteNegotiation.updateMany(
       { quote: quote._id, status: "pending" },
       {

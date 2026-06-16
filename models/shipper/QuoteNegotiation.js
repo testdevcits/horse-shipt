@@ -47,7 +47,8 @@ const quoteNegotiationSchema = new mongoose.Schema(
     },
     reason: {
       type: String,
-      default: "",
+      required: true,
+      trim: true,
       maxlength: 1000,
     },
     status: {

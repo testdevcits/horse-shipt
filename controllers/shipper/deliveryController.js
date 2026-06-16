@@ -99,18 +99,8 @@ exports.verifyDeliveryOtp = async (req, res) => {
         .json({ success: false, message: "Shipment not found" });
     }
 
-    console.log("[SHIPMENT FOUND]", {
-      id: shipment._id,
-      status: shipment.status,
-      otpVerified: shipment.deliveryOtpVerified,
-    });
-
     // ================= AUTH =================
     if (shipment.shipper?.toString() !== req.user.id) {
-      console.log("[ERROR] Unauthorized shipper", {
-        shipmentShipper: shipment.shipper,
-        loggedUser: req.user.id,
-      });
       return res
         .status(403)
         .json({ success: false, message: "Unauthorized action" });
@@ -124,17 +114,10 @@ exports.verifyDeliveryOtp = async (req, res) => {
     }
 
     if (shipment.deliveryOtp !== otp) {
-      console.log("[ERROR] Invalid OTP", {
-        expected: shipment.deliveryOtp,
-        received: otp,
-      });
       return res.status(400).json({ success: false, message: "Invalid OTP" });
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      console.log("[ERROR] OTP expired", {
-        expiresAt: shipment.deliveryOtpExpires,
-      });
       return res.status(400).json({ success: false, message: "OTP expired" });
     }
 
@@ -149,14 +132,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Accepted quote not found" });
     }
-
-    console.log("[QUOTE FOUND]", {
-      quoteId: quote._id,
-      vehicle: quote.vehicle,
-      driver: quote.assignedDriver,
-      paymentStatus: quote.paymentStatus,
-      payoutStatus: quote.payoutStatus,
-    });
 
     if (quote.paymentStatus !== "paid") {
       return res
@@ -179,20 +154,10 @@ exports.verifyDeliveryOtp = async (req, res) => {
       const vehicle = await ShipperVehicle.findById(quote.vehicle);
 
       if (vehicle) {
-        console.log("[VEHICLE BEFORE FREE]", {
-          currentShipment: vehicle.currentShipment,
-          driverStatus: vehicle.driverStatus,
-        });
-
         vehicle.currentShipment = null;
         vehicle.driverStatus = "AVAILABLE";
 
         await vehicle.save();
-
-        console.log("[VEHICLE FREED SUCCESS]", {
-          vehicleId: vehicle._id,
-          currentShipment: vehicle.currentShipment,
-        });
       } else {
       }
     } else {
@@ -204,18 +169,9 @@ exports.verifyDeliveryOtp = async (req, res) => {
       const driver = await Driver.findById(quote.assignedDriver);
 
       if (driver) {
-        console.log("[DRIVER BEFORE FREE]", {
-          status: driver.driverStatus,
-        });
-
         driver.driverStatus = "available";
 
         await driver.save();
-
-        console.log("[DRIVER FREED SUCCESS]", {
-          driverId: driver._id,
-          status: driver.driverStatus,
-        });
       } else {
       }
     } else {
@@ -238,12 +194,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
       const stripeFeeCents = balanceTx.fee;
       const netAfterStripeCents = grossCents - stripeFeeCents;
 
-      console.log("[STRIPE CALCULATION]", {
-        grossCents,
-        stripeFeeCents,
-        netAfterStripeCents,
-      });
-
       const settings = await PlatformSettings.findOne();
       const platformPercent = settings?.platformFeePercent || 0;
       const platformFlat = settings?.platformFeeFlat || 0;
@@ -253,11 +203,6 @@ exports.verifyDeliveryOtp = async (req, res) => {
         Math.round(platformFlat * 100);
 
       const shipperCents = netAfterStripeCents - platformFee;
-
-      console.log("[PAYOUT CALCULATED]", {
-        platformFee,
-        shipperCents,
-      });
 
       const transfer = await stripe.transfers.create({
         amount: shipperCents,
@@ -356,10 +301,6 @@ exports.shipperPayout = async (req, res) => {
       quote.balanceInWallet = 0;
       await quote.save();
     }
-
-    console.log(
-      `Shipper payout requested: ${totalPayout} USD, payoutId: ${payout.id}`
-    );
 
     res.json({
       success: true,

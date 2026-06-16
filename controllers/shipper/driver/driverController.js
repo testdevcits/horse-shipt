@@ -517,12 +517,6 @@ exports.driverSendDeliveryOtp = async (req, res) => {
 
     const loggedDriverId = req.driver?._id;
 
-    // Debug logs
-    console.log(
-      "Quote Driver:",
-      quote.assignedDriver?.toString() || quote.vehicle?.driver?._id?.toString()
-    );
-
     // ---------------- DRIVER CHECK ----------------
     const assignedDriverId = quote.assignedDriver || quote.vehicle?.driver?._id;
 

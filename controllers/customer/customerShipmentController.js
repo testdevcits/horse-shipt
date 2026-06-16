@@ -20,10 +20,6 @@ const uploadToCloudinary = async (file, type = "photo") => {
         : "image";
     const folder = type === "photo" ? "horses/photos" : "horses/documents";
 
-    console.log(
-      `[UPLOAD] ${file.originalname} => folder: ${folder}, type: ${resourceType}`
-    );
-
     let result;
     if (file.buffer) {
       const dataUri = `data:${file.mimetype};base64,${file.buffer.toString(
@@ -40,9 +36,6 @@ const uploadToCloudinary = async (file, type = "photo") => {
       });
     }
 
-    console.log(
-      `[UPLOAD SUCCESS] ${file.originalname} => ${result.secure_url}`
-    );
     return { url: result.secure_url, public_id: result.public_id };
   } catch (err) {
     console.error("[UPLOAD ERROR]", err);
@@ -70,6 +63,26 @@ const getFileSizeBytes = (file) => {
   if (file.buffer) return file.buffer.length;
   if (file.size) return file.size;
   return 0;
+};
+
+const normalizeMediaRef = (value) => {
+  if (!value) return null;
+
+  if (typeof value === "string") {
+    const url = value.trim();
+    return url ? { url, public_id: null } : null;
+  }
+
+  if (typeof value === "object") {
+    const url = value.url || value.secure_url || value.path;
+    if (!url) return null;
+    return {
+      url,
+      public_id: value.public_id || value.publicId || null,
+    };
+  }
+
+  return null;
 };
 
 // Image processing (client requirement applied)
@@ -259,7 +272,9 @@ exports.createShipment = async (req, res) => {
       };
 
       // ===== FILES =====
-      horseObj.photo = await handleFile("photo", "photo");
+      horseObj.photo =
+        (await handleFile("photo", "photo")) ||
+        normalizeMediaRef(h.photoUrl || h.photo);
       horseObj.documents.coggins = await handleFile("cogins", "document");
       horseObj.documents.healthCertificate = await handleFile(
         "healthCertificate",
@@ -380,7 +395,6 @@ exports.createShipment = async (req, res) => {
 // ============================================================
 exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   try {
-    // console.log(`[GET SHIPMENTS] User ID: ${req.user._id}`);
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
     }).sort({ createdAt: -1 });
@@ -397,7 +411,6 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
 // ============================================================
 exports.getShipmentById = async (req, res) => {
   try {
-    // console.log(`[GET SHIPMENT BY ID] Shipment ID: ${req.params.shipmentId}`);
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
@@ -735,7 +748,9 @@ exports.updateShipmentByCustomer = async (req, res) => {
       };
 
       horseObj.photo =
-        (await handleFile("photo", "photo")) || existingHorse.photo;
+        (await handleFile("photo", "photo")) ||
+        normalizeMediaRef(h.photoUrl || h.photo) ||
+        existingHorse.photo;
 
       horseObj.documents.coggins =
         (await handleFile("cogins", "document")) ||
@@ -1275,10 +1290,6 @@ exports.deleteShipment = async (req, res) => {
 // ============================================================
 exports.updateShipmentLocation = async (req, res) => {
   try {
-    console.log(
-      `[UPDATE LOCATION] Shipment ID: ${req.params.shipmentId}, Location:`,
-      req.body
-    );
     const shipment = await exports.fetchShipmentById(
       req.params.shipmentId,
       req.user._id
@@ -1308,9 +1319,6 @@ exports.updateShipmentLocation = async (req, res) => {
 // ============================================================
 exports.notifyShipmentAccepted = async (shipmentId, shipperName) => {
   try {
-    console.log(
-      `[NOTIFY ACCEPTED] Shipment ID: ${shipmentId}, Shipper: ${shipperName}`
-    );
     const shipment = await CustomerShipment.findById(shipmentId);
     if (!shipment) return;
 

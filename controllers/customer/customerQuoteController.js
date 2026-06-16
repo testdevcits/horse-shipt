@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const QuoteNegotiation = require("../../models/shipper/QuoteNegotiation");
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
 const Shipper = require("../../models/shipper/shipperModel");
 
@@ -76,6 +77,20 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       return res
         .status(400)
         .json({ success: false, message: "Shipper signature missing" });
+    }
+
+    const pendingNegotiation = await QuoteNegotiation.findOne({
+      quote: quote._id,
+      status: "pending",
+    }).session(session);
+
+    if (quote.negotiationStatus === "pending" || pendingNegotiation) {
+      await session.abortTransaction();
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please accept or reject the pending negotiation before accepting this quote",
+      });
     }
 
     // ---------------- PAYMENT VALIDATION ----------------

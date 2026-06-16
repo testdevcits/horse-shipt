@@ -128,3 +128,65 @@ exports.getReceivedCustomerReviews = async (req, res) => {
     });
   }
 };
+
+exports.getPublicHappyConsumers = async (req, res) => {
+  try {
+    const limit = Math.min(Number(req.query.limit) || 60, 100);
+
+    const reviews = await CustomerReview.find({
+      isHidden: false,
+      reviewStatus: "approved",
+      rating: { $gte: 4 },
+    })
+      .populate("customerId", "name firstName lastName profileImage profilePicture")
+      .populate("shipperId", "name companyName profileImage profilePicture")
+      .populate("shipmentId", "shipmentCode pickupLocation deliveryLocation")
+      .sort({ createdAt: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.status(200).json({
+      success: true,
+      data: reviews.map((review) => ({
+        _id: review._id,
+        rating: review.rating,
+        reviewText: review.reviewText,
+        createdAt: review.createdAt,
+        customer: {
+          name:
+            review.customerId?.name ||
+            [review.customerId?.firstName, review.customerId?.lastName]
+              .filter(Boolean)
+              .join(" ") ||
+            "Happy Customer",
+          profileImage:
+            review.customerId?.profileImage?.url ||
+            review.customerId?.profilePicture ||
+            "",
+        },
+        shipper: {
+          name:
+            review.shipperId?.companyName ||
+            review.shipperId?.name ||
+            review.shipperName ||
+            "Horse Shipt Shipper",
+          profileImage:
+            review.shipperId?.profileImage?.url ||
+            review.shipperId?.profilePicture ||
+            "",
+        },
+        shipment: {
+          code: review.shipmentId?.shipmentCode || "",
+          pickupLocation: review.shipmentId?.pickupLocation || "",
+          deliveryLocation: review.shipmentId?.deliveryLocation || "",
+        },
+      })),
+    });
+  } catch (error) {
+    console.error("Get public happy consumers error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch happy consumers",
+    });
+  }
+};
