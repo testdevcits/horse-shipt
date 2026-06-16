@@ -167,7 +167,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     // ---------------- REJECT OTHER QUOTES ----------------
     await ShipmentQuote.updateMany(
       { shipment: quote.shipment._id, _id: { $ne: quote._id } },
-      { status: "rejected" },
+      { status: "rejected", isActive: false },
       { session }
     );
 

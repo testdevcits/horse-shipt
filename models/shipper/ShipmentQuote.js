@@ -307,7 +307,14 @@ const quoteSchema = new mongoose.Schema(
 );
 
 // ================= INDEXES =================
-quoteSchema.index({ shipment: 1, shipper: 1 }, { unique: true });
+quoteSchema.index(
+  { shipment: 1, shipper: 1 },
+  {
+    name: "shipment_1_shipper_1_active",
+    unique: true,
+    partialFilterExpression: { isActive: true },
+  }
+);
 quoteSchema.index({ shipment: 1, status: 1 });
 
 // ================= MIDDLEWARE =================

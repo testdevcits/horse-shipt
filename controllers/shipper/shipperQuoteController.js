@@ -246,12 +246,14 @@ exports.addQuote = async (req, res) => {
     const alreadyQuoted = await ShipmentQuote.findOne({
       shipment,
       shipper: shipperId,
+      isActive: true,
     });
 
     if (alreadyQuoted) {
       return res.status(400).json({
         success: false,
-        message: "You already sent a quote for this shipment",
+        message:
+          "You already have an active quote for this shipment. If the customer rejects it, you can send a new quote.",
       });
     }
 
