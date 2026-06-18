@@ -3,6 +3,7 @@ const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../../models/admin/payment/platformSettings");
+const { buildPaginationMeta } = require("../../../utils/adminQuery");
 
 /* =====================================================
    GET STRIPE BALANCE
@@ -45,6 +46,8 @@ exports.getStripeBalance = async (req, res) => {
 exports.getStripeTransactions = async (req, res) => {
   try {
     const { range } = req.query; // today | week | month
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
 
     const now = new Date();
     let startDate;
@@ -61,7 +64,7 @@ exports.getStripeTransactions = async (req, res) => {
 
     // Fetch raw Stripe transactions
     const transactions = await stripe.balanceTransactions.list({
-      limit: 50,
+      limit: 100,
       created: startDate
         ? { gte: Math.floor(startDate.getTime() / 1000) }
         : undefined,
@@ -108,6 +111,7 @@ exports.getStripeTransactions = async (req, res) => {
 
     const totalAmount = formatted.reduce((sum, t) => sum + t.amount, 0);
     const totalNet = formatted.reduce((sum, t) => sum + t.shipperReceives, 0);
+    const paginated = formatted.slice((page - 1) * limit, page * limit);
 
     res.status(200).json({
       success: true,
@@ -115,7 +119,12 @@ exports.getStripeTransactions = async (req, res) => {
       totalTransactions: formatted.length,
       totalAmount,
       totalNet,
-      data: formatted,
+      data: paginated,
+      pagination: buildPaginationMeta({
+        total: formatted.length,
+        page,
+        limit,
+      }),
     });
   } catch (error) {
     console.error("Stripe transactions error:", error);

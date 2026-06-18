@@ -25,6 +25,23 @@ const {
 } = require("../../responses");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
+const destroyQuoteAsset = async (asset) => {
+  if (!asset?.public_id) return;
+
+  for (const resource_type of ["raw", "image"]) {
+    try {
+      await cloudinary.uploader.destroy(asset.public_id, { resource_type });
+      return;
+    } catch (error) {
+      console.warn("[QUOTE CLEANUP] Failed to destroy quote asset", {
+        publicId: asset.public_id,
+        resource_type,
+        message: error.message,
+      });
+    }
+  }
+};
+
 /* =========================================================
    ACCEPT QUOTE (WITH PAYMENT + RECEIPT)
 ========================================================= */
@@ -314,7 +331,7 @@ exports.rejectQuote = async (req, res) => {
       return errorResponse(res, 400, customerQuoteResponse.ALREADY_REJECTED);
     }
 
-    if (quote.paymentStatus === "paid" || quote.stripePaymentIntentId) {
+    if (quote.paymentStatus === "paid") {
       return errorResponse(
         res,
         400,
@@ -322,42 +339,90 @@ exports.rejectQuote = async (req, res) => {
       );
     }
 
-    quote.status = "rejected";
-    quote.isActive = false;
-    quote.cancelReason = reason || "Rejected by customer";
-    quote.cancelledAt = new Date();
-    quote.refundStatus = "not_required";
+    const quoteSnapshot = quote.toObject ? quote.toObject() : quote;
+    const shipperId = quote.shipper._id || quote.shipper;
+    const shipmentId = quote.shipment._id;
+    const cancelReason = reason || "Rejected by customer";
 
-    await quote.save();
+    if (quote.stripePaymentIntentId) {
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          quote.stripePaymentIntentId
+        );
 
-    console.log("[QUOTE REJECT] ShipmentQuote rejected", {
+        if (paymentIntent.status === "succeeded") {
+          return errorResponse(
+            res,
+            400,
+            customerQuoteResponse.PAID_REJECT_BLOCKED
+          );
+        }
+
+        if (
+          [
+            "requires_payment_method",
+            "requires_confirmation",
+            "requires_action",
+            "processing",
+            "requires_capture",
+          ].includes(paymentIntent.status)
+        ) {
+          await stripe.paymentIntents.cancel(paymentIntent.id);
+        }
+      } catch (error) {
+        console.warn("[QUOTE REJECT] Stripe payment intent cleanup skipped", {
+          quoteId: quote._id.toString(),
+          paymentIntentId: quote.stripePaymentIntentId,
+          message: error.message,
+        });
+      }
+    }
+
+    const [quoteDeleteResult, mirrorDeleteResult] = await Promise.all([
+      ShipmentQuote.deleteOne({
+        _id: quote._id,
+        paymentStatus: { $ne: "paid" },
+      }),
+      CustomerQuote.deleteMany({
+        shipmentId,
+        shipperId,
+      }),
+    ]);
+
+    if (!quoteDeleteResult.deletedCount) {
+      return errorResponse(
+        res,
+        400,
+        "Unable to reject quote. Please try again.",
+        {}
+      );
+    }
+
+    await Promise.all([
+      destroyQuoteAsset(quote.contract),
+      destroyQuoteAsset(quote.shipperContract),
+    ]);
+
+    console.log("[QUOTE REJECT] Deleted rejected quote everywhere", {
       quoteId: quote._id.toString(),
-      shipmentId: quote.shipment._id.toString(),
-      shipperId: (quote.shipper._id || quote.shipper).toString(),
+      shipmentId: shipmentId.toString(),
+      shipperId: shipperId.toString(),
       customerId: customerId.toString(),
+      mirrorDeletedCount: mirrorDeleteResult.deletedCount || 0,
     });
 
-    const mirrorDeleteResult = await CustomerQuote.deleteMany({
-      shipmentId: quote.shipment._id,
-      shipperId: quote.shipper._id || quote.shipper,
-    });
+    const [remainingQuote, remainingMirror] = await Promise.all([
+      ShipmentQuote.findById(quote._id).lean(),
+      CustomerQuote.findOne({ shipmentId, shipperId }).lean(),
+    ]);
 
-    console.log("[QUOTE REJECT] CustomerQuote mirror removed", {
-      shipmentId: quote.shipment._id.toString(),
-      shipperId: (quote.shipper._id || quote.shipper).toString(),
-      deletedCount: mirrorDeleteResult.deletedCount || 0,
-    });
-
-    const remainingMirror = await CustomerQuote.findOne({
-      shipmentId: quote.shipment._id,
-      shipperId: quote.shipper._id || quote.shipper,
-    }).lean();
-
-    if (remainingMirror) {
-      console.error("[QUOTE REJECT] CustomerQuote mirror still exists", {
-        customerQuoteId: remainingMirror._id.toString(),
-        shipmentId: quote.shipment._id,
-        shipperId: quote.shipper._id || quote.shipper,
+    if (remainingQuote || remainingMirror) {
+      console.error("[QUOTE REJECT] Rejected quote cleanup incomplete", {
+        quoteId: quote._id.toString(),
+        remainingQuoteId: remainingQuote?._id?.toString() || null,
+        remainingMirrorId: remainingMirror?._id?.toString() || null,
+        shipmentId,
+        shipperId,
       });
       return errorResponse(
         res,
@@ -369,36 +434,26 @@ exports.rejectQuote = async (req, res) => {
 
     emitToUser(req.app.get("io"), {
       role: "shipper",
-      userId: quote.shipper._id || quote.shipper,
+      userId: shipperId,
       event: "horse_shipt:quote_rejected",
       payload: {
-        quote,
+        quote: {
+          ...quoteSnapshot,
+          status: "rejected",
+          isDeleted: true,
+          cancelReason,
+        },
         quoteId: quote._id,
-        quoteStatus: "rejected",
-        reason: quote.cancelReason,
-        shipmentId: quote.shipment._id,
+        deleted: true,
+        quoteStatus: "deleted",
+        reason: cancelReason,
         shipmentCode: quote.shipment.shipmentCode,
       },
       notification: {
         type: "quote_rejected",
         title: "Quote Rejected",
-        message: `Rejected by customer for ${
-          quote.shipment.shipmentCode || "this shipment"
-        }. You can send a new quote.`,
-      },
-    });
-
-    emitToUser(req.app.get("io"), {
-      role: "customer",
-      userId: customerId,
-      event: "horse_shipt:quote_rejected",
-      payload: {
-        quote,
-        quoteId: quote._id,
-        quoteStatus: "rejected",
-        reason: quote.cancelReason,
-        shipmentId: quote.shipment._id,
-        shipmentCode: quote.shipment.shipmentCode,
+        message:
+          "Your quote was rejected by the customer and has been removed. You can send a new quote now.",
       },
     });
 
@@ -406,8 +461,8 @@ exports.rejectQuote = async (req, res) => {
       res,
       200,
       customerQuoteResponse.REJECTED,
-      { quote },
-      { quote }
+      { quoteId: quote._id, deleted: true },
+      { quoteId: quote._id, deleted: true }
     );
   } catch (error) {
     console.error("rejectQuote error:", error);
@@ -509,7 +564,7 @@ exports.getQuoteById = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: apiResponse.QUOTE_NOT_FOUND,
+        message: "This quote is no longer available.",
       });
     }
 
@@ -566,6 +621,18 @@ exports.createPaymentIntent = async (req, res) => {
       });
     }
 
+    if (
+      quote.status !== "pending" ||
+      quote.contractAccepted === true ||
+      quote.isCancelled ||
+      quote.isActive === false
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "This quote is no longer available.",
+      });
+    }
+
     /* ---------------- PREVENT DOUBLE PAYMENT ---------------- */
     if (quote.paymentStatus === "paid") {
       return res.status(400).json({
@@ -612,7 +679,7 @@ exports.createPaymentIntent = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: apiResponse.PAYMENT_INTENT_CREATION_FAILED,
-      error: error.message,
+      errors: {},
     });
   }
 };

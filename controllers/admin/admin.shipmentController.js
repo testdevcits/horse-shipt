@@ -2,7 +2,12 @@ const { apiResponse } = require("../../responses/api.response");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const ShipmentMessage = require("../../models/ShipmentMessage");
-const { buildPagination, sendPaginated } = require("../../utils/adminQuery");
+const {
+  buildNamedPagination,
+  buildPagination,
+  buildPaginationMeta,
+  sendPaginated,
+} = require("../../utils/adminQuery");
 
 const populateShipment = (query) =>
   query
@@ -45,6 +50,8 @@ exports.getAllShipments = async (req, res) => {
 exports.getShipmentById = async (req, res) => {
   try {
     const { id } = req.params;
+    const quotePaging = buildNamedPagination(req.query, "quote", 5);
+    const messagePaging = buildNamedPagination(req.query, "message", 5);
 
     const shipment = await populateShipment(CustomerShipment.findById(id));
 
@@ -54,16 +61,22 @@ exports.getShipmentById = async (req, res) => {
         .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
     }
 
-    const [quotes, messages] = await Promise.all([
+    const [quotes, quotesTotal, messages, messagesTotal] = await Promise.all([
       ShipmentQuote.find({ shipment: id })
       .populate("shipper", "name email uniqueId phone")
         .populate("vehicle", "vehicleType vehicleNumber manufacturer model")
       .populate("assignedDriver", "name email phone")
-        .sort({ createdAt: -1 }),
+        .sort({ createdAt: -1 })
+        .skip(quotePaging.skip)
+        .limit(quotePaging.limit),
+      ShipmentQuote.countDocuments({ shipment: id }),
       ShipmentMessage.find({ shipment: id })
         .populate("customer", "name email uniqueId")
         .populate("shipper", "name email uniqueId")
-        .sort({ createdAt: -1 }),
+        .sort({ createdAt: -1 })
+        .skip(messagePaging.skip)
+        .limit(messagePaging.limit),
+      ShipmentMessage.countDocuments({ shipment: id }),
     ]);
 
     res.status(200).json({
@@ -72,6 +85,18 @@ exports.getShipmentById = async (req, res) => {
         shipment,
         quotes,
         messages,
+        pagination: {
+          quotes: buildPaginationMeta({
+            total: quotesTotal,
+            page: quotePaging.page,
+            limit: quotePaging.limit,
+          }),
+          messages: buildPaginationMeta({
+            total: messagesTotal,
+            page: messagePaging.page,
+            limit: messagePaging.limit,
+          }),
+        },
         tracking: {
           currentLocation: shipment.currentLocation,
           locationHistory: shipment.locationHistory || [],

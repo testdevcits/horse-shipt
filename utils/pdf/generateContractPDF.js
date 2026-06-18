@@ -12,7 +12,7 @@ async function generateContractPDF({
   shipperSignature,
   customerSignature = null,
 }) {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     try {
       const PAGE_MARGIN = 60;
       const PAGE_WIDTH = 595.28;
@@ -120,6 +120,31 @@ async function generateContractPDF({
         drawRow(label, value);
       };
 
+      const getHorsePhotoUrl = (horse = {}) =>
+        horse.photo?.url ||
+        horse.image?.url ||
+        horse.images?.[0]?.url ||
+        horse.horseImage?.url ||
+        "";
+
+      const fetchImageBuffer = async (url) => {
+        if (!url || typeof fetch !== "function") return null;
+        const response = await fetch(url);
+        if (!response.ok) return null;
+        return Buffer.from(await response.arrayBuffer());
+      };
+
+      const drawContainedImage = (image, x, y, width, height) => {
+        doc.save();
+        doc.rect(x, y, width, height).fill("#F8FAFC");
+        doc.restore();
+        doc.image(image, x, y, {
+          fit: [width, height],
+          align: "center",
+          valign: "center",
+        });
+      };
+
       /* ===================== CONTENT ===================== */
 
       sectionTitle("Customer Information");
@@ -130,6 +155,49 @@ async function generateContractPDF({
       drawRow("Pickup Location:", shipment?.pickupLocation);
       drawRow("Delivery Location:", shipment?.deliveryLocation);
       drawRow("Number of Horses:", shipment?.numberOfHorses?.toString());
+
+      const horsePhotos = Array.isArray(shipment?.horses)
+        ? shipment.horses
+            .map((horse) => ({
+              name:
+                horse.registeredName ||
+                horse.name ||
+                horse.barnName ||
+                "Horse",
+              url: getHorsePhotoUrl(horse),
+            }))
+            .filter((horse) => horse.url)
+            .slice(0, 3)
+        : [];
+
+      if (horsePhotos.length) {
+        sectionTitle("Horse Images");
+        const imageWidth = (CONTENT_WIDTH - 20) / 3;
+        const imageHeight = 82;
+        const startY = doc.y;
+
+        for (let index = 0; index < horsePhotos.length; index += 1) {
+          const horse = horsePhotos[index];
+          const imageBuffer = await fetchImageBuffer(horse.url);
+          const x = PAGE_MARGIN + index * (imageWidth + 10);
+
+          if (imageBuffer) {
+            drawContainedImage(imageBuffer, x, startY, imageWidth, imageHeight);
+          }
+
+          doc
+            .font("Roboto")
+            .fontSize(8)
+            .fillColor("#4B5563")
+            .text(horse.name, x, startY + imageHeight + 4, {
+              width: imageWidth,
+              align: "center",
+              ellipsis: true,
+            });
+        }
+
+        doc.y = startY + imageHeight + 20;
+      }
 
       sectionTitle("Shipper & Quote Details");
       drawRow("Shipper Name:", shipper?.name);
@@ -165,6 +233,8 @@ async function generateContractPDF({
         );
         doc.image(shipperImg, PAGE_MARGIN, signatureStartY + 15, {
           fit: [200, 70],
+          align: "center",
+          valign: "center",
         });
       }
 
@@ -177,6 +247,8 @@ async function generateContractPDF({
         );
         doc.image(customerImg, PAGE_MARGIN + 260, signatureStartY + 15, {
           fit: [200, 70],
+          align: "center",
+          valign: "center",
         });
       }
 

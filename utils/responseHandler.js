@@ -43,7 +43,10 @@ const paginatedResponse = (
     pagination: {
       page,
       limit,
+      totalRecords: total,
       totalPages: Math.ceil(total / limit) || 1,
+      hasNextPage: page < (Math.ceil(total / limit) || 1),
+      hasPreviousPage: page > 1,
     },
     ...meta,
   });

@@ -36,15 +36,19 @@ exports.trackShipment = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: apiResponse.SHIPMENT_NOT_FOUND,
+        message: "This shipment tracking link is no longer available.",
       });
     }
 
     // ================= BLOCK CANCELLED =================
-    if (quote.isCancelled || quote.status === "cancelled") {
+    if (
+      quote.isCancelled ||
+      quote.status === "cancelled" ||
+      quote.status === "rejected"
+    ) {
       return res.status(400).json({
         success: false,
-        message: apiResponse.SHIPMENT_IS_CANCELLED,
+        message: "This shipment tracking link is no longer available.",
       });
     }
 
@@ -59,18 +63,6 @@ exports.trackShipment = async (req, res) => {
       });
     }
 
-    // ================= DRIVER LOCATION =================
-    const driver = await Driver.findById(quote.assignedDriver)
-      .select("currentLocation")
-      .lean();
-
-    if (!driver?.currentLocation?.lat) {
-      return res.status(400).json({
-        success: false,
-        message: apiResponse.DRIVER_LOCATION_NOT_AVAILABLE,
-      });
-    }
-
     const shipment = quote.shipment;
     const pickup = shipment?.pickupCoords;
     const delivery = shipment?.deliveryCoords;
@@ -79,6 +71,80 @@ exports.trackShipment = async (req, res) => {
       return res.status(400).json({
         success: false,
         message: apiResponse.SHIPMENT_COORDINATES_MISSING,
+      });
+    }
+
+    if (quote.tripStatus === "completed") {
+      return res.status(200).json({
+        success: true,
+        tripStatus: "completed",
+        message: "Shipment has been completed.",
+        driver: null,
+        pickup: {
+          location: shipment.pickupLocation,
+          lat: pickup.latitude,
+          lng: pickup.longitude,
+          distanceKm: null,
+          etaMinutes: null,
+        },
+        delivery: {
+          location: shipment.deliveryLocation,
+          lat: delivery.latitude,
+          lng: delivery.longitude,
+          distanceKm: null,
+          etaMinutes: null,
+        },
+      });
+    }
+
+    if (!["started", "inTransit"].includes(quote.tripStatus)) {
+      return res.status(200).json({
+        success: true,
+        tripStatus: quote.tripStatus || "notStarted",
+        message: "Live tracking will be available once the driver starts the shipment.",
+        driver: null,
+        pickup: {
+          location: shipment.pickupLocation,
+          lat: pickup.latitude,
+          lng: pickup.longitude,
+          distanceKm: null,
+          etaMinutes: null,
+        },
+        delivery: {
+          location: shipment.deliveryLocation,
+          lat: delivery.latitude,
+          lng: delivery.longitude,
+          distanceKm: null,
+          etaMinutes: null,
+        },
+      });
+    }
+
+    // ================= DRIVER LOCATION =================
+    const driver = await Driver.findById(quote.assignedDriver)
+      .select("currentLocation")
+      .lean();
+
+    if (!driver?.currentLocation?.lat) {
+      return res.status(200).json({
+        success: true,
+        tripStatus: quote.tripStatus,
+        message: "Live tracking is not available yet.",
+        driver: null,
+        pickup: {
+          location: shipment.pickupLocation,
+          lat: pickup.latitude,
+          lng: pickup.longitude,
+          distanceKm: null,
+          etaMinutes: null,
+        },
+        delivery: {
+          location: shipment.deliveryLocation,
+          lat: delivery.latitude,
+          lng: delivery.longitude,
+          distanceKm: null,
+          etaMinutes: null,
+        },
       });
     }
 
