@@ -168,6 +168,8 @@ const adminPaymentsRoutes = require("./routes/admin/Payments/adminPaymentsRoutes
 const stripeAdminRoutes = require("./routes/admin/Payments/stripeAdminRoutes");
 const privacyPolicyRoutes = require("./routes/admin/privacyPolicy.routes");
 const termsConditionRoutes = require("./routes/admin/termsCondition.routes");
+const adminSocialMediaSettingsRoutes = require("./routes/admin/socialMediaSettings.routes");
+const publicSocialMediaSettingsRoutes = require("./routes/common/socialMediaSettings.routes");
 
 const horseShippingNewsletterRoutes = require("./routes/horseShippingNewsletterRoutes");
 
@@ -179,6 +181,7 @@ app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
 
 app.use("/api/tracking", shipmentTrackingRoutes);
+app.use("/api/settings/social-media", publicSocialMediaSettingsRoutes);
 
 // Admin APIs
 app.use("/api/admin", adminRoutes);
@@ -194,6 +197,7 @@ app.use("/api/admin/stripe", stripeAdminRoutes);
 app.use("/api/admin/privacy-policy", privacyPolicyRoutes);
 app.use("/api/admin/terms-condition", termsConditionRoutes);
 app.use("/api/admin/horse-newsletter", horseShippingNewsletterRoutes);
+app.use("/api/admin/social-media-settings", adminSocialMediaSettingsRoutes);
 
 app.use("/api/horse-newsletter", horseShippingNewsletterRoutes);
 

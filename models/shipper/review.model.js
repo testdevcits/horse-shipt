@@ -11,7 +11,7 @@ const reviewSchema = new mongoose.Schema(
 
     shipmentId: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Shipment",
+      ref: "CustomerShipment",
       required: true,
       index: true,
     },

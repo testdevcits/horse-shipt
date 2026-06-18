@@ -3,9 +3,11 @@ const mongoose = require("mongoose");
 
 const Review = require("../../models/shipper/review.model");
 const Shipper = require("../../models/shipper/shipperModel");
+const CustomerShipment = require("../../models/customer/CustomerShipment");
 
 const { REVIEW_MESSAGES } = require("../../utils/response/reviewResponse");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const COMPLETED_SHIPMENT_STATUSES = ["delivered", "completed"];
 
 /*
 =====================================================
@@ -68,10 +70,10 @@ exports.addReview = async (req, res) => {
 
     const { shipperId, reviewText, rating, shipmentId } = req.body;
 
-    if (!rating) {
+    if (!shipperId || !shipmentId || !rating) {
       return res.status(400).json({
         success: false,
-        message: apiResponse.RATING_IS_REQUIRED,
+        message: apiResponse.SHIPPERID_SHIPMENTID_AND_RATING_ARE_REQUIRED,
       });
     }
 
@@ -90,6 +92,23 @@ exports.addReview = async (req, res) => {
       });
     }
 
+    const shipment = await CustomerShipment.findOne({
+      _id: shipmentId,
+      customer: customerId,
+      shipper: shipperId,
+      status: { $in: COMPLETED_SHIPMENT_STATUSES },
+    })
+      .select("_id shipmentCode status customer shipper")
+      .lean();
+
+    if (!shipment) {
+      return res.status(403).json({
+        success: false,
+        message:
+          apiResponse.YOU_CAN_REVIEW_THIS_SHIPPER_ONLY_AFTER_SHIPMENT_IS_COMPLETED,
+      });
+    }
+
     const existingReview = await Review.findOne({
       shipmentId,
       customerId,
@@ -98,17 +117,18 @@ exports.addReview = async (req, res) => {
     if (existingReview) {
       return res.status(400).json({
         success: false,
-        message: REVIEW_MESSAGES.ALREADY_REVIEWED,
+        message:
+          apiResponse.YOU_HAVE_ALREADY_REVIEWED_THIS_SHIPPER_FOR_THIS_SHIPMENT,
       });
     }
 
-    await Review.create({
+    const review = await Review.create({
       shipperId,
       shipmentId,
       customerId,
-      customerName,
+      customerName: customerName || req.user.email || "Customer",
       reviewText: reviewText?.trim(),
-      rating,
+      rating: Number(rating),
       source: "manual",
       reviewStatus: "approved",
     });
@@ -117,7 +137,8 @@ exports.addReview = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: REVIEW_MESSAGES.REVIEW_ADDED,
+      message: apiResponse.REVIEW_ADDED_SUCCESSFULLY,
+      data: review,
     });
   } catch (error) {
     console.error(error);
@@ -125,7 +146,8 @@ exports.addReview = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: apiResponse.DUPLICATE_REVIEW_NOT_ALLOWED,
+        message:
+          apiResponse.YOU_HAVE_ALREADY_REVIEWED_THIS_SHIPPER_FOR_THIS_SHIPMENT,
       });
     }
 

@@ -2,6 +2,7 @@ const { apiResponse } = require("../../responses/api.response");
 const CustomerReview = require("../../models/customer/customerReview.model");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const Shipper = require("../../models/shipper/shipperModel");
+const COMPLETED_SHIPMENT_STATUSES = ["delivered", "completed"];
 
 const isValidRating = (rating) => Number(rating) >= 1 && Number(rating) <= 5;
 
@@ -28,8 +29,10 @@ exports.addCustomerReview = async (req, res) => {
       _id: shipmentId,
       customer: customerId,
       shipper: shipperId,
-      status: "delivered",
-    });
+      status: { $in: COMPLETED_SHIPMENT_STATUSES },
+    })
+      .select("_id shipmentCode status customer shipper")
+      .lean();
 
     if (!shipment) {
       return res.status(403).json({
@@ -87,7 +90,10 @@ exports.getMyCustomerReviews = async (req, res) => {
     const shipperId = req.user._id || req.user.id;
 
     const reviews = await CustomerReview.find({ shipperId })
+      .populate("customerId", "name firstName lastName email profileImage profilePicture")
+      .populate("shipmentId", "shipmentCode pickupLocation deliveryLocation status deliveredAt")
       .select("customerId shipmentId rating reviewText createdAt")
+      .sort({ createdAt: -1 })
       .lean();
 
     return res.status(200).json({
@@ -184,7 +190,7 @@ exports.getPublicHappyConsumers = async (req, res) => {
       })),
     });
   } catch (error) {
-    console.error("Get public happy consumers error:", error);
+    console.error("Get public happy customers error:", error);
     return res.status(500).json({
       success: false,
       message: apiResponse.FAILED_TO_FETCH_HAPPY_CONSUMERS,
