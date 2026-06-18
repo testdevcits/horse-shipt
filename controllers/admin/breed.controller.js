@@ -57,12 +57,24 @@ const getBreeds = async (req, res) => {
       .skip((page - 1) * limit)
       .limit(limit);
 
+    const totalPages = Math.ceil(total / limit) || 1;
+
     return res.status(200).json({
       success: true,
       count: breeds.length,
       total,
       page,
-      totalPages: Math.ceil(total / limit),
+      limit,
+      totalPages,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalRecords: total,
+        totalPages,
+        hasNextPage: page < totalPages,
+        hasPreviousPage: page > 1,
+      },
       data: breeds,
     });
   } catch (error) {
