@@ -317,14 +317,21 @@ exports.rejectQuote = async (req, res) => {
 
     await quote.save();
 
-    await CustomerQuote.create({
-      shipmentId: quote.shipment._id,
-      customerId,
-      shipperId: quote.shipper._id || quote.shipper,
-      price: quote.totalPrice,
-      message: reason || "Customer rejected quote",
-      status: "rejected",
-    });
+    await CustomerQuote.findOneAndUpdate(
+      {
+        shipmentId: quote.shipment._id,
+        shipperId: quote.shipper._id || quote.shipper,
+      },
+      {
+        $set: {
+          customerId,
+          price: quote.totalPrice,
+          message: reason || "Customer rejected quote",
+          status: "rejected",
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
 
     emitToUser(req.app.get("io"), {
       role: "shipper",
@@ -332,13 +339,18 @@ exports.rejectQuote = async (req, res) => {
       event: "horse_shipt:quote_rejected",
       payload: {
         quote,
+        quoteId: quote._id,
+        quoteStatus: "rejected",
+        reason: quote.cancelReason,
         shipmentId: quote.shipment._id,
         shipmentCode: quote.shipment.shipmentCode,
       },
       notification: {
         type: "quote_rejected",
-        title: "Quote rejected",
-        message: apiResponse.A_CUSTOMER_REJECTED_YOUR_QUOTE_YOU_CAN_SEND_A_NEW_QUOTE,
+        title: "Quote Rejected",
+        message: `Rejected by customer for ${
+          quote.shipment.shipmentCode || "this shipment"
+        }. You can send a new quote.`,
       },
     });
 
@@ -348,6 +360,9 @@ exports.rejectQuote = async (req, res) => {
       event: "horse_shipt:quote_rejected",
       payload: {
         quote,
+        quoteId: quote._id,
+        quoteStatus: "rejected",
+        reason: quote.cancelReason,
         shipmentId: quote.shipment._id,
         shipmentCode: quote.shipment.shipmentCode,
       },
@@ -365,8 +380,8 @@ exports.rejectQuote = async (req, res) => {
     return errorResponse(
       res,
       500,
-      error.message || generalResponse.SOMETHING_WENT_WRONG,
-      { error: error.message }
+      generalResponse.SOMETHING_WENT_WRONG,
+      {}
     );
   }
 };

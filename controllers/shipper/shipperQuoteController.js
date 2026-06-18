@@ -422,10 +422,18 @@ exports.addQuote = async (req, res) => {
   } catch (err) {
     console.error("[ADD QUOTE ERROR]:", err);
 
+    if (err?.code === 11000) {
+      return res.status(409).json({
+        success: false,
+        message:
+          apiResponse.YOU_ALREADY_HAVE_AN_ACTIVE_QUOTE_FOR_THIS_SHIPMENT_IF_THE_CUSTOMER_REJEC,
+      });
+    }
+
     return res.status(500).json({
       success: false,
       message: apiResponse.FAILED_TO_SEND_QUOTE,
-      error: err.message,
+      errors: {},
     });
   }
 };

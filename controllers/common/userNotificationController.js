@@ -2,6 +2,10 @@ const { apiResponse } = require("../../responses/api.response");
 const UserNotification = require("../../models/common/UserNotification");
 
 const getRole = (req) => req.user?.role || req.baseUrl?.split("/").pop();
+const normalizeIds = (ids = []) =>
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => id?.toString?.() || "")
+    .filter((id) => /^[a-f\d]{24}$/i.test(id));
 
 exports.getMyNotifications = async (req, res) => {
   try {
@@ -53,11 +57,14 @@ exports.markMyNotificationsRead = async (req, res) => {
   try {
     const role = getRole(req);
     const user = req.user._id;
+    const ids = normalizeIds(req.body?.ids);
+    const query = { role, user, read: false };
 
-    await UserNotification.updateMany(
-      { role, user, read: false },
-      { $set: { read: true } }
-    );
+    if (ids.length) {
+      query._id = { $in: ids };
+    }
+
+    await UserNotification.updateMany(query, { $set: { read: true } });
 
     return res.json({
       success: true,
@@ -68,6 +75,37 @@ exports.markMyNotificationsRead = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: apiResponse.FAILED_TO_UPDATE_NOTIFICATIONS,
+    });
+  }
+};
+
+exports.deleteMyNotifications = async (req, res) => {
+  try {
+    const role = getRole(req);
+    const user = req.user._id;
+    const ids = normalizeIds(req.body?.ids);
+    const deleteAll = req.body?.all === true;
+
+    if (!deleteAll && ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: apiResponse.NOTIFICATION_NOT_FOUND,
+      });
+    }
+
+    const query = deleteAll ? { role, user } : { role, user, _id: { $in: ids } };
+    const result = await UserNotification.deleteMany(query);
+
+    return res.json({
+      success: true,
+      message: apiResponse.NOTIFICATION_DELETED,
+      data: { deletedCount: result.deletedCount || 0 },
+    });
+  } catch (error) {
+    console.error("Delete notifications error:", error);
+    return res.status(500).json({
+      success: false,
+      message: apiResponse.FAILED_TO_DELETE_NOTIFICATION,
     });
   }
 };
