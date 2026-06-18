@@ -1,6 +1,7 @@
 const { apiResponse } = require("../../responses/api.response");
 const mongoose = require("mongoose");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
@@ -258,6 +259,37 @@ exports.addQuote = async (req, res) => {
       });
     }
 
+    const staleCustomerQuote = await CustomerQuote.findOne({
+      shipmentId: shipment,
+      shipperId,
+    }).lean();
+
+    console.log("[QUOTE CREATE] CustomerQuote mirror check", {
+      shipmentId: shipment.toString(),
+      shipperId: shipperId.toString(),
+      existingCustomerQuoteId: staleCustomerQuote?._id?.toString() || null,
+      existingStatus: staleCustomerQuote?.status || null,
+    });
+
+    if (staleCustomerQuote?.status === "rejected") {
+      const staleDeleteResult = await CustomerQuote.deleteMany({
+        shipmentId: shipment,
+        shipperId,
+        status: "rejected",
+      });
+
+      console.log("[QUOTE RESEND] Removed rejected CustomerQuote mirror", {
+        shipmentId: shipment.toString(),
+        shipperId: shipperId.toString(),
+        deletedCount: staleDeleteResult.deletedCount || 0,
+      });
+    } else if (staleCustomerQuote?.status === "accepted") {
+      return res.status(400).json({
+        success: false,
+        message: apiResponse.ACCEPTED_QUOTE_CANNOT_BE_DELETED,
+      });
+    }
+
     // ================= CANCELLATION DATE =================
     const bookingDate = new Date();
 
@@ -358,6 +390,13 @@ exports.addQuote = async (req, res) => {
       cancellationLastDate,
     });
 
+    console.log("[QUOTE CREATE] ShipmentQuote created", {
+      quoteId: quote._id.toString(),
+      shipmentId: shipment.toString(),
+      shipperId: shipperId.toString(),
+      status: quote.status,
+    });
+
     // ----------------- NOTIFICATIONS -----------------
     let shipperSettings = await ShipperSettings.findOne({ shipperId });
 
@@ -423,10 +462,15 @@ exports.addQuote = async (req, res) => {
     console.error("[ADD QUOTE ERROR]:", err);
 
     if (err?.code === 11000) {
+      console.error("[ADD QUOTE DUPLICATE KEY]", {
+        keyPattern: err.keyPattern,
+        keyValue: err.keyValue,
+      });
+
       return res.status(409).json({
         success: false,
-        message:
-          apiResponse.YOU_ALREADY_HAVE_AN_ACTIVE_QUOTE_FOR_THIS_SHIPMENT_IF_THE_CUSTOMER_REJEC,
+        message: "Unable to send a new quote. Please try again.",
+        errors: {},
       });
     }
 

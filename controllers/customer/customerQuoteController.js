@@ -166,10 +166,14 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       { new: true, session }
     );
 
-    // ---------------- SAVE HISTORY ----------------
-    await CustomerQuote.create(
-      [
-        {
+    // ---------------- SAVE CURRENT CUSTOMER QUOTE MIRROR ----------------
+    const acceptedMirror = await CustomerQuote.findOneAndUpdate(
+      {
+        shipmentId: quote.shipment._id,
+        shipperId: quote.shipper._id,
+      },
+      {
+        $set: {
           shipmentId: quote.shipment._id,
           customerId,
           shipperId: quote.shipper._id,
@@ -177,9 +181,18 @@ exports.acceptQuoteWithSignature = async (req, res) => {
           message: apiResponse.CUSTOMER_ACCEPTED_QUOTE,
           status: "accepted",
         },
-      ],
-      { session }
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, session }
     );
+
+    console.log("[QUOTE ACCEPT] CustomerQuote mirror saved", {
+      customerQuoteId: acceptedMirror?._id?.toString(),
+      quoteId: quote._id.toString(),
+      shipmentId: quote.shipment._id.toString(),
+      shipperId: quote.shipper._id.toString(),
+      customerId: customerId.toString(),
+      status: acceptedMirror?.status,
+    });
 
     // COMMIT TRANSACTION
     await session.commitTransaction();
@@ -265,8 +278,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     return errorResponse(
       res,
       500,
-      error.message || generalResponse.SOMETHING_WENT_WRONG,
-      { error: error.message }
+      generalResponse.SOMETHING_WENT_WRONG,
+      {}
     );
   }
 };
@@ -317,21 +330,42 @@ exports.rejectQuote = async (req, res) => {
 
     await quote.save();
 
-    await CustomerQuote.findOneAndUpdate(
-      {
+    console.log("[QUOTE REJECT] ShipmentQuote rejected", {
+      quoteId: quote._id.toString(),
+      shipmentId: quote.shipment._id.toString(),
+      shipperId: (quote.shipper._id || quote.shipper).toString(),
+      customerId: customerId.toString(),
+    });
+
+    const mirrorDeleteResult = await CustomerQuote.deleteMany({
+      shipmentId: quote.shipment._id,
+      shipperId: quote.shipper._id || quote.shipper,
+    });
+
+    console.log("[QUOTE REJECT] CustomerQuote mirror removed", {
+      shipmentId: quote.shipment._id.toString(),
+      shipperId: (quote.shipper._id || quote.shipper).toString(),
+      deletedCount: mirrorDeleteResult.deletedCount || 0,
+    });
+
+    const remainingMirror = await CustomerQuote.findOne({
+      shipmentId: quote.shipment._id,
+      shipperId: quote.shipper._id || quote.shipper,
+    }).lean();
+
+    if (remainingMirror) {
+      console.error("[QUOTE REJECT] CustomerQuote mirror still exists", {
+        customerQuoteId: remainingMirror._id.toString(),
         shipmentId: quote.shipment._id,
         shipperId: quote.shipper._id || quote.shipper,
-      },
-      {
-        $set: {
-          customerId,
-          price: quote.totalPrice,
-          message: reason || "Customer rejected quote",
-          status: "rejected",
-        },
-      },
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
+      });
+      return errorResponse(
+        res,
+        500,
+        "Unable to reject quote. Please try again.",
+        {}
+      );
+    }
 
     emitToUser(req.app.get("io"), {
       role: "shipper",
