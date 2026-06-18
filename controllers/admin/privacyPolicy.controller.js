@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const PrivacyPolicy = require("../../models/admin/PrivacyPolicy");
 
 // =====================================
@@ -10,14 +11,14 @@ const createPrivacyPolicy = async (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Title is required",
+        message: apiResponse.TITLE_IS_REQUIRED,
       });
     }
 
     if (!content || !content.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Content is required",
+        message: apiResponse.CONTENT_IS_REQUIRED,
       });
     }
 
@@ -28,14 +29,14 @@ const createPrivacyPolicy = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Privacy Policy created successfully",
+      message: apiResponse.PRIVACY_POLICY_CREATED_SUCCESSFULLY,
       data: policy,
     });
   } catch (error) {
     console.error("CREATE ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while creating Privacy Policy",
+      message: apiResponse.SERVER_ERROR_WHILE_CREATING_PRIVACY_POLICY,
     });
   }
 };
@@ -62,7 +63,7 @@ const getPrivacyPolicies = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Privacy Policies fetched successfully",
+      message: apiResponse.PRIVACY_POLICIES_FETCHED_SUCCESSFULLY,
       count: policies.length,
       total,
       page,
@@ -73,7 +74,7 @@ const getPrivacyPolicies = async (req, res) => {
     console.error("GET ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching policies",
+      message: apiResponse.SERVER_ERROR_WHILE_FETCHING_POLICIES,
     });
   }
 };
@@ -91,13 +92,13 @@ const getActivePrivacyPolicy = async (req, res) => {
     if (!policies || policies.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "No active Privacy Policies found",
+        message: apiResponse.NO_ACTIVE_PRIVACY_POLICIES_FOUND,
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Active Privacy Policies fetched successfully",
+      message: apiResponse.ACTIVE_PRIVACY_POLICIES_FETCHED_SUCCESSFULLY,
       count: policies.length,
       data: policies,
     });
@@ -105,7 +106,7 @@ const getActivePrivacyPolicy = async (req, res) => {
     console.error("ACTIVE FETCH ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching active policies",
+      message: apiResponse.SERVER_ERROR_WHILE_FETCHING_ACTIVE_POLICIES,
     });
   }
 };
@@ -122,7 +123,7 @@ const updatePrivacyPolicy = async (req, res) => {
     if (!policy) {
       return res.status(404).json({
         success: false,
-        message: "Privacy Policy not found",
+        message: apiResponse.PRIVACY_POLICY_NOT_FOUND,
       });
     }
 
@@ -133,14 +134,14 @@ const updatePrivacyPolicy = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Privacy Policy updated successfully",
+      message: apiResponse.PRIVACY_POLICY_UPDATED_SUCCESSFULLY,
       data: policy,
     });
   } catch (error) {
     console.error("UPDATE ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating policy",
+      message: apiResponse.SERVER_ERROR_WHILE_UPDATING_POLICY,
     });
   }
 };
@@ -155,19 +156,19 @@ const deletePrivacyPolicy = async (req, res) => {
     if (!policy) {
       return res.status(404).json({
         success: false,
-        message: "Privacy Policy not found",
+        message: apiResponse.PRIVACY_POLICY_NOT_FOUND,
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Privacy Policy permanently deleted successfully",
+      message: apiResponse.PRIVACY_POLICY_PERMANENTLY_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
     console.error("DELETE ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while deleting policy",
+      message: apiResponse.SERVER_ERROR_WHILE_DELETING_POLICY,
     });
   }
 };
@@ -182,7 +183,7 @@ const updatePrivacyPolicyStatus = async (req, res) => {
     if (typeof isActive !== "boolean") {
       return res.status(400).json({
         success: false,
-        message: "isActive must be true or false",
+        message: apiResponse.ISACTIVE_MUST_BE_TRUE_OR_FALSE,
       });
     }
 
@@ -191,7 +192,7 @@ const updatePrivacyPolicyStatus = async (req, res) => {
     if (!policy) {
       return res.status(404).json({
         success: false,
-        message: "Privacy Policy not found",
+        message: apiResponse.PRIVACY_POLICY_NOT_FOUND,
       });
     }
 
@@ -209,7 +210,7 @@ const updatePrivacyPolicyStatus = async (req, res) => {
     console.error("STATUS ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating status",
+      message: apiResponse.SERVER_ERROR_WHILE_UPDATING_STATUS,
     });
   }
 };

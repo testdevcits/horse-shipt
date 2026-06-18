@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const mongoose = require("mongoose");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
@@ -27,20 +28,20 @@ exports.shipperCancelQuote = async (req, res) => {
     if (!quote) {
       return res
         .status(404)
-        .json({ success: false, message: "Quote not found" });
+        .json({ success: false, message: apiResponse.QUOTE_NOT_FOUND });
     }
 
     if (quote.status !== "accepted") {
       return res.status(400).json({
         success: false,
-        message: "Cannot cancel. Quote not accepted",
+        message: apiResponse.CANNOT_CANCEL_QUOTE_NOT_ACCEPTED,
       });
     }
 
     if (quote.paymentStatus !== "paid" || !quote.stripePaymentIntentId) {
       return res.status(400).json({
         success: false,
-        message: "Payment not completed",
+        message: apiResponse.PAYMENT_NOT_COMPLETED,
       });
     }
 
@@ -50,7 +51,7 @@ exports.shipperCancelQuote = async (req, res) => {
     if (!shipper?.stripeCustomerId || !shipper?.paymentMethodId) {
       return res.status(400).json({
         success: false,
-        message: "Card not available",
+        message: apiResponse.CARD_NOT_AVAILABLE,
       });
     }
 
@@ -98,7 +99,7 @@ exports.shipperCancelQuote = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        message: "Payment failed. Account restricted.",
+        message: apiResponse.PAYMENT_FAILED_ACCOUNT_RESTRICTED,
       });
     }
 
@@ -124,7 +125,7 @@ exports.shipperCancelQuote = async (req, res) => {
     } catch (err) {
       return res.status(500).json({
         success: false,
-        message: "Refund failed",
+        message: apiResponse.REFUND_FAILED,
       });
     }
 
@@ -157,13 +158,13 @@ exports.shipperCancelQuote = async (req, res) => {
       notification: {
         type: "quote_cancelled",
         title: "Quote cancelled",
-        message: "A shipper cancelled an accepted quote.",
+        message: apiResponse.A_SHIPPER_CANCELLED_AN_ACCEPTED_QUOTE,
       },
     });
 
     return res.status(200).json({
       success: true,
-      message: "Cancelled, refunded, and charged",
+      message: apiResponse.CANCELLED_REFUNDED_AND_CHARGED,
       cancellationFee,
     });
   } catch (error) {
@@ -171,7 +172,7 @@ exports.shipperCancelQuote = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: apiResponse.SERVER_ERROR_2,
       error: error.message,
     });
   }
@@ -187,7 +188,7 @@ exports.addQuote = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -195,7 +196,7 @@ exports.addQuote = async (req, res) => {
       return res.status(403).json({
         success: false,
         message:
-          "Your account is restricted due to payment failure. Please update your card.",
+          apiResponse.YOUR_ACCOUNT_IS_RESTRICTED_DUE_TO_PAYMENT_FAILURE_PLEASE_UPDATE_YOUR_CAR,
       });
     }
 
@@ -226,7 +227,7 @@ exports.addQuote = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "All required fields including cancellation window must be provided",
+          apiResponse.ALL_REQUIRED_FIELDS_INCLUDING_CANCELLATION_WINDOW_MUST_BE_PROVIDED,
       });
     }
 
@@ -238,7 +239,7 @@ exports.addQuote = async (req, res) => {
     if (!shipmentExists) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -253,7 +254,7 @@ exports.addQuote = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "You already have an active quote for this shipment. If the customer rejects it, you can send a new quote.",
+          apiResponse.YOU_ALREADY_HAVE_AN_ACTIVE_QUOTE_FOR_THIS_SHIPMENT_IF_THE_CUSTOMER_REJEC,
       });
     }
 
@@ -415,7 +416,7 @@ exports.addQuote = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Quote sent successfully",
+      message: apiResponse.QUOTE_SENT_SUCCESSFULLY,
       quote,
     });
   } catch (err) {
@@ -423,7 +424,7 @@ exports.addQuote = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to send quote",
+      message: apiResponse.FAILED_TO_SEND_QUOTE,
       error: err.message,
     });
   }
@@ -438,7 +439,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     if (!quoteId || !vehicleId) {
       return res.status(400).json({
         success: false,
-        message: "Quote ID and Vehicle ID are required",
+        message: apiResponse.QUOTE_ID_AND_VEHICLE_ID_ARE_REQUIRED,
       });
     }
 
@@ -451,7 +452,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Quote not found or does not belong to you",
+        message: apiResponse.QUOTE_NOT_FOUND_OR_DOES_NOT_BELONG_TO_YOU,
       });
     }
 
@@ -459,7 +460,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     if (quote.status !== "accepted") {
       return res.status(400).json({
         success: false,
-        message: "Vehicle can only be assigned after quote is accepted",
+        message: apiResponse.VEHICLE_CAN_ONLY_BE_ASSIGNED_AFTER_QUOTE_IS_ACCEPTED,
       });
     }
 
@@ -472,7 +473,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     if (!vehicle) {
       return res.status(404).json({
         success: false,
-        message: "Vehicle not found or does not belong to you",
+        message: apiResponse.VEHICLE_NOT_FOUND_OR_DOES_NOT_BELONG_TO_YOU,
       });
     }
 
@@ -480,7 +481,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     if (!vehicle.driver) {
       return res.status(400).json({
         success: false,
-        message: "Please assign a driver to this vehicle first",
+        message: apiResponse.PLEASE_ASSIGN_A_DRIVER_TO_THIS_VEHICLE_FIRST,
       });
     }
 
@@ -489,7 +490,7 @@ exports.assignVehicleToQuote = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "This vehicle is already assigned to an active shipment. Complete it first.",
+          apiResponse.THIS_VEHICLE_IS_ALREADY_ASSIGNED_TO_AN_ACTIVE_SHIPMENT_COMPLETE_IT_FIRST,
       });
     }
 
@@ -503,7 +504,7 @@ exports.assignVehicleToQuote = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "This driver is already handling another shipment. Please complete it first.",
+          apiResponse.THIS_DRIVER_IS_ALREADY_HANDLING_ANOTHER_SHIPMENT_PLEASE_COMPLETE_IT_FIRS,
       });
     }
 
@@ -544,7 +545,7 @@ exports.assignVehicleToQuote = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Vehicle and driver assigned successfully",
+      message: apiResponse.VEHICLE_AND_DRIVER_ASSIGNED_SUCCESSFULLY,
       quote,
     });
   } catch (err) {
@@ -552,7 +553,7 @@ exports.assignVehicleToQuote = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to assign vehicle",
+      message: apiResponse.FAILED_TO_ASSIGN_VEHICLE,
       error: err.message,
     });
   }
@@ -588,14 +589,14 @@ exports.getMyQuotes = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Quotes fetched successfully",
+      message: apiResponse.QUOTES_FETCHED_SUCCESSFULLY,
       quotes,
     });
   } catch (err) {
     console.error("[GET MY QUOTES ERROR]:", err);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch quotes",
+      message: apiResponse.FAILED_TO_FETCH_QUOTES,
       error: err.message,
     });
   }
@@ -612,12 +613,12 @@ exports.getQuotesByShipment = async (req, res) => {
 
     return res
       .status(200)
-      .json({ success: true, message: "Quotes fetched successfully", quotes });
+      .json({ success: true, message: apiResponse.QUOTES_FETCHED_SUCCESSFULLY, quotes });
   } catch (err) {
     console.error("[GET QUOTES ERROR]:", err);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch quotes",
+      message: apiResponse.FAILED_TO_FETCH_QUOTES,
       error: err.message,
     });
   }
@@ -637,13 +638,13 @@ exports.getAcceptedQuoteByShipment = async (req, res) => {
     if (!acceptedQuote)
       return res.status(404).json({
         success: false,
-        message: "No accepted quote found for this shipment",
+        message: apiResponse.NO_ACCEPTED_QUOTE_FOUND_FOR_THIS_SHIPMENT,
       });
 
     return res.status(200).json({ success: true, quote: acceptedQuote });
   } catch (error) {
     console.error("Get Accepted Quote Error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -657,7 +658,7 @@ exports.deleteQuote = async (req, res) => {
     if (!quoteId) {
       return res.status(400).json({
         success: false,
-        message: "Quote ID is required",
+        message: apiResponse.QUOTE_ID_IS_REQUIRED,
       });
     }
 
@@ -667,7 +668,7 @@ exports.deleteQuote = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Quote not found",
+        message: apiResponse.QUOTE_NOT_FOUND,
       });
     }
 
@@ -675,7 +676,7 @@ exports.deleteQuote = async (req, res) => {
     if (quote.shipper.toString() !== shipperId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized",
+        message: apiResponse.UNAUTHORIZED,
       });
     }
 
@@ -685,7 +686,7 @@ exports.deleteQuote = async (req, res) => {
     if (quote.status === "accepted") {
       return res.status(400).json({
         success: false,
-        message: "Accepted quote cannot be deleted",
+        message: apiResponse.ACCEPTED_QUOTE_CANNOT_BE_DELETED,
       });
     }
 
@@ -693,7 +694,7 @@ exports.deleteQuote = async (req, res) => {
     if (quote.status === "cancelled") {
       return res.status(400).json({
         success: false,
-        message: "Cancelled quote cannot be deleted",
+        message: apiResponse.CANCELLED_QUOTE_CANNOT_BE_DELETED,
       });
     }
 
@@ -717,13 +718,13 @@ exports.deleteQuote = async (req, res) => {
     // ---------------- RESPONSE ----------------
     return res.status(200).json({
       success: true,
-      message: "Quote deleted successfully",
+      message: apiResponse.QUOTE_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
     console.error("[DELETE QUOTE ERROR]:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while deleting quote",
+      message: apiResponse.SERVER_ERROR_WHILE_DELETING_QUOTE,
       error: error.message,
     });
   }

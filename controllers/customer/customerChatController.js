@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Pusher = require("pusher");
 const ChatMessage = require("../../models/customer/CustomerShipmentChat");
 
@@ -17,7 +18,7 @@ exports.sendMessage = async (req, res) => {
     const senderModel = "Customer"; // always customer for this controller
 
     if (!message || !shipmentId)
-      return res.status(400).json({ success: false, message: "Invalid data" });
+      return res.status(400).json({ success: false, message: apiResponse.INVALID_DATA });
 
     const newMessage = await ChatMessage.create({
       shipment: shipmentId,
@@ -38,7 +39,7 @@ exports.sendMessage = async (req, res) => {
     res.status(201).json({ success: true, message: newMessage });
   } catch (err) {
     console.error("Chat sendMessage error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -49,7 +50,7 @@ exports.getMessages = async (req, res) => {
     if (!shipmentId)
       return res
         .status(400)
-        .json({ success: false, message: "Shipment ID required" });
+        .json({ success: false, message: apiResponse.SHIPMENT_ID_REQUIRED });
 
     const messages = await ChatMessage.find({ shipment: shipmentId }).sort({
       createdAt: 1,
@@ -57,6 +58,6 @@ exports.getMessages = async (req, res) => {
     res.status(200).json({ success: true, messages });
   } catch (err) {
     console.error("Chat getMessages error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 };

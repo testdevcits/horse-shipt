@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../../responses/api.response");
 const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
@@ -32,7 +33,7 @@ exports.getStripeBalance = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch Stripe balance",
+      message: apiResponse.FAILED_TO_FETCH_STRIPE_BALANCE,
     });
   }
 };
@@ -121,7 +122,7 @@ exports.getStripeTransactions = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch Stripe transactions",
+      message: apiResponse.FAILED_TO_FETCH_STRIPE_TRANSACTIONS,
     });
   }
 };

@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const mongoose = require("mongoose");
 
 const Review = require("../../models/shipper/review.model");
@@ -70,7 +71,7 @@ exports.addReview = async (req, res) => {
     if (!rating) {
       return res.status(400).json({
         success: false,
-        message: "Rating is required",
+        message: apiResponse.RATING_IS_REQUIRED,
       });
     }
 
@@ -124,7 +125,7 @@ exports.addReview = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Duplicate review not allowed",
+        message: apiResponse.DUPLICATE_REVIEW_NOT_ALLOWED,
       });
     }
 
@@ -149,14 +150,14 @@ exports.updateGoogleReviewLink = async (req, res) => {
     if (!shipperId || !googleReviewLink) {
       return res.status(400).json({
         success: false,
-        message: "Invalid request",
+        message: apiResponse.INVALID_REQUEST,
       });
     }
 
     if (!validateGoogleLink(googleReviewLink)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid link",
+        message: apiResponse.INVALID_LINK,
       });
     }
 
@@ -176,7 +177,7 @@ exports.updateGoogleReviewLink = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Google review link updated successfully",
+      message: apiResponse.GOOGLE_REVIEW_LINK_UPDATED_SUCCESSFULLY,
       data: result.googleReviewLink,
     });
   } catch (error) {
@@ -184,7 +185,7 @@ exports.updateGoogleReviewLink = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: apiResponse.SERVER_ERROR,
     });
   }
 };
@@ -201,7 +202,7 @@ exports.getGoogleReviewLink = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -213,7 +214,7 @@ exports.getGoogleReviewLink = async (req, res) => {
     console.error("Get Google Review Link Error:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: apiResponse.SERVER_ERROR,
     });
   }
 };
@@ -384,7 +385,7 @@ exports.deleteMyReview = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Review deleted successfully",
+      message: apiResponse.REVIEW_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
     return res.status(500).json({
@@ -409,7 +410,7 @@ exports.getMyReviews = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "My reviews fetched successfully",
+      message: apiResponse.MY_REVIEWS_FETCHED_SUCCESSFULLY,
       data: reviews,
     });
   } catch (error) {
@@ -490,7 +491,7 @@ exports.getTopRatedShippers = async (req, res) => {
     res.status(200).json({ success: true, data: result });
   } catch (error) {
     console.error("Error fetching top rated shippers:", error);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -506,7 +507,7 @@ exports.getShipperProfileDetail = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -599,7 +600,7 @@ exports.getShipperProfileDetail = async (req, res) => {
     console.error("Error fetching shipper details:", error);
     res.status(500).json({
       success: false,
-      message: "Server error",
+      message: apiResponse.SERVER_ERROR,
     });
   }
 };

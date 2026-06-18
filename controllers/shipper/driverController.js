@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Driver = require("../../models/shipper/Driver");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const cloudinary = require("../../utils/cloudinary");
@@ -58,7 +59,7 @@ exports.addDriver = async (req, res) => {
     if (Object.keys(errors).length) {
       return res.status(400).json({
         success: false,
-        message: "Invalid driver details",
+        message: apiResponse.INVALID_DRIVER_DETAILS,
         errors,
       });
     }
@@ -68,7 +69,7 @@ exports.addDriver = async (req, res) => {
     if (existingDriver) {
       return res.status(400).json({
         success: false,
-        message: "Driver with this email already exists",
+        message: apiResponse.DRIVER_WITH_THIS_EMAIL_ALREADY_EXISTS,
       });
     }
 
@@ -85,7 +86,7 @@ exports.addDriver = async (req, res) => {
     await driver.save();
     res.status(201).json({
       success: true,
-      message: "Driver created successfully",
+      message: apiResponse.DRIVER_CREATED_SUCCESSFULLY,
       data: publicDriver(driver),
       driver: publicDriver(driver),
     });
@@ -93,7 +94,7 @@ exports.addDriver = async (req, res) => {
     console.error("[ADD DRIVER] Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to create driver",
+      message: apiResponse.FAILED_TO_CREATE_DRIVER,
       errors: { server: error.message },
     });
   }
@@ -139,7 +140,7 @@ exports.getMyDrivers = async (req, res) => {
     console.error("[GET DRIVERS] Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch drivers",
+      message: apiResponse.FAILED_TO_FETCH_DRIVERS,
       errors: { server: error.message },
     });
   }
@@ -161,7 +162,7 @@ exports.assignVehiclesToDriver = async (req, res) => {
     if (!driver) {
       return res
         .status(404)
-        .json({ success: false, message: "Driver not found" });
+        .json({ success: false, message: apiResponse.DRIVER_NOT_FOUND });
     }
 
     // Fix nested object issue
@@ -186,7 +187,7 @@ exports.assignVehiclesToDriver = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Vehicles assigned successfully",
+      message: apiResponse.VEHICLES_ASSIGNED_SUCCESSFULLY,
       data: publicDriver(populatedDriver),
       driver: publicDriver(populatedDriver),
     });
@@ -195,7 +196,7 @@ exports.assignVehiclesToDriver = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to assign vehicles",
+      message: apiResponse.FAILED_TO_ASSIGN_VEHICLES,
       errors: { server: error.message },
     });
   }
@@ -213,7 +214,7 @@ exports.updateDriver = async (req, res) => {
     if (Object.keys(errors).length) {
       return res.status(400).json({
         success: false,
-        message: "Invalid driver details",
+        message: apiResponse.INVALID_DRIVER_DETAILS,
         errors,
       });
     }
@@ -226,7 +227,7 @@ exports.updateDriver = async (req, res) => {
     if (!driver)
       return res
         .status(404)
-        .json({ success: false, message: "Driver not found" });
+        .json({ success: false, message: apiResponse.DRIVER_NOT_FOUND });
 
     if (updates.email !== undefined) {
       const nextEmail = normalizeEmail(updates.email);
@@ -238,7 +239,7 @@ exports.updateDriver = async (req, res) => {
       if (emailOwner) {
         return res.status(400).json({
           success: false,
-          message: "Driver with this email already exists",
+          message: apiResponse.DRIVER_WITH_THIS_EMAIL_ALREADY_EXISTS,
           errors: { email: "Driver with this email already exists" },
         });
       }
@@ -255,7 +256,7 @@ exports.updateDriver = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Driver updated successfully",
+      message: apiResponse.DRIVER_UPDATED_SUCCESSFULLY,
       data: publicDriver(driver),
       driver: publicDriver(driver),
     });
@@ -263,7 +264,7 @@ exports.updateDriver = async (req, res) => {
     console.error("[UPDATE DRIVER] Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update driver",
+      message: apiResponse.FAILED_TO_UPDATE_DRIVER,
       errors: { server: error.message },
     });
   }
@@ -284,9 +285,9 @@ exports.deleteDriver = async (req, res) => {
     if (!driver)
       return res
         .status(404)
-        .json({ success: false, message: "Driver not found" });
+        .json({ success: false, message: apiResponse.DRIVER_NOT_FOUND });
 
-    res.json({ success: true, message: "Driver deleted successfully" });
+    res.json({ success: true, message: apiResponse.DRIVER_DELETED_SUCCESSFULLY });
   } catch (error) {
     console.error("[DELETE DRIVER] Error:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -307,7 +308,7 @@ exports.toggleDriverStatus = async (req, res) => {
     if (!driver)
       return res
         .status(404)
-        .json({ success: false, message: "Driver not found" });
+        .json({ success: false, message: apiResponse.DRIVER_NOT_FOUND });
 
     driver.isActive = !driver.isActive;
     await driver.save();
@@ -334,12 +335,12 @@ exports.updateDriverProfileImage = async (req, res) => {
     if (!driver)
       return res
         .status(404)
-        .json({ success: false, message: "Driver not found" });
+        .json({ success: false, message: apiResponse.DRIVER_NOT_FOUND });
 
     if (!req.file)
       return res
         .status(400)
-        .json({ success: false, message: "Profile image is required" });
+        .json({ success: false, message: apiResponse.PROFILE_IMAGE_IS_REQUIRED });
 
     if (driver.profileImage?.public_id) {
       await cloudinary.uploader.destroy(driver.profileImage.public_id);
@@ -357,7 +358,7 @@ exports.updateDriverProfileImage = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Profile image updated successfully",
+      message: apiResponse.PROFILE_IMAGE_UPDATED_SUCCESSFULLY,
       profileImage: driver.profileImage,
     });
   } catch (error) {
@@ -375,14 +376,14 @@ exports.deleteDriverProfileImage = async (req, res) => {
     if (!driver || !driver.profileImage?.public_id)
       return res
         .status(404)
-        .json({ success: false, message: "Profile image not found" });
+        .json({ success: false, message: apiResponse.PROFILE_IMAGE_NOT_FOUND });
 
     await cloudinary.uploader.destroy(driver.profileImage.public_id);
 
     driver.profileImage = { url: null, public_id: null };
     await driver.save();
 
-    res.json({ success: true, message: "Profile image deleted successfully" });
+    res.json({ success: true, message: apiResponse.PROFILE_IMAGE_DELETED_SUCCESSFULLY });
   } catch (error) {
     console.error("[DRIVER IMAGE DELETE] Error:", error);
     res.status(500).json({ success: false, message: error.message });
@@ -397,7 +398,7 @@ exports.updateDriverLocation = async (req, res) => {
     if (!lat || !lng) {
       return res.status(400).json({
         success: false,
-        message: "Latitude and Longitude required",
+        message: apiResponse.LATITUDE_AND_LONGITUDE_REQUIRED,
       });
     }
 
@@ -422,14 +423,14 @@ exports.updateDriverLocation = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Location updated",
+      message: apiResponse.LOCATION_UPDATED,
       location: driver.currentLocation,
     });
   } catch (error) {
     console.error("[LOCATION UPDATE ERROR]", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update location",
+      message: apiResponse.FAILED_TO_UPDATE_LOCATION,
     });
   }
 };

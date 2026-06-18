@@ -1,3 +1,4 @@
+const { apiResponse } = require("../responses/api.response");
 const bcrypt = require("bcryptjs");
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
@@ -87,7 +88,7 @@ exports.signup = async (req, res) => {
     if (!role || !rawEmail) {
       return res.status(400).json({
         success: false,
-        errors: ["Role and email are required"],
+        errors: [apiResponse.ROLE_AND_EMAIL_ARE_REQUIRED],
       });
     }
 
@@ -97,7 +98,7 @@ exports.signup = async (req, res) => {
     if (!Model) {
       return res.status(400).json({
         success: false,
-        errors: ["Invalid role"],
+        errors: [apiResponse.INVALID_ROLE],
       });
     }
 
@@ -105,7 +106,7 @@ exports.signup = async (req, res) => {
     if (await hasExistingAccount(email)) {
       return res.status(409).json({
         success: false,
-        errors: ["Email already registered with another account/role"],
+        errors: [apiResponse.EMAIL_ALREADY_REGISTERED_WITH_ANOTHER_ACCOUNT_ROLE],
       });
     }
 
@@ -115,7 +116,7 @@ exports.signup = async (req, res) => {
       if (!password) {
         return res.status(400).json({
           success: false,
-          errors: ["Password is required"],
+          errors: [apiResponse.PASSWORD_IS_REQUIRED],
         });
       }
 
@@ -146,7 +147,7 @@ exports.signup = async (req, res) => {
       return res.status(202).json({
         success: true,
         requiresOtp: true,
-        message: "OTP sent to your email. Verify it to create your account.",
+        message: apiResponse.OTP_SENT_TO_YOUR_EMAIL_VERIFY_IT_TO_CREATE_YOUR_ACCOUNT,
         data: { email, role },
       });
     }
@@ -196,7 +197,7 @@ exports.signup = async (req, res) => {
     console.error("[SIGNUP ERROR]", err);
     return res.status(500).json({
       success: false,
-      errors: ["Server Error"],
+      errors: [apiResponse.SERVER_ERROR_2],
     });
   }
 };
@@ -209,7 +210,7 @@ exports.verifySignupOtp = async (req, res) => {
     if (!role || !rawEmail || !otp) {
       return res.status(400).json({
         success: false,
-        errors: ["Role, email and OTP are required"],
+        errors: [apiResponse.ROLE_EMAIL_AND_OTP_ARE_REQUIRED],
       });
     }
 
@@ -219,7 +220,7 @@ exports.verifySignupOtp = async (req, res) => {
     if (!Model) {
       return res.status(400).json({
         success: false,
-        errors: ["Invalid role"],
+        errors: [apiResponse.INVALID_ROLE],
       });
     }
 
@@ -227,7 +228,7 @@ exports.verifySignupOtp = async (req, res) => {
       await PendingSignup.deleteMany({ email });
       return res.status(409).json({
         success: false,
-        errors: ["Email already registered with another account/role"],
+        errors: [apiResponse.EMAIL_ALREADY_REGISTERED_WITH_ANOTHER_ACCOUNT_ROLE],
       });
     }
 
@@ -236,21 +237,21 @@ exports.verifySignupOtp = async (req, res) => {
     if (!pending) {
       return res.status(404).json({
         success: false,
-        errors: ["Please start signup again"],
+        errors: [apiResponse.PLEASE_START_SIGNUP_AGAIN],
       });
     }
 
     if (pending.otpExpiresAt < new Date()) {
       return res.status(400).json({
         success: false,
-        errors: ["OTP expired. Please resend OTP"],
+        errors: [apiResponse.OTP_EXPIRED_PLEASE_RESEND_OTP],
       });
     }
 
     if (pending.attempts >= 5) {
       return res.status(429).json({
         success: false,
-        errors: ["Too many invalid attempts. Please resend OTP"],
+        errors: [apiResponse.TOO_MANY_INVALID_ATTEMPTS_PLEASE_RESEND_OTP],
       });
     }
 
@@ -262,7 +263,7 @@ exports.verifySignupOtp = async (req, res) => {
 
       return res.status(400).json({
         success: false,
-        errors: ["Invalid OTP"],
+        errors: [apiResponse.INVALID_OTP],
       });
     }
 
@@ -293,14 +294,14 @@ exports.verifySignupOtp = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Email verified and account created",
+      message: apiResponse.EMAIL_VERIFIED_AND_ACCOUNT_CREATED,
       data: buildAuthResponse(user),
     });
   } catch (err) {
     console.error("[VERIFY SIGNUP OTP ERROR]", err);
     return res.status(500).json({
       success: false,
-      errors: ["Server Error"],
+      errors: [apiResponse.SERVER_ERROR_2],
     });
   }
 };
@@ -313,7 +314,7 @@ exports.resendSignupOtp = async (req, res) => {
     if (!role || !rawEmail) {
       return res.status(400).json({
         success: false,
-        errors: ["Role and email are required"],
+        errors: [apiResponse.ROLE_AND_EMAIL_ARE_REQUIRED],
       });
     }
 
@@ -322,7 +323,7 @@ exports.resendSignupOtp = async (req, res) => {
     if (!getModel(role)) {
       return res.status(400).json({
         success: false,
-        errors: ["Invalid role"],
+        errors: [apiResponse.INVALID_ROLE],
       });
     }
 
@@ -330,7 +331,7 @@ exports.resendSignupOtp = async (req, res) => {
       await PendingSignup.deleteMany({ email });
       return res.status(409).json({
         success: false,
-        errors: ["Email already registered with another account/role"],
+        errors: [apiResponse.EMAIL_ALREADY_REGISTERED_WITH_ANOTHER_ACCOUNT_ROLE],
       });
     }
 
@@ -339,7 +340,7 @@ exports.resendSignupOtp = async (req, res) => {
     if (!pending) {
       return res.status(404).json({
         success: false,
-        errors: ["Please start signup again"],
+        errors: [apiResponse.PLEASE_START_SIGNUP_AGAIN],
       });
     }
 
@@ -348,14 +349,14 @@ exports.resendSignupOtp = async (req, res) => {
     return res.status(200).json({
       success: true,
       requiresOtp: true,
-      message: "OTP resent to your email",
+      message: apiResponse.OTP_RESENT_TO_YOUR_EMAIL,
       data: { email, role },
     });
   } catch (err) {
     console.error("[RESEND SIGNUP OTP ERROR]", err);
     return res.status(500).json({
       success: false,
-      errors: ["Server Error"],
+      errors: [apiResponse.SERVER_ERROR_2],
     });
   }
 };
@@ -376,7 +377,7 @@ exports.login = async (req, res) => {
     if (!role || !rawEmail) {
       return res.status(400).json({
         success: false,
-        errors: ["Role and email are required"],
+        errors: [apiResponse.ROLE_AND_EMAIL_ARE_REQUIRED],
       });
     }
 
@@ -386,7 +387,7 @@ exports.login = async (req, res) => {
     if (!Model) {
       return res.status(400).json({
         success: false,
-        errors: ["Invalid role"],
+        errors: [apiResponse.INVALID_ROLE],
       });
     }
 
@@ -399,15 +400,15 @@ exports.login = async (req, res) => {
         return res.status(403).json({
           success: false,
           requiresOtp: true,
-          message: "Email verification is pending. OTP resent to your email.",
-          errors: ["Please verify your email to finish signup"],
+          message: apiResponse.EMAIL_VERIFICATION_IS_PENDING_OTP_RESENT_TO_YOUR_EMAIL,
+          errors: [apiResponse.PLEASE_VERIFY_YOUR_EMAIL_TO_FINISH_SIGNUP],
           data: { email, role },
         });
       }
 
       return res.status(401).json({
         success: false,
-        errors: ["Invalid credentials"],
+        errors: [apiResponse.INVALID_CREDENTIALS],
       });
     }
 
@@ -416,7 +417,7 @@ exports.login = async (req, res) => {
       if (user.providerId !== profile.sub) {
         return res.status(401).json({
           success: false,
-          errors: ["Google account mismatch"],
+          errors: [apiResponse.GOOGLE_ACCOUNT_MISMATCH],
         });
       }
     } else {
@@ -425,7 +426,7 @@ exports.login = async (req, res) => {
       if (!isMatch) {
         return res.status(401).json({
           success: false,
-          errors: ["Invalid credentials"],
+          errors: [apiResponse.INVALID_CREDENTIALS],
         });
       }
     }
@@ -453,7 +454,7 @@ exports.login = async (req, res) => {
     console.error("[LOGIN ERROR]", err);
     return res.status(500).json({
       success: false,
-      errors: ["Server Error"],
+      errors: [apiResponse.SERVER_ERROR_2],
     });
   }
 };
@@ -466,22 +467,22 @@ exports.logout = async (req, res) => {
     if (!Model)
       return res
         .status(400)
-        .json({ success: false, errors: ["Invalid roles"] });
+        .json({ success: false, errors: [apiResponse.INVALID_ROLES] });
 
     const user = await Model.findById(userId);
     if (!user)
       return res
         .status(404)
-        .json({ success: false, errors: ["User not found"] });
+        .json({ success: false, errors: [apiResponse.USER_NOT_FOUND] });
 
     user.isLogin = false;
     user.currentDevice = null;
 
     await user.save();
 
-    res.status(200).json({ success: true, message: "Logged out successfully" });
+    res.status(200).json({ success: true, message: apiResponse.LOGGED_OUT_SUCCESSFULLY });
   } catch (err) {
     console.error("[LOGOUT ERROR]", err);
-    res.status(500).json({ success: false, errors: ["Server Error"] });
+    res.status(500).json({ success: false, errors: [apiResponse.SERVER_ERROR_2] });
   }
 };

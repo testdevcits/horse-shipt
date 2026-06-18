@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 
 // =====================================================
@@ -21,14 +22,14 @@ exports.getSettings = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Shipper settings fetched successfully",
+      message: apiResponse.SHIPPER_SETTINGS_FETCHED_SUCCESSFULLY,
       data: settings,
     });
   } catch (error) {
     console.error("Error fetching shipper settings:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch shipper settings",
+      message: apiResponse.FAILED_TO_FETCH_SHIPPER_SETTINGS,
     });
   }
 };
@@ -44,7 +45,7 @@ exports.updateSettings = async (req, res) => {
     if (!notifications) {
       return res.status(400).json({
         success: false,
-        message: "Notifications data is required",
+        message: apiResponse.NOTIFICATIONS_DATA_IS_REQUIRED,
       });
     }
 
@@ -56,14 +57,14 @@ exports.updateSettings = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Shipper settings updated successfully",
+      message: apiResponse.SHIPPER_SETTINGS_UPDATED_SUCCESSFULLY,
       data: updated,
     });
   } catch (error) {
     console.error("Error updating shipper settings:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update shipper settings",
+      message: apiResponse.FAILED_TO_UPDATE_SHIPPER_SETTINGS,
     });
   }
 };
@@ -78,7 +79,7 @@ exports.getSettingsById = async (req, res) => {
     if (!shipperId) {
       return res.status(400).json({
         success: false,
-        message: "Shipper ID is required",
+        message: apiResponse.SHIPPER_ID_IS_REQUIRED,
       });
     }
 
@@ -87,20 +88,20 @@ exports.getSettingsById = async (req, res) => {
     if (!settings) {
       return res.status(404).json({
         success: false,
-        message: "Settings not found for this Shipper ID",
+        message: apiResponse.SETTINGS_NOT_FOUND_FOR_THIS_SHIPPER_ID,
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Shipper settings fetched successfully by ID",
+      message: apiResponse.SHIPPER_SETTINGS_FETCHED_SUCCESSFULLY_BY_ID,
       data: settings,
     });
   } catch (error) {
     console.error("Error fetching shipper settings by ID:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch shipper settings by ID",
+      message: apiResponse.FAILED_TO_FETCH_SHIPPER_SETTINGS_BY_ID,
     });
   }
 };

@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const ShipperContract = require("../../models/shipper/shipperContractModel");
 const cloudinary = require("../../config/cloudinary"); // cloudinary config
 const pdf = require("pdfkit"); // for PDF generation
@@ -17,7 +18,7 @@ exports.generateContract = async (req, res) => {
     if (!shipmentId) {
       return res
         .status(400)
-        .json({ success: false, message: "Shipment ID required" });
+        .json({ success: false, message: apiResponse.SHIPMENT_ID_REQUIRED });
     }
 
     // create PDF
@@ -69,7 +70,7 @@ exports.generateContract = async (req, res) => {
       .status(500)
       .json({
         success: false,
-        message: "Failed to generate contract",
+        message: apiResponse.FAILED_TO_GENERATE_CONTRACT,
         error: err.message,
       });
   }
@@ -88,14 +89,14 @@ exports.customerSignContract = async (req, res) => {
     if (!req.file) {
       return res
         .status(400)
-        .json({ success: false, message: "Signature file required" });
+        .json({ success: false, message: apiResponse.SIGNATURE_FILE_REQUIRED });
     }
 
     const contract = await ShipperContract.findById(contractId);
     if (!contract)
       return res
         .status(404)
-        .json({ success: false, message: "Contract not found" });
+        .json({ success: false, message: apiResponse.CONTRACT_NOT_FOUND });
 
     // Upload customer signature
     const uploadResult = await cloudinary.uploader.upload(req.file.path, {
@@ -124,7 +125,7 @@ exports.customerSignContract = async (req, res) => {
       .status(500)
       .json({
         success: false,
-        message: "Failed to sign contract",
+        message: apiResponse.FAILED_TO_SIGN_CONTRACT,
         error: err.message,
       });
   }
@@ -143,14 +144,14 @@ exports.finalizeContract = async (req, res) => {
     if (!contract)
       return res
         .status(404)
-        .json({ success: false, message: "Contract not found" });
+        .json({ success: false, message: apiResponse.CONTRACT_NOT_FOUND });
 
     if (!contract.shipperSignature || !contract.customerSignature) {
       return res
         .status(400)
         .json({
           success: false,
-          message: "Both parties must sign before finalizing",
+          message: apiResponse.BOTH_PARTIES_MUST_SIGN_BEFORE_FINALIZING,
         });
     }
 
@@ -206,7 +207,7 @@ exports.finalizeContract = async (req, res) => {
       .status(500)
       .json({
         success: false,
-        message: "Failed to finalize contract",
+        message: apiResponse.FAILED_TO_FINALIZE_CONTRACT,
         error: err.message,
       });
   }

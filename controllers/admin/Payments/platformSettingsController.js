@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../../responses/api.response");
 const PlatformSettings = require("../../../models/admin/payment/platformSettings");
 
 /**
@@ -11,7 +12,7 @@ const updatePlatformSettings = async (req, res) => {
 
     if (platformFeePercent < 0 || platformFeePercent > 100) {
       return res.status(400).json({
-        message: "Platform fee percent must be between 0 and 100",
+        message: apiResponse.PLATFORM_FEE_PERCENT_MUST_BE_BETWEEN_0_AND_100,
       });
     }
 
@@ -26,12 +27,12 @@ const updatePlatformSettings = async (req, res) => {
     );
 
     return res.status(200).json({
-      message: "Platform settings saved successfully",
+      message: apiResponse.PLATFORM_SETTINGS_SAVED_SUCCESSFULLY,
       data: settings,
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -58,7 +59,7 @@ const getPlatformSettings = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 

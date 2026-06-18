@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Shipper = require("../../models/shipper/shipperModel");
 
 // ===================================================
@@ -12,7 +13,7 @@ exports.getCurrentLocation = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -23,21 +24,21 @@ exports.getCurrentLocation = async (req, res) => {
     ) {
       return res.status(200).json({
         success: true,
-        message: "No location data available yet",
+        message: apiResponse.NO_LOCATION_DATA_AVAILABLE_YET,
         data: null,
       });
     }
 
     res.status(200).json({
       success: true,
-      message: "Current location fetched successfully",
+      message: apiResponse.CURRENT_LOCATION_FETCHED_SUCCESSFULLY,
       data: shipper.currentLocation,
     });
   } catch (error) {
     console.error("Get Shipper Location Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch current location",
+      message: apiResponse.FAILED_TO_FETCH_CURRENT_LOCATION,
     });
   }
 };
@@ -52,7 +53,7 @@ exports.updateCurrentLocation = async (req, res) => {
     if (!latitude || !longitude) {
       return res.status(400).json({
         success: false,
-        message: "Latitude and longitude are required",
+        message: apiResponse.LATITUDE_AND_LONGITUDE_ARE_REQUIRED,
       });
     }
 
@@ -71,7 +72,7 @@ exports.updateCurrentLocation = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -86,14 +87,14 @@ exports.updateCurrentLocation = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Current location updated successfully",
+      message: apiResponse.CURRENT_LOCATION_UPDATED_SUCCESSFULLY,
       data: shipper.currentLocation,
     });
   } catch (error) {
     console.error("Update Shipper Location Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update location",
+      message: apiResponse.FAILED_TO_UPDATE_LOCATION,
     });
   }
 };

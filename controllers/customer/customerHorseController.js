@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Horse = require("../../models/customer/Horse");
 
 /**
@@ -25,35 +26,35 @@ exports.createHorse = async (req, res) => {
     if (!req.body) {
       return res.status(400).json({
         success: false,
-        message: "Request body missing",
+        message: apiResponse.REQUEST_BODY_MISSING,
       });
     }
 
     if (!registeredName?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Registered name is required",
+        message: apiResponse.REGISTERED_NAME_IS_REQUIRED,
       });
     }
 
     if (!breed?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Breed is required",
+        message: apiResponse.BREED_IS_REQUIRED,
       });
     }
 
     if (breed === "Other Breed" && !otherBreed?.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Other breed is required",
+        message: apiResponse.OTHER_BREED_IS_REQUIRED,
       });
     }
 
     if (!sex) {
       return res.status(400).json({
         success: false,
-        message: "Sex is required",
+        message: apiResponse.SEX_IS_REQUIRED,
       });
     }
 
@@ -66,7 +67,7 @@ exports.createHorse = async (req, res) => {
     if (existingHorse) {
       return res.status(409).json({
         success: false,
-        message: "Horse with this registered name already exists",
+        message: apiResponse.HORSE_WITH_THIS_REGISTERED_NAME_ALREADY_EXISTS,
         horse: existingHorse,
       });
     }
@@ -90,7 +91,7 @@ exports.createHorse = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Horse saved successfully",
+      message: apiResponse.HORSE_SAVED_SUCCESSFULLY,
       horse,
     });
   } catch (err) {
@@ -121,7 +122,7 @@ exports.getMyHorses = async (req, res) => {
     console.error("Get My Horses Error:", err);
     return res.status(500).json({
       success: false,
-      message: "Unable to fetch horses",
+      message: apiResponse.UNABLE_TO_FETCH_HORSES,
     });
   }
 };
@@ -139,14 +140,14 @@ exports.updateHorse = async (req, res) => {
     if (!horseId) {
       return res
         .status(400)
-        .json({ success: false, message: "Horse ID is required" });
+        .json({ success: false, message: apiResponse.HORSE_ID_IS_REQUIRED });
     }
 
     const horse = await Horse.findOne({ _id: horseId, owner: customerId });
     if (!horse) {
       return res
         .status(404)
-        .json({ success: false, message: "Horse not found" });
+        .json({ success: false, message: apiResponse.HORSE_NOT_FOUND });
     }
 
     const {
@@ -166,17 +167,17 @@ exports.updateHorse = async (req, res) => {
     if (registeredName && !registeredName.trim()) {
       return res
         .status(400)
-        .json({ success: false, message: "Registered name cannot be empty" });
+        .json({ success: false, message: apiResponse.REGISTERED_NAME_CANNOT_BE_EMPTY });
     }
     if (breed && !breed.trim()) {
       return res
         .status(400)
-        .json({ success: false, message: "Breed cannot be empty" });
+        .json({ success: false, message: apiResponse.BREED_CANNOT_BE_EMPTY });
     }
     if (breed === "Other Breed" && (!otherBreed || !otherBreed.trim())) {
       return res
         .status(400)
-        .json({ success: false, message: "Other breed is required" });
+        .json({ success: false, message: apiResponse.OTHER_BREED_IS_REQUIRED });
     }
     if (
       sex &&
@@ -184,7 +185,7 @@ exports.updateHorse = async (req, res) => {
     ) {
       return res
         .status(400)
-        .json({ success: false, message: "Invalid sex value" });
+        .json({ success: false, message: apiResponse.INVALID_SEX_VALUE });
     }
 
     // Check duplicate registered name
@@ -197,7 +198,7 @@ exports.updateHorse = async (req, res) => {
       if (existingHorse) {
         return res.status(409).json({
           success: false,
-          message: "Another horse with this registered name already exists",
+          message: apiResponse.ANOTHER_HORSE_WITH_THIS_REGISTERED_NAME_ALREADY_EXISTS,
         });
       }
     }
@@ -217,7 +218,7 @@ exports.updateHorse = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Horse updated successfully",
+      message: apiResponse.HORSE_UPDATED_SUCCESSFULLY,
       horse,
     });
   } catch (err) {
@@ -242,21 +243,21 @@ exports.deleteHorse = async (req, res) => {
     if (!horseId) {
       return res
         .status(400)
-        .json({ success: false, message: "Horse ID is required" });
+        .json({ success: false, message: apiResponse.HORSE_ID_IS_REQUIRED });
     }
 
     const horse = await Horse.findOne({ _id: horseId, owner: customerId });
     if (!horse) {
       return res
         .status(404)
-        .json({ success: false, message: "Horse not found" });
+        .json({ success: false, message: apiResponse.HORSE_NOT_FOUND });
     }
 
     await horse.deleteOne();
 
     return res.status(200).json({
       success: true,
-      message: "Horse deleted successfully",
+      message: apiResponse.HORSE_DELETED_SUCCESSFULLY,
     });
   } catch (err) {
     console.error("Delete Horse Error:", err);

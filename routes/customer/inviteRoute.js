@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const express = require("express");
 const router = express.Router();
 const CustomerShipment = require("../../models/customer/CustomerShipment");
@@ -16,13 +17,13 @@ router.get("/invite/:token", async (req, res) => {
 
     if (!shipment)
       return res.status(404).json({
-        message: "Link invalid or expired. Please sign up to access shipment.",
+        message: apiResponse.LINK_INVALID_OR_EXPIRED_PLEASE_SIGN_UP_TO_ACCESS_SHIPMENT,
       });
 
     res.json({ shipment });
   } catch (err) {
     console.error("[INVITE SHIPMENT ERROR]", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 });
 

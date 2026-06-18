@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 // ==========================================================
 // IMPORTS
 // ==========================================================
@@ -58,7 +59,7 @@ exports.createStripeAccount = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -66,7 +67,7 @@ exports.createStripeAccount = async (req, res) => {
     if (shipper.stripeAccountId) {
       return res.status(200).json({
         success: true,
-        message: "Stripe account already exists",
+        message: apiResponse.STRIPE_ACCOUNT_ALREADY_EXISTS,
         stripeAccountId: shipper.stripeAccountId,
       });
     }
@@ -107,7 +108,7 @@ exports.createStripeAccount = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Stripe account created successfully",
+      message: apiResponse.STRIPE_ACCOUNT_CREATED_SUCCESSFULLY,
       stripeAccountId: account.id,
       accountCountry,
     });
@@ -131,7 +132,7 @@ exports.createOnboardingLink = async (req, res) => {
     if (!shipper || !shipper.stripeAccountId) {
       return res.status(400).json({
         success: false,
-        message: "Stripe account not created",
+        message: apiResponse.STRIPE_ACCOUNT_NOT_CREATED,
       });
     }
 
@@ -173,7 +174,7 @@ exports.checkStripeStatus = async (req, res) => {
     if (!shipper || !shipper.stripeAccountId) {
       return res.status(400).json({
         success: false,
-        message: "Stripe account not created",
+        message: apiResponse.STRIPE_ACCOUNT_NOT_CREATED,
       });
     }
 
@@ -452,7 +453,7 @@ exports.createStripeCustomer = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -460,7 +461,7 @@ exports.createStripeCustomer = async (req, res) => {
     if (shipper.stripeCustomerId) {
       return res.json({
         success: true,
-        message: "Customer already exists",
+        message: apiResponse.CUSTOMER_ALREADY_EXISTS,
         stripeCustomerId: shipper.stripeCustomerId,
       });
     }
@@ -501,7 +502,7 @@ exports.createSetupIntent = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -536,7 +537,7 @@ exports.createSetupIntent = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to create SetupIntent",
+      message: apiResponse.FAILED_TO_CREATE_SETUPINTENT,
       error: error.message,
     });
   }
@@ -554,7 +555,7 @@ exports.savePaymentMethod = async (req, res) => {
     if (!shipper || !shipper.stripeCustomerId) {
       return res.status(400).json({
         success: false,
-        message: "Stripe customer not found",
+        message: apiResponse.STRIPE_CUSTOMER_NOT_FOUND,
       });
     }
 
@@ -566,7 +567,7 @@ exports.savePaymentMethod = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "Payment method belongs to another Stripe customer",
+        message: apiResponse.PAYMENT_METHOD_BELONGS_TO_ANOTHER_STRIPE_CUSTOMER,
       });
     }
 
@@ -602,7 +603,7 @@ exports.savePaymentMethod = async (req, res) => {
     res.json({
       success: true,
       message:
-        "Card saved successfully. Account activated if previously restricted.",
+        apiResponse.CARD_SAVED_SUCCESSFULLY_ACCOUNT_ACTIVATED_IF_PREVIOUSLY_RESTRICTED,
       cardBrand: shipper.cardBrand,
       cardLast4: shipper.cardLast4,
       cardExpMonth: shipper.cardExpMonth,
@@ -650,7 +651,7 @@ exports.createSubscription = async (req, res) => {
     if (!MONTHLY_PRICE_ID) {
       return res.status(400).json({
         success: false,
-        message: "Monthly price ID not configured",
+        message: apiResponse.MONTHLY_PRICE_ID_NOT_CONFIGURED,
       });
     }
 
@@ -659,14 +660,14 @@ exports.createSubscription = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
     if (!shipper.stripeCustomerId || !shipper.paymentMethodId) {
       return res.status(400).json({
         success: false,
-        message: "Customer or payment method not found",
+        message: apiResponse.CUSTOMER_OR_PAYMENT_METHOD_NOT_FOUND,
       });
     }
 
@@ -736,7 +737,7 @@ exports.createSubscription = async (req, res) => {
         success: false,
         code: "SUBSCRIPTION_ALREADY_EXISTS",
         message:
-          "A live Stripe subscription already exists for this shipper. Please use the existing subscription instead of creating a duplicate.",
+          apiResponse.A_LIVE_STRIPE_SUBSCRIPTION_ALREADY_EXISTS_FOR_THIS_SHIPPER_PLEASE_USE_TH,
         data: {
           stripeSubscriptionId: existingLiveSub.id,
           status: existingLiveSub.status,
@@ -864,7 +865,7 @@ exports.createSubscription = async (req, res) => {
     // ============================
     return res.json({
       success: true,
-      message: "Monthly subscription created successfully",
+      message: apiResponse.MONTHLY_SUBSCRIPTION_CREATED_SUCCESSFULLY,
       data: {
         subscriptionId: newSubscription._id,
         stripeSubscriptionId: subscription.id,
@@ -899,7 +900,7 @@ exports.cancelSubscription = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -912,7 +913,7 @@ exports.cancelSubscription = async (req, res) => {
     if (!subscription) {
       return res.status(404).json({
         success: false,
-        message: "No active subscription found",
+        message: apiResponse.NO_ACTIVE_SUBSCRIPTION_FOUND,
       });
     }
 
@@ -923,7 +924,7 @@ exports.cancelSubscription = async (req, res) => {
     if (!stripeSub) {
       return res.status(404).json({
         success: false,
-        message: "Stripe subscription not found",
+        message: apiResponse.STRIPE_SUBSCRIPTION_NOT_FOUND,
       });
     }
 
@@ -936,7 +937,7 @@ exports.cancelSubscription = async (req, res) => {
         success: false,
         code: "TRIAL_CANCELLATION_NOT_ALLOWED",
         message:
-          "You are currently in the free trial period. Cancellation is not available until the trial ends.",
+          apiResponse.YOU_ARE_CURRENTLY_IN_THE_FREE_TRIAL_PERIOD_CANCELLATION_IS_NOT_AVAILABLE,
         data: {
           plan: "monthly",
           status: "trialing",
@@ -954,7 +955,7 @@ exports.cancelSubscription = async (req, res) => {
     if (stripeSub.status === "canceled") {
       return res.json({
         success: true,
-        message: "Subscription already canceled",
+        message: apiResponse.SUBSCRIPTION_ALREADY_CANCELED,
         data: {
           status: "canceled",
         },
@@ -980,7 +981,7 @@ exports.cancelSubscription = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Subscription will be canceled at the end of billing cycle",
+      message: apiResponse.SUBSCRIPTION_WILL_BE_CANCELED_AT_THE_END_OF_BILLING_CYCLE,
 
       data: {
         plan: "monthly",
@@ -1032,7 +1033,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     if (!MONTHLY_PRICE_ID) {
       return res.status(500).json({
         success: false,
-        message: "Monthly price ID not configured",
+        message: apiResponse.MONTHLY_PRICE_ID_NOT_CONFIGURED,
       });
     }
 
@@ -1044,7 +1045,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     if (!shipper || !shipper.stripeCustomerId) {
       return res.status(400).json({
         success: false,
-        message: "Shipper or Stripe customer not found",
+        message: apiResponse.SHIPPER_OR_STRIPE_CUSTOMER_NOT_FOUND,
       });
     }
 
@@ -1237,7 +1238,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     if (!shipper || !shipper.stripeCustomerId) {
       return res.status(400).json({
         success: false,
-        message: "Shipper not found or Stripe customer missing",
+        message: apiResponse.SHIPPER_NOT_FOUND_OR_STRIPE_CUSTOMER_MISSING,
       });
     }
 
@@ -1411,7 +1412,7 @@ exports.getBillingHistory = async (req, res) => {
     if (!shipper || !shipper.stripeCustomerId) {
       return res.status(400).json({
         success: false,
-        message: "Shipper or Stripe customer not found",
+        message: apiResponse.SHIPPER_OR_STRIPE_CUSTOMER_NOT_FOUND,
       });
     }
 

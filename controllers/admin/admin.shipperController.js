@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Shipper = require("../../models/shipper/shipperModel");
 const Driver = require("../../models/shipper/Driver");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
@@ -38,7 +39,7 @@ exports.getAllShippers = async (req, res) => {
 
     return sendPaginated(res, { data: shippers, total, page, limit });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -54,7 +55,7 @@ exports.getShipperById = async (req, res) => {
     if (!shipper) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     }
 
     const [shipments, quotes, vehicles, drivers, preferredAreas, contracts] =
@@ -89,7 +90,7 @@ exports.getShipperById = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -113,16 +114,16 @@ exports.updateShipperById = async (req, res) => {
     if (!updatedShipper) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     }
 
     res.status(200).json({
       success: true,
-      message: "Shipper updated successfully",
+      message: apiResponse.SHIPPER_UPDATED_SUCCESSFULLY,
       data: updatedShipper,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -138,7 +139,7 @@ exports.toggleShipperStatus = async (req, res) => {
     if (!shipper) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     }
 
     shipper.isActive = !shipper.isActive;
@@ -152,7 +153,7 @@ exports.toggleShipperStatus = async (req, res) => {
       data: shipper,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -168,14 +169,14 @@ exports.deleteShipper = async (req, res) => {
     if (!deleted) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     }
 
     res.status(200).json({
       success: true,
-      message: "Shipper deleted successfully",
+      message: apiResponse.SHIPPER_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };

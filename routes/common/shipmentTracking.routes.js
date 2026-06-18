@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
@@ -19,7 +20,7 @@ const allowAllRoles = async (req, res, next) => {
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized: Token missing",
+        message: apiResponse.UNAUTHORIZED_TOKEN_MISSING,
       });
     }
 
@@ -31,7 +32,7 @@ const allowAllRoles = async (req, res, next) => {
     } catch (err) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired token",
+        message: apiResponse.INVALID_OR_EXPIRED_TOKEN,
       });
     }
 
@@ -65,13 +66,13 @@ const allowAllRoles = async (req, res, next) => {
     // ================= NOT FOUND =================
     return res.status(404).json({
       success: false,
-      message: "User not found or inactive",
+      message: apiResponse.USER_NOT_FOUND_OR_INACTIVE,
     });
   } catch (err) {
     console.error("[AUTH ERROR]", err);
     return res.status(500).json({
       success: false,
-      message: "Server error in authentication",
+      message: apiResponse.SERVER_ERROR_IN_AUTHENTICATION,
     });
   }
 };

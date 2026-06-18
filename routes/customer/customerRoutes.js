@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const express = require("express");
 const router = express.Router();
 
@@ -62,6 +63,7 @@ const {
   getQuotesByShipment,
   getQuoteById,
   acceptQuoteWithSignature,
+  rejectQuote,
   createPaymentIntent,
   cancelQuote,
   getCustomerStripePayments,
@@ -218,7 +220,7 @@ router.put(
       }
     } catch (err) {
       console.error("Error updating shipment:", err);
-      res.status(500).json({ success: false, message: "Server Error" });
+      res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
     }
   }
 );
@@ -244,6 +246,7 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
+router.put("/quotes/:quoteId/reject", customerAuth, rejectQuote);
 router.get("/payments", customerAuth, getCustomerStripePayments);
 
 router.get(

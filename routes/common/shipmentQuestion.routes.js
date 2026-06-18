@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const express = require("express");
 const router = express.Router();
 const jwt = require("jsonwebtoken");
@@ -16,7 +17,7 @@ router.post(
       await shipperAuth(req, res, next);
     } catch (err) {
       console.error("Shipper ask route error:", err);
-      res.status(500).json({ success: false, message: "Server error" });
+      res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
     }
   },
   controller.askQuestion
@@ -32,7 +33,7 @@ router.post(
       await customerAuth(req, res, next);
     } catch (err) {
       console.error("Customer answer route error:", err);
-      res.status(500).json({ success: false, message: "Server error" });
+      res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
     }
   },
   controller.answerQuestion
@@ -47,7 +48,7 @@ const allowCustomerOrShipper = async (req, res, next) => {
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized: Missing or invalid token",
+        message: apiResponse.UNAUTHORIZED_MISSING_OR_INVALID_TOKEN,
       });
     }
 
@@ -59,7 +60,7 @@ const allowCustomerOrShipper = async (req, res, next) => {
     } catch (err) {
       return res.status(401).json({
         success: false,
-        message: "Unauthorized: Invalid or expired token",
+        message: apiResponse.UNAUTHORIZED_INVALID_OR_EXPIRED_TOKEN,
       });
     }
 
@@ -81,11 +82,11 @@ const allowCustomerOrShipper = async (req, res, next) => {
 
     return res.status(404).json({
       success: false,
-      message: "User not found or inactive",
+      message: apiResponse.USER_NOT_FOUND_OR_INACTIVE,
     });
   } catch (err) {
     console.error("allowCustomerOrShipper error:", err);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -107,7 +108,7 @@ async function shipperAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({ success: false, message: apiResponse.UNAUTHORIZED });
     }
 
     const token = authHeader.split(" ")[1];
@@ -117,17 +118,17 @@ async function shipperAuth(req, res, next) {
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     if (!user.isActive)
       return res
         .status(403)
-        .json({ success: false, message: "Account is blocked" });
+        .json({ success: false, message: apiResponse.ACCOUNT_IS_BLOCKED });
 
     req.user = user;
     next();
   } catch (err) {
     console.error("shipperAuth error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 }
 
@@ -135,7 +136,7 @@ async function customerAuth(req, res, next) {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(401).json({ success: false, message: apiResponse.UNAUTHORIZED });
     }
 
     const token = authHeader.split(" ")[1];
@@ -145,16 +146,16 @@ async function customerAuth(req, res, next) {
     if (!user)
       return res
         .status(404)
-        .json({ success: false, message: "Customer not found" });
+        .json({ success: false, message: apiResponse.CUSTOMER_NOT_FOUND });
     if (!user.isActive)
       return res
         .status(403)
-        .json({ success: false, message: "Account is blocked" });
+        .json({ success: false, message: apiResponse.ACCOUNT_IS_BLOCKED });
 
     req.user = user;
     next();
   } catch (err) {
     console.error("customerAuth error:", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 }

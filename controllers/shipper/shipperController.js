@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Shipper = require("../../models/shipper/shipperModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 
@@ -21,7 +22,7 @@ exports.updateProfile = async (req, res) => {
       if (!mobile.startsWith("+")) {
         return res.status(400).json({
           success: false,
-          message: "Mobile must include country code (e.g. +1, +91)",
+          message: apiResponse.MOBILE_MUST_INCLUDE_COUNTRY_CODE_E_G_1_91,
         });
       }
 
@@ -31,7 +32,7 @@ exports.updateProfile = async (req, res) => {
       if (!mobileRegex.test(mobile)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid mobile number",
+          message: apiResponse.INVALID_MOBILE_NUMBER,
         });
       }
 
@@ -44,14 +45,14 @@ exports.updateProfile = async (req, res) => {
     if (firstName && firstName.length < 2) {
       return res.status(400).json({
         success: false,
-        message: "First name must be at least 2 characters",
+        message: apiResponse.FIRST_NAME_MUST_BE_AT_LEAST_2_CHARACTERS,
       });
     }
 
     if (lastName && lastName.length < 2) {
       return res.status(400).json({
         success: false,
-        message: "Last name must be at least 2 characters",
+        message: apiResponse.LAST_NAME_MUST_BE_AT_LEAST_2_CHARACTERS,
       });
     }
 
@@ -111,14 +112,14 @@ exports.updateProfile = async (req, res) => {
     return res.status(200).json({
       success: true,
       data: user,
-      message: "Shipper profile updated successfully",
+      message: apiResponse.SHIPPER_PROFILE_UPDATED_SUCCESSFULLY,
     });
   } catch (err) {
     console.error("[SHIPPER PROFILE UPDATE ERROR]:", err);
 
     return res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: apiResponse.SERVER_ERROR_2,
     });
   }
 };
@@ -133,7 +134,7 @@ exports.getAssignedShipments = async (req, res) => {
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[GET ASSIGNED SHIPMENTS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -146,7 +147,7 @@ exports.getShipmentById = async (req, res) => {
     if (!shipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     if (
       !shipment.shipper ||
@@ -154,12 +155,12 @@ exports.getShipmentById = async (req, res) => {
     )
       return res
         .status(403)
-        .json({ success: false, message: "Unauthorized access" });
+        .json({ success: false, message: apiResponse.UNAUTHORIZED_ACCESS });
 
     res.status(200).json({ success: true, shipment });
   } catch (err) {
     console.error("[GET SHIPMENT BY ID] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -174,7 +175,7 @@ exports.updateShipmentStatus = async (req, res) => {
     if (!shipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     if (
       !shipment.shipper ||
@@ -182,7 +183,7 @@ exports.updateShipmentStatus = async (req, res) => {
     )
       return res
         .status(403)
-        .json({ success: false, message: "Unauthorized access" });
+        .json({ success: false, message: apiResponse.UNAUTHORIZED_ACCESS });
 
     shipment.status = status;
     await shipment.save();
@@ -190,7 +191,7 @@ exports.updateShipmentStatus = async (req, res) => {
     res.status(200).json({ success: true, shipment });
   } catch (err) {
     console.error("[UPDATE SHIPMENT STATUS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -205,7 +206,7 @@ exports.updateShipmentLocationByShipper = async (req, res) => {
     if (!shipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     if (
       !shipment.shipper ||
@@ -213,7 +214,7 @@ exports.updateShipmentLocationByShipper = async (req, res) => {
     )
       return res
         .status(403)
-        .json({ success: false, message: "Unauthorized access" });
+        .json({ success: false, message: apiResponse.UNAUTHORIZED_ACCESS });
 
     const newLocation = { latitude, longitude, updatedAt: new Date() };
     shipment.currentLocation = newLocation;
@@ -225,6 +226,6 @@ exports.updateShipmentLocationByShipper = async (req, res) => {
       .json({ success: true, currentLocation: shipment.currentLocation });
   } catch (err) {
     console.error("[UPDATE SHIPMENT LOCATION] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };

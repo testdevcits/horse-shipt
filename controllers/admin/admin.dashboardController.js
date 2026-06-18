@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Customer = require("../../models/customer/customerModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const Shipper = require("../../models/shipper/shipperModel");
@@ -305,7 +306,7 @@ exports.getDashboardOverview = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch dashboard data",
+      message: apiResponse.FAILED_TO_FETCH_DASHBOARD_DATA,
     });
   }
 };

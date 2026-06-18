@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const ShipperContract = require("../../models/shipper/shipperContractModel");
 const cloudinary = require("../../config/cloudinary"); // adjust path if needed
 
@@ -13,7 +14,7 @@ exports.uploadContract = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Please upload a contract file",
+        message: apiResponse.PLEASE_UPLOAD_A_CONTRACT_FILE,
       });
     }
 
@@ -26,7 +27,7 @@ exports.uploadContract = async (req, res) => {
     if (existingContract) {
       return res.status(400).json({
         success: false,
-        message: "Contract already exists. Please update instead.",
+        message: apiResponse.CONTRACT_ALREADY_EXISTS_PLEASE_UPDATE_INSTEAD,
       });
     }
 
@@ -47,14 +48,14 @@ exports.uploadContract = async (req, res) => {
 
     res.status(201).json({
       success: true,
-      message: "Contract uploaded successfully",
+      message: apiResponse.CONTRACT_UPLOADED_SUCCESSFULLY,
       data: contract,
     });
   } catch (error) {
     console.error("Upload Contract Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to upload contract",
+      message: apiResponse.FAILED_TO_UPLOAD_CONTRACT,
       error: error.message,
     });
   }
@@ -72,7 +73,7 @@ exports.updateContract = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Please upload a contract file",
+        message: apiResponse.PLEASE_UPLOAD_A_CONTRACT_FILE,
       });
     }
 
@@ -84,7 +85,7 @@ exports.updateContract = async (req, res) => {
     if (!contract) {
       return res.status(404).json({
         success: false,
-        message: "No active contract found to update",
+        message: apiResponse.NO_ACTIVE_CONTRACT_FOUND_TO_UPDATE,
       });
     }
 
@@ -113,14 +114,14 @@ exports.updateContract = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Contract updated successfully",
+      message: apiResponse.CONTRACT_UPDATED_SUCCESSFULLY,
       data: contract,
     });
   } catch (error) {
     console.error("Update Contract Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update contract",
+      message: apiResponse.FAILED_TO_UPDATE_CONTRACT,
       error: error.message,
     });
   }
@@ -143,7 +144,7 @@ exports.getMyContract = async (req, res) => {
     if (!contract) {
       return res.status(404).json({
         success: false,
-        message: "No active contract found",
+        message: apiResponse.NO_ACTIVE_CONTRACT_FOUND,
       });
     }
 
@@ -155,7 +156,7 @@ exports.getMyContract = async (req, res) => {
     console.error("Get Contract Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch contract",
+      message: apiResponse.FAILED_TO_FETCH_CONTRACT,
       error: error.message,
     });
   }
@@ -178,7 +179,7 @@ exports.deactivateContract = async (req, res) => {
     if (!contract) {
       return res.status(404).json({
         success: false,
-        message: "No active contract found to deactivate",
+        message: apiResponse.NO_ACTIVE_CONTRACT_FOUND_TO_DEACTIVATE,
       });
     }
 
@@ -187,13 +188,13 @@ exports.deactivateContract = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Contract deactivated successfully",
+      message: apiResponse.CONTRACT_DEACTIVATED_SUCCESSFULLY,
     });
   } catch (error) {
     console.error("Deactivate Contract Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to deactivate contract",
+      message: apiResponse.FAILED_TO_DEACTIVATE_CONTRACT,
       error: error.message,
     });
   }

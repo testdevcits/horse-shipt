@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../../responses/api.response");
 const Driver = require("../../../models/shipper/Driver");
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const ShipperVehicle = require("../../../models/shipper/ShipperVehicle");
@@ -27,7 +28,7 @@ exports.driverLogin = async (req, res) => {
     if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: apiResponse.EMAIL_AND_PASSWORD_ARE_REQUIRED,
         errors: {
           ...(!email ? { email: "Email is required" } : {}),
           ...(!password ? { password: "Password is required" } : {}),
@@ -39,7 +40,7 @@ exports.driverLogin = async (req, res) => {
     if (!driver) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: apiResponse.INVALID_CREDENTIALS,
       });
     }
 
@@ -47,14 +48,14 @@ exports.driverLogin = async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({
         success: false,
-        message: "Invalid credentials",
+        message: apiResponse.INVALID_CREDENTIALS,
       });
     }
 
     if (!driver.isActive) {
       return res.status(403).json({
         success: false,
-        message: "Account is deactivated",
+        message: apiResponse.ACCOUNT_IS_DEACTIVATED,
       });
     }
 
@@ -66,7 +67,7 @@ exports.driverLogin = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Driver logged in successfully",
+      message: apiResponse.DRIVER_LOGGED_IN_SUCCESSFULLY,
       data: {
         token,
         driver: publicDriver(driver),
@@ -78,7 +79,7 @@ exports.driverLogin = async (req, res) => {
     console.error("[DRIVER LOGIN]", error);
     res.status(500).json({
       success: false,
-      message: "Failed to login driver",
+      message: apiResponse.FAILED_TO_LOGIN_DRIVER,
       errors: { server: error.message },
     });
   }
@@ -129,7 +130,7 @@ exports.acceptShipment = async (req, res) => {
     if (busy) {
       return res.status(400).json({
         success: false,
-        message: "You already have an active shipment",
+        message: apiResponse.YOU_ALREADY_HAVE_AN_ACTIVE_SHIPMENT,
       });
     }
 
@@ -138,7 +139,7 @@ exports.acceptShipment = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -149,7 +150,7 @@ exports.acceptShipment = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Shipment accepted successfully",
+      message: apiResponse.SHIPMENT_ACCEPTED_SUCCESSFULLY,
     });
   } catch (error) {
     console.error("[ACCEPT SHIPMENT]", error);
@@ -169,7 +170,7 @@ exports.startTrip = async (req, res) => {
     if (!quoteId) {
       return res.status(400).json({
         success: false,
-        message: "Quote ID is required",
+        message: apiResponse.QUOTE_ID_IS_REQUIRED,
       });
     }
 
@@ -178,7 +179,7 @@ exports.startTrip = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -187,7 +188,7 @@ exports.startTrip = async (req, res) => {
 
       return res.json({
         success: true,
-        message: "Trip already started",
+        message: apiResponse.TRIP_ALREADY_STARTED,
         trackingEnabled: true,
       });
     }
@@ -195,7 +196,7 @@ exports.startTrip = async (req, res) => {
     if (quote.tripStatus !== "notStarted") {
       return res.status(400).json({
         success: false,
-        message: "Trip cannot be started",
+        message: apiResponse.TRIP_CANNOT_BE_STARTED,
       });
     }
 
@@ -223,7 +224,7 @@ exports.startTrip = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Trip started successfully",
+      message: apiResponse.TRIP_STARTED_SUCCESSFULLY,
       trackingEnabled: true,
     });
   } catch (error) {
@@ -231,7 +232,7 @@ exports.startTrip = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to start trip",
+      message: apiResponse.FAILED_TO_START_TRIP,
     });
   }
 };
@@ -248,7 +249,7 @@ exports.updateDriverLocation = async (req, res) => {
     if (lat === undefined || lng === undefined) {
       return res.status(400).json({
         success: false,
-        message: "Latitude and Longitude required",
+        message: apiResponse.LATITUDE_AND_LONGITUDE_REQUIRED,
       });
     }
 
@@ -258,7 +259,7 @@ exports.updateDriverLocation = async (req, res) => {
     if (!driver || !driver.isActive) {
       return res.status(404).json({
         success: false,
-        message: "Driver not found or inactive",
+        message: apiResponse.DRIVER_NOT_FOUND_OR_INACTIVE,
       });
     }
 
@@ -266,7 +267,7 @@ exports.updateDriverLocation = async (req, res) => {
     if (!driver.isTrackingEnabled) {
       return res.status(400).json({
         success: false,
-        message: "Tracking is disabled for this driver",
+        message: apiResponse.TRACKING_IS_DISABLED_FOR_THIS_DRIVER,
       });
     }
 
@@ -306,7 +307,7 @@ exports.updateDriverLocation = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Location updated successfully",
+      message: apiResponse.LOCATION_UPDATED_SUCCESSFULLY,
       location: locationPayload,
       tripActive: !!activeShipment,
     });
@@ -315,7 +316,7 @@ exports.updateDriverLocation = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to update location",
+      message: apiResponse.FAILED_TO_UPDATE_LOCATION,
     });
   }
 };
@@ -333,7 +334,7 @@ exports.completeShipment = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -358,7 +359,7 @@ exports.completeShipment = async (req, res) => {
     // ================= RESPONSE =================
     return res.json({
       success: true,
-      message: "Shipment completed successfully",
+      message: apiResponse.SHIPMENT_COMPLETED_SUCCESSFULLY,
       data: {
         quoteId: quote._id,
         deliveredAt: quote.deliveredAt,
@@ -387,7 +388,7 @@ exports.getDriverDashboard = async (req, res) => {
     if (!driver)
       return res
         .status(404)
-        .json({ success: false, message: "Driver not found" });
+        .json({ success: false, message: apiResponse.DRIVER_NOT_FOUND });
 
     // ================= VEHICLE =================
     const vehicle = await ShipperVehicle.findOne({ driver: driverId })
@@ -465,7 +466,7 @@ exports.updateDriverProfileImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({
         success: false,
-        message: "Image is required",
+        message: apiResponse.IMAGE_IS_REQUIRED,
       });
     }
 
@@ -477,7 +478,7 @@ exports.updateDriverProfileImage = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Profile image updated",
+      message: apiResponse.PROFILE_IMAGE_UPDATED,
       driver,
     });
   } catch (error) {
@@ -501,7 +502,7 @@ exports.deleteDriverProfileImage = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Profile image removed",
+      message: apiResponse.PROFILE_IMAGE_REMOVED,
       driver,
     });
   } catch (error) {
@@ -522,7 +523,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -540,7 +541,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Accepted quote not found",
+        message: apiResponse.ACCEPTED_QUOTE_NOT_FOUND,
       });
     }
 
@@ -555,7 +556,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized driver",
+        message: apiResponse.UNAUTHORIZED_DRIVER,
       });
     }
 
@@ -563,7 +564,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
     if (shipment.status === "delivered" || shipment.deliveryOtpVerified) {
       return res.status(400).json({
         success: false,
-        message: "Shipment already delivered",
+        message: apiResponse.SHIPMENT_ALREADY_DELIVERED,
       });
     }
 
@@ -594,7 +595,7 @@ HorseShipt Team
 
     return res.status(200).json({
       success: true,
-      message: "Driver sent delivery OTP",
+      message: apiResponse.DRIVER_SENT_DELIVERY_OTP,
     });
   } catch (error) {
     console.error("DRIVER OTP ERROR:", error);
@@ -616,7 +617,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -631,7 +632,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Accepted quote not found",
+        message: apiResponse.ACCEPTED_QUOTE_NOT_FOUND,
       });
     }
 
@@ -640,7 +641,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     if (!assignedDriverId || assignedDriverId !== loggedDriverId) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized driver",
+        message: apiResponse.UNAUTHORIZED_DRIVER,
       });
     }
 
@@ -648,14 +649,14 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     if (shipment.deliveryOtpVerified) {
       return res.status(400).json({
         success: false,
-        message: "Already delivered",
+        message: apiResponse.ALREADY_DELIVERED,
       });
     }
 
     if (!otp || shipment.deliveryOtp !== String(otp)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid OTP",
+        message: apiResponse.INVALID_OTP,
       });
     }
 
@@ -665,14 +666,14 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     ) {
       return res.status(400).json({
         success: false,
-        message: "OTP expired",
+        message: apiResponse.OTP_EXPIRED,
       });
     }
 
     if (quote.paymentStatus !== "paid") {
       return res.status(400).json({
         success: false,
-        message: "Payment not completed yet",
+        message: apiResponse.PAYMENT_NOT_COMPLETED_YET,
       });
     }
 
@@ -762,7 +763,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Driver verified delivery (vehicle freed)",
+      message: apiResponse.DRIVER_VERIFIED_DELIVERY_VEHICLE_FREED,
     });
   } catch (error) {
     console.error("[DRIVER VERIFY ERROR]:", error);

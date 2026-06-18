@@ -153,7 +153,6 @@ const authRoutes = require("./routes/authRoutes");
 const customerRoutes = require("./routes/customer/customerRoutes");
 const shipperRoutes = require("./routes/shipper/shipperRoutes");
 const shipmentQuestionRoutes = require("./routes/common/shipmentQuestion.routes");
-const quoteNegotiationRoutes = require("./routes/common/quoteNegotiation.routes");
 
 const shipmentTrackingRoutes = require("./routes/common/shipmentTracking.routes");
 
@@ -164,7 +163,6 @@ const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
 const adminCustomerRoutes = require("./routes/admin/adminCustomer.routes");
 const adminShipmentRoutes = require("./routes/admin/adminShipment.routes");
 const adminVehicleRoutes = require("./routes/admin/adminVehicleRoutes");
-const adminNegotiationRoutes = require("./routes/admin/adminNegotiation.routes");
 const adminPlatformSettingsRoutes = require("./routes/admin/Payments/admin.platformSettingsRoutes");
 const adminPaymentsRoutes = require("./routes/admin/Payments/adminPaymentsRoutes");
 const stripeAdminRoutes = require("./routes/admin/Payments/stripeAdminRoutes");
@@ -179,7 +177,6 @@ app.use("/api/customer", customerRoutes);
 app.use("/api/shipper", shipperRoutes);
 app.use("/api/driver", shipperRoutes);
 app.use("/api/questions", shipmentQuestionRoutes);
-app.use("/api/quote-negotiations", quoteNegotiationRoutes);
 
 app.use("/api/tracking", shipmentTrackingRoutes);
 
@@ -191,7 +188,6 @@ app.use("/api/admin/shippers", adminShipperRoutes);
 app.use("/api/admin/customers", adminCustomerRoutes);
 app.use("/api/admin/shipments", adminShipmentRoutes);
 app.use("/api/admin/vehicles", adminVehicleRoutes);
-app.use("/api/admin/negotiations", adminNegotiationRoutes);
 app.use("/api/admin/platform-settings", adminPlatformSettingsRoutes);
 app.use("/api/admin/payments", adminPaymentsRoutes);
 app.use("/api/admin/stripe", stripeAdminRoutes);

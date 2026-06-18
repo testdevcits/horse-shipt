@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const UserNotification = require("../../models/common/UserNotification");
 
 const getRole = (req) => req.user?.role || req.baseUrl?.split("/").pop();
@@ -43,7 +44,7 @@ exports.getMyNotifications = async (req, res) => {
     console.error("Get notifications error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch notifications",
+      message: apiResponse.FAILED_TO_FETCH_NOTIFICATIONS,
     });
   }
 };
@@ -60,13 +61,13 @@ exports.markMyNotificationsRead = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Notifications marked as read",
+      message: apiResponse.NOTIFICATIONS_MARKED_AS_READ,
     });
   } catch (error) {
     console.error("Mark notifications read error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to update notifications",
+      message: apiResponse.FAILED_TO_UPDATE_NOTIFICATIONS,
     });
   }
 };
@@ -86,19 +87,19 @@ exports.deleteMyNotification = async (req, res) => {
     if (!deleted) {
       return res.status(404).json({
         success: false,
-        message: "Notification not found",
+        message: apiResponse.NOTIFICATION_NOT_FOUND,
       });
     }
 
     return res.json({
       success: true,
-      message: "Notification deleted",
+      message: apiResponse.NOTIFICATION_DELETED,
     });
   } catch (error) {
     console.error("Delete notification error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to delete notification",
+      message: apiResponse.FAILED_TO_DELETE_NOTIFICATION,
     });
   }
 };

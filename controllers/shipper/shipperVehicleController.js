@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const axios = require("axios");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
@@ -283,14 +284,14 @@ exports.verifyVehicle = async (req, res) => {
     if (!vehicle) {
       return res.status(404).json({
         success: false,
-        message: "Vehicle not found",
+        message: apiResponse.VEHICLE_NOT_FOUND,
       });
     }
 
     if (!vehicle.vinNumber) {
       return res.status(400).json({
         success: false,
-        message: "VIN number missing",
+        message: apiResponse.VIN_NUMBER_MISSING,
       });
     }
 
@@ -304,7 +305,7 @@ exports.verifyVehicle = async (req, res) => {
     if (!data) {
       return res.status(400).json({
         success: false,
-        message: "Verification failed",
+        message: apiResponse.VERIFICATION_FAILED,
       });
     }
 
@@ -321,7 +322,7 @@ exports.verifyVehicle = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Vehicle verified successfully",
+      message: apiResponse.VEHICLE_VERIFIED_SUCCESSFULLY,
       vehicle,
     });
   } catch (error) {
@@ -329,7 +330,7 @@ exports.verifyVehicle = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Verification error",
+      message: apiResponse.VERIFICATION_ERROR,
     });
   }
 };
@@ -346,7 +347,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (!vehicleId || !driverId) {
       return res.status(400).json({
         success: false,
-        message: "Vehicle ID and Driver ID are required",
+        message: apiResponse.VEHICLE_ID_AND_DRIVER_ID_ARE_REQUIRED,
       });
     }
 
@@ -359,7 +360,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (!vehicle) {
       return res.status(404).json({
         success: false,
-        message: "Vehicle not found",
+        message: apiResponse.VEHICLE_NOT_FOUND,
       });
     }
 
@@ -373,7 +374,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (!driver) {
       return res.status(404).json({
         success: false,
-        message: "Driver not found or inactive",
+        message: apiResponse.DRIVER_NOT_FOUND_OR_INACTIVE,
       });
     }
 
@@ -386,7 +387,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (activeDriverShipment) {
       return res.status(400).json({
         success: false,
-        message: "Driver is already busy with another shipment",
+        message: apiResponse.DRIVER_IS_ALREADY_BUSY_WITH_ANOTHER_SHIPMENT,
       });
     }
 
@@ -399,7 +400,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     if (activeVehicleShipment) {
       return res.status(400).json({
         success: false,
-        message: "Vehicle already in use",
+        message: apiResponse.VEHICLE_ALREADY_IN_USE,
       });
     }
 
@@ -423,7 +424,7 @@ exports.assignDriverToVehicle = async (req, res) => {
     // ================= RESPONSE =================
     return res.status(200).json({
       success: true,
-      message: "Driver assigned successfully",
+      message: apiResponse.DRIVER_ASSIGNED_SUCCESSFULLY,
 
       vehicle: updatedVehicle,
 
@@ -439,7 +440,7 @@ exports.assignDriverToVehicle = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to assign driver",
+      message: apiResponse.FAILED_TO_ASSIGN_DRIVER,
       error: err.message,
     });
   }

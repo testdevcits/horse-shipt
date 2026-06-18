@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 // =======================================================
 // IMPORTS
 // =======================================================
@@ -23,21 +24,21 @@ exports.markShipmentDelivered = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
     if (shipment.status === "delivered" || shipment.deliveryOtpVerified) {
       return res.status(400).json({
         success: false,
-        message: "Shipment already delivered",
+        message: apiResponse.SHIPMENT_ALREADY_DELIVERED,
       });
     }
 
     if (shipment.shipper && shipment.shipper.toString() !== req.user.id) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized action",
+        message: apiResponse.UNAUTHORIZED_ACTION,
       });
     }
 
@@ -71,7 +72,7 @@ HorseShipt Team
 
     return res.json({
       success: true,
-      message: "Delivery OTP sent",
+      message: apiResponse.DELIVERY_OTP_SENT,
     });
   } catch (error) {
     console.error("MARK DELIVERY ERROR:", error);
@@ -96,29 +97,29 @@ exports.verifyDeliveryOtp = async (req, res) => {
     if (!shipment) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
     }
 
     // ================= AUTH =================
     if (shipment.shipper?.toString() !== req.user.id) {
       return res
         .status(403)
-        .json({ success: false, message: "Unauthorized action" });
+        .json({ success: false, message: apiResponse.UNAUTHORIZED_ACTION });
     }
 
     // ================= VALIDATION =================
     if (shipment.deliveryOtpVerified) {
       return res
         .status(400)
-        .json({ success: false, message: "Shipment already delivered" });
+        .json({ success: false, message: apiResponse.SHIPMENT_ALREADY_DELIVERED });
     }
 
     if (shipment.deliveryOtp !== otp) {
-      return res.status(400).json({ success: false, message: "Invalid OTP" });
+      return res.status(400).json({ success: false, message: apiResponse.INVALID_OTP });
     }
 
     if (shipment.deliveryOtpExpires < new Date()) {
-      return res.status(400).json({ success: false, message: "OTP expired" });
+      return res.status(400).json({ success: false, message: apiResponse.OTP_EXPIRED });
     }
 
     // ================= FIND QUOTE =================
@@ -130,13 +131,13 @@ exports.verifyDeliveryOtp = async (req, res) => {
     if (!quote) {
       return res
         .status(404)
-        .json({ success: false, message: "Accepted quote not found" });
+        .json({ success: false, message: apiResponse.ACCEPTED_QUOTE_NOT_FOUND });
     }
 
     if (quote.paymentStatus !== "paid") {
       return res
         .status(400)
-        .json({ success: false, message: "Payment not completed yet" });
+        .json({ success: false, message: apiResponse.PAYMENT_NOT_COMPLETED_YET });
     }
 
     // ================= MARK DELIVERY =================
@@ -226,7 +227,7 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Delivery completed (payout handled separately)",
+      message: apiResponse.DELIVERY_COMPLETED_PAYOUT_HANDLED_SEPARATELY,
     });
   } catch (error) {
     console.error("[VERIFY DELIVERY ERROR]:", error);
@@ -249,7 +250,7 @@ exports.getShipmentDeliveryStatus = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -285,7 +286,7 @@ exports.shipperPayout = async (req, res) => {
     if (totalPayout <= 0)
       return res
         .status(400)
-        .json({ success: false, message: "No balance to payout" });
+        .json({ success: false, message: apiResponse.NO_BALANCE_TO_PAYOUT });
 
     // Stripe payout
     const payout = await stripe.payouts.create(
@@ -304,7 +305,7 @@ exports.shipperPayout = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Payout requested successfully",
+      message: apiResponse.PAYOUT_REQUESTED_SUCCESSFULLY,
       payoutId: payout.id,
       amount: totalPayout,
     });
@@ -319,7 +320,7 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
     if (!req.user.stripeAccountId) {
       return res.status(400).json({
         success: false,
-        message: "Stripe account not connected",
+        message: apiResponse.STRIPE_ACCOUNT_NOT_CONNECTED,
       });
     }
 
@@ -357,7 +358,7 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch payout history",
+      message: apiResponse.FAILED_TO_FETCH_PAYOUT_HISTORY,
       error: error.message,
     });
   }

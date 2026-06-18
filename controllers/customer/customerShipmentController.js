@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Customer = require("../../models/customer/customerModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
@@ -212,7 +213,7 @@ exports.createShipment = async (req, res) => {
     if (isNaN(numberOfHorses) || numberOfHorses < 1) {
       return res
         .status(400)
-        .json({ success: false, message: "Invalid numberOfHorses" });
+        .json({ success: false, message: apiResponse.INVALID_NUMBEROFHORSES });
     }
 
     // ===== FILE MAP =====
@@ -301,14 +302,14 @@ exports.createShipment = async (req, res) => {
     if (!req.body.pickupStartDate || !req.body.pickupEndDate) {
       return res.status(400).json({
         success: false,
-        message: "Pickup date range required",
+        message: apiResponse.PICKUP_DATE_RANGE_REQUIRED,
       });
     }
 
     if (!req.body.deliveryStartDate || !req.body.deliveryEndDate) {
       return res.status(400).json({
         success: false,
-        message: "Delivery date range required",
+        message: apiResponse.DELIVERY_DATE_RANGE_REQUIRED,
       });
     }
 
@@ -402,7 +403,7 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
     res.status(200).json({ success: true, shipments: shipmentsWithQuestions });
   } catch (err) {
     console.error("[GET SHIPMENTS ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -419,12 +420,12 @@ exports.getShipmentById = async (req, res) => {
       // console.warn("[GET SHIPMENT BY ID] Shipment not found");
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
     }
     res.status(200).json({ success: true, shipment });
   } catch (err) {
     console.error("[GET SHIPMENT BY ID ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -499,7 +500,7 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
     console.error("[GET SHIPMENTS ERROR]", err);
     res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: apiResponse.SERVER_ERROR_2,
     });
   }
 };
@@ -513,7 +514,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
     if (!shipmentId || !customerId) {
       return res.status(400).json({
         success: false,
-        message: "Invalid request",
+        message: apiResponse.INVALID_REQUEST,
       });
     }
 
@@ -525,7 +526,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -565,7 +566,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
       } catch (err) {
         return res.status(400).json({
           success: false,
-          message: "Invalid horses data",
+          message: apiResponse.INVALID_HORSES_DATA,
         });
       }
 
@@ -633,7 +634,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        message: "Only documents and notes updated (shipment locked)",
+        message: apiResponse.ONLY_DOCUMENTS_AND_NOTES_UPDATED_SHIPMENT_LOCKED,
         shipment,
       });
     }
@@ -695,7 +696,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
     } catch (err) {
       return res.status(400).json({
         success: false,
-        message: "Invalid horses data",
+        message: apiResponse.INVALID_HORSES_DATA,
       });
     }
 
@@ -777,7 +778,7 @@ exports.updateShipmentByCustomer = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Shipment updated successfully",
+      message: apiResponse.SHIPMENT_UPDATED_SUCCESSFULLY,
       shipment,
     });
   } catch (err) {
@@ -807,7 +808,7 @@ exports.updateShipmentMetadataByCustomer = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -822,14 +823,14 @@ exports.updateShipmentMetadataByCustomer = async (req, res) => {
     if (!shipment.publish && shipment.status === "pending") {
       return res.status(400).json({
         success: false,
-        message: "Use full shipment edit before publishing",
+        message: apiResponse.USE_FULL_SHIPMENT_EDIT_BEFORE_PUBLISHING,
       });
     }
 
     if (!editableStatuses.includes(shipment.status)) {
       return res.status(400).json({
         success: false,
-        message: "Documents and notes can no longer be edited",
+        message: apiResponse.DOCUMENTS_AND_NOTES_CAN_NO_LONGER_BE_EDITED,
       });
     }
 
@@ -873,7 +874,7 @@ exports.updateShipmentMetadataByCustomer = async (req, res) => {
     } catch (err) {
       return res.status(400).json({
         success: false,
-        message: "Invalid horses data",
+        message: apiResponse.INVALID_HORSES_DATA,
       });
     }
 
@@ -948,7 +949,7 @@ exports.updateShipmentMetadataByCustomer = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Documents and notes updated successfully",
+      message: apiResponse.DOCUMENTS_AND_NOTES_UPDATED_SUCCESSFULLY,
       shipment,
     });
   } catch (err) {
@@ -970,7 +971,7 @@ exports.getSingleShipmentForMap = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -987,7 +988,7 @@ exports.getSingleShipmentForMap = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Server error",
+      message: apiResponse.SERVER_ERROR,
     });
   }
 };
@@ -1152,7 +1153,7 @@ exports.publishShipment = async (req, res) => {
     const { shipmentId } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
-      return res.status(400).json({ message: "Invalid shipment ID" });
+      return res.status(400).json({ message: apiResponse.INVALID_SHIPMENT_ID });
     }
 
     const shipment = await CustomerShipment.findOne({
@@ -1161,11 +1162,11 @@ exports.publishShipment = async (req, res) => {
     });
 
     if (!shipment) {
-      return res.status(404).json({ message: "Shipment not found" });
+      return res.status(404).json({ message: apiResponse.SHIPMENT_NOT_FOUND });
     }
 
     if (shipment.publish) {
-      return res.status(400).json({ message: "Shipment already published" });
+      return res.status(400).json({ message: apiResponse.SHIPMENT_ALREADY_PUBLISHED });
     }
 
     // ---------------- PUBLISH SHIPMENT ----------------
@@ -1230,7 +1231,7 @@ exports.publishShipment = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Shipment published successfully",
+      message: apiResponse.SHIPMENT_PUBLISHED_SUCCESSFULLY,
       shipment,
     });
   } catch (err) {
@@ -1253,13 +1254,13 @@ exports.deleteShipment = async (req, res) => {
     if (!shipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     if (shipment.publish) {
       console.warn("[DELETE SHIPMENT] Cannot delete published shipment");
       return res.status(400).json({
         success: false,
-        message: "Published shipment cannot be deleted",
+        message: apiResponse.PUBLISHED_SHIPMENT_CANNOT_BE_DELETED,
       });
     }
 
@@ -1278,10 +1279,10 @@ exports.deleteShipment = async (req, res) => {
 
     res
       .status(200)
-      .json({ success: true, message: "Shipment deleted successfully" });
+      .json({ success: true, message: apiResponse.SHIPMENT_DELETED_SUCCESSFULLY });
   } catch (err) {
     console.error("[DELETE SHIPMENT ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -1297,7 +1298,7 @@ exports.updateShipmentLocation = async (req, res) => {
     if (!shipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     const { latitude, longitude } = req.body;
     const newLocation = { latitude, longitude, updatedAt: new Date() };
@@ -1310,7 +1311,7 @@ exports.updateShipmentLocation = async (req, res) => {
       .json({ success: true, currentLocation: shipment.currentLocation });
   } catch (err) {
     console.error("[UPDATE LOCATION ERROR]", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -1354,6 +1355,6 @@ exports.getAvailableShipments = async (req, res) => {
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[AVAILABLE SHIPMENTS ERROR]", err);
-    res.status(500).json({ success: false, message: "Server error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });
   }
 };

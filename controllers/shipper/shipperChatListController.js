@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const formatChatUser = require("../../utils/formatChatUser");
 
@@ -47,7 +48,7 @@ exports.getCustomersForChat = async (req, res) => {
     console.error("Get customers for chat error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch customers for chat",
+      message: apiResponse.FAILED_TO_FETCH_CUSTOMERS_FOR_CHAT,
     });
   }
 };

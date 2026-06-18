@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const CustomerReview = require("../../models/customer/customerReview.model");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const Shipper = require("../../models/shipper/shipperModel");
@@ -12,14 +13,14 @@ exports.addCustomerReview = async (req, res) => {
     if (!customerId || !shipmentId || !rating) {
       return res.status(400).json({
         success: false,
-        message: "customerId, shipmentId and rating are required",
+        message: apiResponse.CUSTOMERID_SHIPMENTID_AND_RATING_ARE_REQUIRED,
       });
     }
 
     if (!isValidRating(rating)) {
       return res.status(400).json({
         success: false,
-        message: "Rating must be between 1 and 5",
+        message: apiResponse.RATING_MUST_BE_BETWEEN_1_AND_5,
       });
     }
 
@@ -33,7 +34,7 @@ exports.addCustomerReview = async (req, res) => {
     if (!shipment) {
       return res.status(403).json({
         success: false,
-        message: "You can review this customer only after delivery is completed",
+        message: apiResponse.YOU_CAN_REVIEW_THIS_CUSTOMER_ONLY_AFTER_DELIVERY_IS_COMPLETED,
       });
     }
 
@@ -45,7 +46,7 @@ exports.addCustomerReview = async (req, res) => {
     if (existingReview) {
       return res.status(409).json({
         success: false,
-        message: "You have already reviewed this customer for this shipment",
+        message: apiResponse.YOU_HAVE_ALREADY_REVIEWED_THIS_CUSTOMER_FOR_THIS_SHIPMENT,
       });
     }
 
@@ -62,21 +63,21 @@ exports.addCustomerReview = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Customer review submitted successfully",
+      message: apiResponse.CUSTOMER_REVIEW_SUBMITTED_SUCCESSFULLY,
       data: review,
     });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "You have already reviewed this customer for this shipment",
+        message: apiResponse.YOU_HAVE_ALREADY_REVIEWED_THIS_CUSTOMER_FOR_THIS_SHIPMENT,
       });
     }
 
     console.error("Add customer review error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to submit customer review",
+      message: apiResponse.FAILED_TO_SUBMIT_CUSTOMER_REVIEW,
     });
   }
 };
@@ -97,7 +98,7 @@ exports.getMyCustomerReviews = async (req, res) => {
     console.error("Get shipper customer reviews error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch submitted customer reviews",
+      message: apiResponse.FAILED_TO_FETCH_SUBMITTED_CUSTOMER_REVIEWS,
     });
   }
 };
@@ -124,7 +125,7 @@ exports.getReceivedCustomerReviews = async (req, res) => {
     console.error("Get received customer reviews error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch customer reviews",
+      message: apiResponse.FAILED_TO_FETCH_CUSTOMER_REVIEWS,
     });
   }
 };
@@ -186,7 +187,7 @@ exports.getPublicHappyConsumers = async (req, res) => {
     console.error("Get public happy consumers error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch happy consumers",
+      message: apiResponse.FAILED_TO_FETCH_HAPPY_CONSUMERS,
     });
   }
 };

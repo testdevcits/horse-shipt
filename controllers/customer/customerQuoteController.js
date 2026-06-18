@@ -1,9 +1,9 @@
+const { apiResponse } = require("../../responses/api.response");
 // controllers/customer/customerQuoteController.js
 const mongoose = require("mongoose");
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
-const QuoteNegotiation = require("../../models/shipper/QuoteNegotiation");
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
 const Shipper = require("../../models/shipper/shipperModel");
 
@@ -17,6 +17,12 @@ const { emitToUser } = require("../../sockets/realtimeSocket");
 const {
   getShipperChannelSettings,
 } = require("../../utils/notificationPreferences");
+const { successResponse, errorResponse } = require("../../utils/responseHandler");
+const {
+  customerQuoteResponse,
+  authResponse,
+  generalResponse,
+} = require("../../responses");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 /* =========================================================
@@ -37,10 +43,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       typeof customerSignature !== "string" ||
       !customerSignature.startsWith("data:image/")
     ) {
-      return res.status(400).json({
-        success: false,
-        message: "Valid customer signature is required",
-      });
+      return errorResponse(res, 400, customerQuoteResponse.SIGNATURE_REQUIRED);
     }
 
     // ---------------- FETCH QUOTE ----------------
@@ -52,55 +55,34 @@ exports.acceptQuoteWithSignature = async (req, res) => {
 
     if (!quote) {
       await session.abortTransaction();
-      return res
-        .status(404)
-        .json({ success: false, message: "Quote not found" });
+      return errorResponse(res, 404, customerQuoteResponse.NOT_FOUND);
     }
 
     if (quote.contractAccepted) {
       await session.abortTransaction();
-      return res
-        .status(400)
-        .json({ success: false, message: "Quote already accepted" });
+      return errorResponse(res, 400, customerQuoteResponse.ALREADY_ACCEPTED);
     }
 
     // ---------------- AUTH ----------------
     if (quote.shipment.customer._id.toString() !== customerId.toString()) {
       await session.abortTransaction();
-      return res
-        .status(403)
-        .json({ success: false, message: "Not authorized" });
+      return errorResponse(res, 403, authResponse.UNAUTHORIZED);
     }
 
     if (!quote.shipperSignature) {
       await session.abortTransaction();
-      return res
-        .status(400)
-        .json({ success: false, message: "Shipper signature missing" });
-    }
-
-    const pendingNegotiation = await QuoteNegotiation.findOne({
-      quote: quote._id,
-      status: "pending",
-    }).session(session);
-
-    if (quote.negotiationStatus === "pending" || pendingNegotiation) {
-      await session.abortTransaction();
-      return res.status(400).json({
-        success: false,
-        message:
-          "Please accept or reject the pending negotiation before accepting this quote",
-      });
+      return errorResponse(
+        res,
+        400,
+        customerQuoteResponse.SHIPPER_SIGNATURE_MISSING
+      );
     }
 
     // ---------------- PAYMENT VALIDATION ----------------
     if (quote.paymentMethod === "card" && quote.paymentStatus !== "paid") {
       if (!quote.stripePaymentIntentId) {
         await session.abortTransaction();
-        return res.status(400).json({
-          success: false,
-          message: "Payment must be completed before accepting quote",
-        });
+        return errorResponse(res, 400, customerQuoteResponse.PAYMENT_REQUIRED);
       }
 
       const paymentIntent = await stripe.paymentIntents.retrieve(
@@ -111,9 +93,11 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         quote.paymentStatus = "paid";
       } else {
         await session.abortTransaction();
-        return res
-          .status(400)
-          .json({ success: false, message: "Payment not completed" });
+        return errorResponse(
+          res,
+          400,
+          customerQuoteResponse.PAYMENT_NOT_COMPLETED
+        );
       }
     }
 
@@ -190,7 +174,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
           customerId,
           shipperId: quote.shipper._id,
           price: quote.totalPrice,
-          message: "Customer accepted quote",
+          message: apiResponse.CUSTOMER_ACCEPTED_QUOTE,
           status: "accepted",
         },
       ],
@@ -257,28 +241,133 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     });
 
     // ---------------- RESPONSE ----------------
-    return res.status(200).json({
-      success: true,
-      message: "Quote accepted & contract signed successfully",
-      receipt: {
+    const receipt = {
         shipmentPrice: quote.totalPrice,
         platformFee: 0,
         shipperReceives: quote.totalPrice,
         currency: quote.currency,
         note: "Full payment received. Platform fee deducted during payout.",
-      },
-      quote,
-    });
+      };
+
+    return successResponse(
+      res,
+      200,
+      customerQuoteResponse.ACCEPTED,
+      { receipt, quote },
+      { receipt, quote }
+    );
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
 
     console.error("acceptQuoteWithSignature error:", error);
 
-    return res.status(500).json({
-      success: false,
-      message: error.message || "Failed to accept quote",
+    return errorResponse(
+      res,
+      500,
+      error.message || generalResponse.SOMETHING_WENT_WRONG,
+      { error: error.message }
+    );
+  }
+};
+
+exports.rejectQuote = async (req, res) => {
+  try {
+    const { quoteId } = req.params;
+    const customerId = req.user._id;
+    const reason = (req.body?.reason || "").trim();
+
+    const quote = await ShipmentQuote.findById(quoteId)
+      .populate("shipment")
+      .populate("shipper", "name email companyName");
+
+    if (!quote) {
+      return errorResponse(res, 404, customerQuoteResponse.NOT_FOUND);
+    }
+
+    if (quote.shipment.customer.toString() !== customerId.toString()) {
+      return errorResponse(res, 403, authResponse.UNAUTHORIZED);
+    }
+
+    if (quote.status === "accepted" || quote.contractAccepted) {
+      return errorResponse(
+        res,
+        400,
+        customerQuoteResponse.ACCEPTED_REJECT_BLOCKED
+      );
+    }
+
+    if (quote.status === "rejected") {
+      return errorResponse(res, 400, customerQuoteResponse.ALREADY_REJECTED);
+    }
+
+    if (quote.paymentStatus === "paid" || quote.stripePaymentIntentId) {
+      return errorResponse(
+        res,
+        400,
+        customerQuoteResponse.PAID_REJECT_BLOCKED
+      );
+    }
+
+    quote.status = "rejected";
+    quote.isActive = false;
+    quote.cancelReason = reason || "Rejected by customer";
+    quote.cancelledAt = new Date();
+    quote.refundStatus = "not_required";
+
+    await quote.save();
+
+    await CustomerQuote.create({
+      shipmentId: quote.shipment._id,
+      customerId,
+      shipperId: quote.shipper._id || quote.shipper,
+      price: quote.totalPrice,
+      message: reason || "Customer rejected quote",
+      status: "rejected",
     });
+
+    emitToUser(req.app.get("io"), {
+      role: "shipper",
+      userId: quote.shipper._id || quote.shipper,
+      event: "horse_shipt:quote_rejected",
+      payload: {
+        quote,
+        shipmentId: quote.shipment._id,
+        shipmentCode: quote.shipment.shipmentCode,
+      },
+      notification: {
+        type: "quote_rejected",
+        title: "Quote rejected",
+        message: apiResponse.A_CUSTOMER_REJECTED_YOUR_QUOTE_YOU_CAN_SEND_A_NEW_QUOTE,
+      },
+    });
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: customerId,
+      event: "horse_shipt:quote_rejected",
+      payload: {
+        quote,
+        shipmentId: quote.shipment._id,
+        shipmentCode: quote.shipment.shipmentCode,
+      },
+    });
+
+    return successResponse(
+      res,
+      200,
+      customerQuoteResponse.REJECTED,
+      { quote },
+      { quote }
+    );
+  } catch (error) {
+    console.error("rejectQuote error:", error);
+    return errorResponse(
+      res,
+      500,
+      error.message || generalResponse.SOMETHING_WENT_WRONG,
+      { error: error.message }
+    );
   }
 };
 
@@ -303,7 +392,7 @@ exports.getQuotesByShipment = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -313,7 +402,7 @@ exports.getQuotesByShipment = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-        message: "Not authorized to view these quotes",
+        message: apiResponse.NOT_AUTHORIZED_TO_VIEW_THESE_QUOTES,
       });
     }
 
@@ -343,7 +432,7 @@ exports.getQuotesByShipment = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch quotes",
+      message: apiResponse.FAILED_TO_FETCH_QUOTES,
     });
   }
 };
@@ -371,7 +460,7 @@ exports.getQuoteById = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Quote not found",
+        message: apiResponse.QUOTE_NOT_FOUND,
       });
     }
 
@@ -381,7 +470,7 @@ exports.getQuoteById = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-        message: "Not authorized to view this quote",
+        message: apiResponse.NOT_AUTHORIZED_TO_VIEW_THIS_QUOTE,
       });
     }
 
@@ -394,7 +483,7 @@ exports.getQuoteById = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch quote details",
+      message: apiResponse.FAILED_TO_FETCH_QUOTE_DETAILS,
     });
   }
 };
@@ -416,7 +505,7 @@ exports.createPaymentIntent = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Quote not found",
+        message: apiResponse.QUOTE_NOT_FOUND,
       });
     }
 
@@ -424,7 +513,7 @@ exports.createPaymentIntent = async (req, res) => {
     if (quote.shipment.customer.toString() !== customerId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized",
+        message: apiResponse.UNAUTHORIZED,
       });
     }
 
@@ -432,7 +521,7 @@ exports.createPaymentIntent = async (req, res) => {
     if (quote.paymentStatus === "paid") {
       return res.status(400).json({
         success: false,
-        message: "Payment already completed for this quote",
+        message: apiResponse.PAYMENT_ALREADY_COMPLETED_FOR_THIS_QUOTE,
       });
     }
 
@@ -462,7 +551,7 @@ exports.createPaymentIntent = async (req, res) => {
     /* ---------------- RESPONSE ---------------- */
     return res.status(200).json({
       success: true,
-      message: "Payment intent created successfully",
+      message: apiResponse.PAYMENT_INTENT_CREATED_SUCCESSFULLY,
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
       amount: quote.totalPrice,
@@ -473,7 +562,7 @@ exports.createPaymentIntent = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Payment intent creation failed",
+      message: apiResponse.PAYMENT_INTENT_CREATION_FAILED,
       error: error.message,
     });
   }
@@ -490,7 +579,7 @@ exports.cancelQuote = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Quote not found",
+        message: apiResponse.QUOTE_NOT_FOUND,
       });
     }
 
@@ -498,7 +587,7 @@ exports.cancelQuote = async (req, res) => {
     if (quote.shipment.customer.toString() !== customerId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized",
+        message: apiResponse.UNAUTHORIZED,
       });
     }
 
@@ -506,7 +595,7 @@ exports.cancelQuote = async (req, res) => {
     if (quote.isCancelled) {
       return res.status(400).json({
         success: false,
-        message: "Quote already cancelled",
+        message: apiResponse.QUOTE_ALREADY_CANCELLED,
       });
     }
 
@@ -517,7 +606,7 @@ exports.cancelQuote = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Cancellations are no longer available for this trip per the Shipper's policy.",
+          apiResponse.CANCELLATIONS_ARE_NO_LONGER_AVAILABLE_FOR_THIS_TRIP_PER_THE_SHIPPER_S_PO,
       });
     }
 
@@ -599,14 +688,14 @@ exports.cancelQuote = async (req, res) => {
       notification: {
         type: "quote_cancelled",
         title: "Quote cancelled",
-        message: "A customer cancelled a quote.",
+        message: apiResponse.A_CUSTOMER_CANCELLED_A_QUOTE,
       },
     });
 
     /* ---------------- RESPONSE ---------------- */
     return res.status(200).json({
       success: true,
-      message: "Quote cancelled successfully",
+      message: apiResponse.QUOTE_CANCELLED_SUCCESSFULLY,
       data: {
         totalAmount: quote.totalPrice,
         platformFee,
@@ -619,7 +708,7 @@ exports.cancelQuote = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Cancellation failed",
+      message: apiResponse.CANCELLATION_FAILED,
       error: error.message,
     });
   }
@@ -771,7 +860,7 @@ exports.getCustomerStripePayments = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch transactions",
+      message: apiResponse.FAILED_TO_FETCH_TRANSACTIONS,
       error: error.message,
     });
   }

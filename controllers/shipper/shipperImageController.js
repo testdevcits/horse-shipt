@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const cloudinary = require("cloudinary").v2;
 const Shipper = require("../../models/shipper/shipperModel");
 const Review = require("../../models/shipper/review.model");
@@ -28,7 +29,7 @@ exports.getShipperProfile = async (req, res) => {
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -64,7 +65,7 @@ exports.getShipperProfile = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Shipper profile fetched successfully",
+      message: apiResponse.SHIPPER_PROFILE_FETCHED_SUCCESSFULLY,
       data: {
         uniqueId: shipper.uniqueId,
         name: shipper.name,
@@ -91,7 +92,7 @@ exports.getShipperProfile = async (req, res) => {
 
     res.status(500).json({
       success: false,
-      message: "Failed to fetch shipper profile",
+      message: apiResponse.FAILED_TO_FETCH_SHIPPER_PROFILE,
     });
   }
 };
@@ -104,7 +105,7 @@ exports.updateProfileImage = async (req, res) => {
     if (!req.file) {
       return res
         .status(400)
-        .json({ success: false, message: "No file uploaded" });
+        .json({ success: false, message: apiResponse.NO_FILE_UPLOADED });
     }
 
     const shipperId = req.user.id;
@@ -113,7 +114,7 @@ exports.updateProfileImage = async (req, res) => {
     if (!shipper) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     }
 
     // Delete old image if exists
@@ -136,14 +137,14 @@ exports.updateProfileImage = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Profile image updated successfully",
+      message: apiResponse.PROFILE_IMAGE_UPDATED_SUCCESSFULLY,
       profileImage: shipper.profileImage,
     });
   } catch (error) {
     console.error("Update Profile Image error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to upload profile image",
+      message: apiResponse.FAILED_TO_UPLOAD_PROFILE_IMAGE,
     });
   }
 };
@@ -156,7 +157,7 @@ exports.updateBannerImage = async (req, res) => {
     if (!req.file) {
       return res
         .status(400)
-        .json({ success: false, message: "No file uploaded" });
+        .json({ success: false, message: apiResponse.NO_FILE_UPLOADED });
     }
 
     const shipperId = req.user.id;
@@ -165,7 +166,7 @@ exports.updateBannerImage = async (req, res) => {
     if (!shipper) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipper not found" });
+        .json({ success: false, message: apiResponse.SHIPPER_NOT_FOUND });
     }
 
     // Delete old banner if exists
@@ -188,14 +189,14 @@ exports.updateBannerImage = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Banner image updated successfully",
+      message: apiResponse.BANNER_IMAGE_UPDATED_SUCCESSFULLY,
       bannerImage: shipper.bannerImage,
     });
   } catch (error) {
     console.error("Update Banner Image error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to upload banner image",
+      message: apiResponse.FAILED_TO_UPLOAD_BANNER_IMAGE,
     });
   }
 };

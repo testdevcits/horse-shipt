@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const ShipmentQuestion = require("../../models/common/ShipmentQuestion");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const { emitToUser } = require("../../sockets/realtimeSocket");
@@ -14,7 +15,7 @@ exports.askQuestion = async (req, res) => {
     if (!shipmentId || !question || !question.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Shipment ID and question are required",
+        message: apiResponse.SHIPMENT_ID_AND_QUESTION_ARE_REQUIRED,
       });
     }
 
@@ -22,7 +23,7 @@ exports.askQuestion = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -63,20 +64,20 @@ exports.askQuestion = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Question submitted successfully",
+      message: apiResponse.QUESTION_SUBMITTED_SUCCESSFULLY,
       data: newQuestion,
     });
   } catch (error) {
     if (error.code === 11000) {
       return res.status(409).json({
         success: false,
-        message: "You have already asked a question for this shipment",
+        message: apiResponse.YOU_HAVE_ALREADY_ASKED_A_QUESTION_FOR_THIS_SHIPMENT,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: "Failed to submit question",
+      message: apiResponse.FAILED_TO_SUBMIT_QUESTION,
       error: error.message,
     });
   }
@@ -93,7 +94,7 @@ exports.answerQuestion = async (req, res) => {
     if (!questionId || !answer || !answer.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Question ID and answer are required",
+        message: apiResponse.QUESTION_ID_AND_ANSWER_ARE_REQUIRED,
       });
     }
 
@@ -101,21 +102,21 @@ exports.answerQuestion = async (req, res) => {
     if (!questionDoc) {
       return res.status(404).json({
         success: false,
-        message: "Question not found",
+        message: apiResponse.QUESTION_NOT_FOUND,
       });
     }
 
     if (questionDoc.customerId.toString() !== customerId.toString()) {
       return res.status(403).json({
         success: false,
-        message: "You are not allowed to answer this question",
+        message: apiResponse.YOU_ARE_NOT_ALLOWED_TO_ANSWER_THIS_QUESTION,
       });
     }
 
     if (questionDoc.status === "answered") {
       return res.status(400).json({
         success: false,
-        message: "This question has already been answered",
+        message: apiResponse.THIS_QUESTION_HAS_ALREADY_BEEN_ANSWERED,
       });
     }
 
@@ -160,13 +161,13 @@ exports.answerQuestion = async (req, res) => {
 
     return res.json({
       success: true,
-      message: "Answer submitted successfully",
+      message: apiResponse.ANSWER_SUBMITTED_SUCCESSFULLY,
       data: questionDoc,
     });
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to submit answer",
+      message: apiResponse.FAILED_TO_SUBMIT_ANSWER,
       error: error.message,
     });
   }
@@ -183,7 +184,7 @@ exports.getShipmentQuestions = async (req, res) => {
     if (!shipmentId) {
       return res.status(400).json({
         success: false,
-        message: "Shipment ID is required",
+        message: apiResponse.SHIPMENT_ID_IS_REQUIRED,
       });
     }
 
@@ -191,7 +192,7 @@ exports.getShipmentQuestions = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -203,7 +204,7 @@ exports.getShipmentQuestions = async (req, res) => {
       if (shipment.customer.toString() !== userId.toString()) {
         return res.status(403).json({
           success: false,
-          message: "You are not allowed to view these questions",
+          message: apiResponse.YOU_ARE_NOT_ALLOWED_TO_VIEW_THESE_QUESTIONS,
         });
       }
 
@@ -276,7 +277,7 @@ exports.getShipmentQuestions = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch questions",
+      message: apiResponse.FAILED_TO_FETCH_QUESTIONS,
       error: error.message,
     });
   }

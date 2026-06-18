@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 
 // ---------------- Get Current User Notification Settings ----------------
@@ -20,14 +21,14 @@ exports.getSettings = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Notification settings fetched successfully",
+      message: apiResponse.NOTIFICATION_SETTINGS_FETCHED_SUCCESSFULLY,
       data: notification.settings,
     });
   } catch (err) {
     console.error("Get Notification Settings Error:", err);
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch notification settings",
+      message: apiResponse.FAILED_TO_FETCH_NOTIFICATION_SETTINGS,
     });
   }
 };
@@ -54,7 +55,7 @@ exports.updateSetting = async (req, res) => {
     if (!(type in notification.settings)) {
       return res.status(400).json({
         success: false,
-        message: "Invalid notification type",
+        message: apiResponse.INVALID_NOTIFICATION_TYPE,
       });
     }
 
@@ -70,7 +71,7 @@ exports.updateSetting = async (req, res) => {
     console.error("Update Notification Setting Error:", err);
     return res.status(500).json({
       success: false,
-      message: "Failed to update notification setting",
+      message: apiResponse.FAILED_TO_UPDATE_NOTIFICATION_SETTING,
     });
   }
 };

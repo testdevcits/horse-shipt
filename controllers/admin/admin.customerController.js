@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Customer = require("../../models/customer/customerModel");
 const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
@@ -42,7 +43,7 @@ exports.getAllCustomers = async (req, res) => {
 
     return sendPaginated(res, { data: customers, total, page, limit });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -55,7 +56,7 @@ exports.getCustomerById = async (req, res) => {
     if (!customer) {
       return res
         .status(404)
-        .json({ success: false, message: "Customer not found" });
+        .json({ success: false, message: apiResponse.CUSTOMER_NOT_FOUND });
     }
 
     const [shipments, payments, quotes] = await Promise.all([
@@ -85,7 +86,7 @@ exports.getCustomerById = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -97,7 +98,7 @@ exports.getCustomerPayments = async (req, res) => {
     if (!customer) {
       return res
         .status(404)
-        .json({ success: false, message: "Customer not found" });
+        .json({ success: false, message: apiResponse.CUSTOMER_NOT_FOUND });
     }
 
     const [paymentSettings, transactions] = await Promise.all([
@@ -136,7 +137,7 @@ exports.getCustomerPayments = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Server Error" });
+    return res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -161,16 +162,16 @@ exports.updateCustomerById = async (req, res) => {
     if (!updatedCustomer) {
       return res
         .status(404)
-        .json({ success: false, message: "Customer not found" });
+        .json({ success: false, message: apiResponse.CUSTOMER_NOT_FOUND });
     }
 
     res.status(200).json({
       success: true,
-      message: "Customer updated successfully",
+      message: apiResponse.CUSTOMER_UPDATED_SUCCESSFULLY,
       data: updatedCustomer,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -183,7 +184,7 @@ exports.toggleCustomerStatus = async (req, res) => {
     if (!customer) {
       return res
         .status(404)
-        .json({ success: false, message: "Customer not found" });
+        .json({ success: false, message: apiResponse.CUSTOMER_NOT_FOUND });
     }
 
     customer.isActive = !customer.isActive;
@@ -197,7 +198,7 @@ exports.toggleCustomerStatus = async (req, res) => {
       data: customer,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -210,14 +211,14 @@ exports.deleteCustomer = async (req, res) => {
     if (!deleted) {
       return res
         .status(404)
-        .json({ success: false, message: "Customer not found" });
+        .json({ success: false, message: apiResponse.CUSTOMER_NOT_FOUND });
     }
 
     res.status(200).json({
       success: true,
-      message: "Customer deleted successfully",
+      message: apiResponse.CUSTOMER_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };

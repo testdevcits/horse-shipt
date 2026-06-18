@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const webpush = require("web-push");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 
@@ -11,7 +12,7 @@ exports.sendTestNotification = async (req, res) => {
     if (!notif || !notif.subscription) {
       return res.status(400).json({
         success: false,
-        message: "No push subscription found for this user",
+        message: apiResponse.NO_PUSH_SUBSCRIPTION_FOUND_FOR_THIS_USER,
       });
     }
 
@@ -27,12 +28,12 @@ exports.sendTestNotification = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Test notification sent successfully",
+      message: apiResponse.TEST_NOTIFICATION_SENT_SUCCESSFULLY,
     });
   } catch (err) {
     console.error("Test notification error:", err);
     res
       .status(500)
-      .json({ success: false, message: "Failed to send test notification" });
+      .json({ success: false, message: apiResponse.FAILED_TO_SEND_TEST_NOTIFICATION });
   }
 };

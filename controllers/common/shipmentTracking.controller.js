@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const Driver = require("../../models/shipper/Driver");
 
@@ -35,7 +36,7 @@ exports.trackShipment = async (req, res) => {
     if (!quote) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -43,7 +44,7 @@ exports.trackShipment = async (req, res) => {
     if (quote.isCancelled || quote.status === "cancelled") {
       return res.status(400).json({
         success: false,
-        message: "Shipment is cancelled",
+        message: apiResponse.SHIPMENT_IS_CANCELLED,
       });
     }
 
@@ -54,7 +55,7 @@ exports.trackShipment = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-        message: "Unauthorized driver",
+        message: apiResponse.UNAUTHORIZED_DRIVER,
       });
     }
 
@@ -66,7 +67,7 @@ exports.trackShipment = async (req, res) => {
     if (!driver?.currentLocation?.lat) {
       return res.status(400).json({
         success: false,
-        message: "Driver location not available",
+        message: apiResponse.DRIVER_LOCATION_NOT_AVAILABLE,
       });
     }
 
@@ -77,7 +78,7 @@ exports.trackShipment = async (req, res) => {
     if (!pickup || !delivery) {
       return res.status(400).json({
         success: false,
-        message: "Shipment coordinates missing",
+        message: apiResponse.SHIPMENT_COORDINATES_MISSING,
       });
     }
 
@@ -133,7 +134,7 @@ exports.trackShipment = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Failed to track shipment",
+      message: apiResponse.FAILED_TO_TRACK_SHIPMENT,
     });
   }
 };

@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../../responses/api.response");
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../../models/admin/payment/platformSettings");
 const { buildPagination, sendPaginated } = require("../../../utils/adminQuery");
@@ -38,7 +39,7 @@ exports.getPaymentSummary = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch payment summary",
+      message: apiResponse.FAILED_TO_FETCH_PAYMENT_SUMMARY,
     });
   }
 };
@@ -76,7 +77,7 @@ exports.getAllTransactions = async (req, res) => {
   } catch (error) {
     return res.status(500).json({
       success: false,
-      message: "Failed to fetch transactions",
+      message: apiResponse.FAILED_TO_FETCH_TRANSACTIONS,
     });
   }
 };

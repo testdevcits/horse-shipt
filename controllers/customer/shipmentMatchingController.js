@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const PreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
 const Shipment = require("../../models/customer/CustomerShipment");
 const Invitation = require("../../models/common/ShipmentInvitation");
@@ -32,7 +33,7 @@ exports.getMatchingShippers = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -42,7 +43,7 @@ exports.getMatchingShippers = async (req, res) => {
     if (!pickup || !delivery) {
       return res.status(400).json({
         success: false,
-        message: "Shipment coordinates missing",
+        message: apiResponse.SHIPMENT_COORDINATES_MISSING,
       });
     }
 

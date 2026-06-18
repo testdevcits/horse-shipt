@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const webpush = require("web-push");
 const CustomerNotification = require("../../models/customer/CustomerNotificationModel");
 
@@ -15,7 +16,7 @@ exports.subscribeToPush = async (req, res) => {
     if (!subscription)
       return res
         .status(400)
-        .json({ success: false, message: "Subscription required" });
+        .json({ success: false, message: apiResponse.SUBSCRIPTION_REQUIRED });
 
     let notif = await CustomerNotification.findOne({ user: req.user._id });
     if (!notif)
@@ -24,10 +25,10 @@ exports.subscribeToPush = async (req, res) => {
     notif.subscription = subscription;
     await notif.save();
 
-    res.status(200).json({ success: true, message: "Subscribed successfully" });
+    res.status(200).json({ success: true, message: apiResponse.SUBSCRIBED_SUCCESSFULLY });
   } catch (err) {
     console.error("Push subscription error:", err);
-    res.status(500).json({ success: false, message: "Failed to subscribe" });
+    res.status(500).json({ success: false, message: apiResponse.FAILED_TO_SUBSCRIBE });
   }
 };
 
@@ -38,7 +39,7 @@ exports.sendTestNotification = async (req, res) => {
     if (!notif || !notif.subscription)
       return res
         .status(400)
-        .json({ success: false, message: "No push subscription found" });
+        .json({ success: false, message: apiResponse.NO_PUSH_SUBSCRIPTION_FOUND });
 
     const payload = JSON.stringify({
       title: "Test Notification",
@@ -56,17 +57,17 @@ exports.sendTestNotification = async (req, res) => {
         return res.status(400).json({
           success: false,
           message:
-            "Push subscription has expired or unsubscribed. Please resubscribe.",
+            apiResponse.PUSH_SUBSCRIPTION_HAS_EXPIRED_OR_UNSUBSCRIBED_PLEASE_RESUBSCRIBE,
         });
       }
       throw err; // re-throw other errors
     }
 
-    res.status(200).json({ success: true, message: "Test notification sent" });
+    res.status(200).json({ success: true, message: apiResponse.TEST_NOTIFICATION_SENT });
   } catch (err) {
     console.error("Test notification error:", err);
     res
       .status(500)
-      .json({ success: false, message: "Failed to send notification" });
+      .json({ success: false, message: apiResponse.FAILED_TO_SEND_NOTIFICATION });
   }
 };

@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const TermsCondition = require("../../models/admin/TermsCondition");
 
 // =====================================
@@ -10,14 +11,14 @@ const createTermsCondition = async (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Title is required",
+        message: apiResponse.TITLE_IS_REQUIRED,
       });
     }
 
     if (!content || !content.trim()) {
       return res.status(400).json({
         success: false,
-        message: "Content is required",
+        message: apiResponse.CONTENT_IS_REQUIRED,
       });
     }
 
@@ -28,14 +29,14 @@ const createTermsCondition = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Terms & Conditions created successfully",
+      message: apiResponse.TERMS_CONDITIONS_CREATED_SUCCESSFULLY,
       data: terms,
     });
   } catch (error) {
     console.error("CREATE ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while creating Terms & Conditions",
+      message: apiResponse.SERVER_ERROR_WHILE_CREATING_TERMS_CONDITIONS,
     });
   }
 };
@@ -61,7 +62,7 @@ const getTermsConditions = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Terms & Conditions fetched successfully",
+      message: apiResponse.TERMS_CONDITIONS_FETCHED_SUCCESSFULLY,
       count: terms.length,
       total,
       page,
@@ -72,7 +73,7 @@ const getTermsConditions = async (req, res) => {
     console.error("GET ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching Terms & Conditions",
+      message: apiResponse.SERVER_ERROR_WHILE_FETCHING_TERMS_CONDITIONS,
     });
   }
 };
@@ -89,20 +90,20 @@ const getActiveTermsCondition = async (req, res) => {
     if (!terms || terms.length === 0) {
       return res.status(404).json({
         success: false,
-        message: "Terms & Conditions not found",
+        message: apiResponse.TERMS_CONDITIONS_NOT_FOUND,
       });
     }
 
     return res.status(200).json({
       success: true,
-      message: "Terms & Conditions fetched successfully",
+      message: apiResponse.TERMS_CONDITIONS_FETCHED_SUCCESSFULLY,
       data: terms, // 👈 list return
     });
   } catch (error) {
     console.error("ACTIVE FETCH ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while fetching Terms & Conditions",
+      message: apiResponse.SERVER_ERROR_WHILE_FETCHING_TERMS_CONDITIONS,
     });
   }
 };
@@ -119,7 +120,7 @@ const updateTermsCondition = async (req, res) => {
     if (!terms) {
       return res.status(404).json({
         success: false,
-        message: "Terms & Conditions not found",
+        message: apiResponse.TERMS_CONDITIONS_NOT_FOUND,
       });
     }
 
@@ -130,14 +131,14 @@ const updateTermsCondition = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Terms & Conditions updated successfully",
+      message: apiResponse.TERMS_CONDITIONS_UPDATED_SUCCESSFULLY,
       data: terms,
     });
   } catch (error) {
     console.error("UPDATE ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating Terms & Conditions",
+      message: apiResponse.SERVER_ERROR_WHILE_UPDATING_TERMS_CONDITIONS,
     });
   }
 };
@@ -152,7 +153,7 @@ const deleteTermsCondition = async (req, res) => {
     if (!terms) {
       return res.status(404).json({
         success: false,
-        message: "Terms & Conditions not found",
+        message: apiResponse.TERMS_CONDITIONS_NOT_FOUND,
       });
     }
 
@@ -161,13 +162,13 @@ const deleteTermsCondition = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Terms & Conditions deleted successfully",
+      message: apiResponse.TERMS_CONDITIONS_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
     console.error("DELETE ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while deleting Terms & Conditions",
+      message: apiResponse.SERVER_ERROR_WHILE_DELETING_TERMS_CONDITIONS,
     });
   }
 };
@@ -182,7 +183,7 @@ const updateTermsConditionStatus = async (req, res) => {
     if (typeof isActive !== "boolean") {
       return res.status(400).json({
         success: false,
-        message: "isActive must be true or false",
+        message: apiResponse.ISACTIVE_MUST_BE_TRUE_OR_FALSE,
       });
     }
 
@@ -191,7 +192,7 @@ const updateTermsConditionStatus = async (req, res) => {
     if (!terms) {
       return res.status(404).json({
         success: false,
-        message: "Terms & Conditions not found",
+        message: apiResponse.TERMS_CONDITIONS_NOT_FOUND,
       });
     }
 
@@ -209,7 +210,7 @@ const updateTermsConditionStatus = async (req, res) => {
     console.error("STATUS ERROR:", error);
     return res.status(500).json({
       success: false,
-      message: "Server error while updating status",
+      message: apiResponse.SERVER_ERROR_WHILE_UPDATING_STATUS,
     });
   }
 };

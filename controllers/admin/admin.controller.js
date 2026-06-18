@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const HorseAdmin = require("../../models/admin/Admin");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -33,14 +34,14 @@ exports.signupAdmin = async (req, res, next) => {
     if (exists)
       return res
         .status(400)
-        .json({ success: false, message: "Admin already exists" });
+        .json({ success: false, message: apiResponse.ADMIN_ALREADY_EXISTS });
 
     const admin = await HorseAdmin.create({ name, email, password });
     const token = generateToken(admin);
 
     res.status(201).json({
       success: true,
-      message: "Admin created successfully",
+      message: apiResponse.ADMIN_CREATED_SUCCESSFULLY,
       token,
       admin: {
         id: admin._id,
@@ -64,13 +65,13 @@ exports.loginAdmin = async (req, res, next) => {
     if (!admin)
       return res
         .status(401)
-        .json({ success: false, message: "Invalid email or password" });
+        .json({ success: false, message: apiResponse.INVALID_EMAIL_OR_PASSWORD });
 
     const isMatch = await admin.comparePassword(password);
     if (!isMatch)
       return res
         .status(401)
-        .json({ success: false, message: "Invalid email or password" });
+        .json({ success: false, message: apiResponse.INVALID_EMAIL_OR_PASSWORD });
 
     admin.lastLogin = new Date();
     await admin.save();
@@ -79,7 +80,7 @@ exports.loginAdmin = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Login successful",
+      message: apiResponse.LOGIN_SUCCESSFUL,
       token,
       admin: {
         id: admin._id,
@@ -103,7 +104,7 @@ exports.forgotPassword = async (req, res, next) => {
     if (!admin)
       return res
         .status(404)
-        .json({ success: false, message: "Admin not found" });
+        .json({ success: false, message: apiResponse.ADMIN_NOT_FOUND });
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     admin.otp = crypto.createHash("sha256").update(otp).digest("hex");
@@ -119,7 +120,7 @@ exports.forgotPassword = async (req, res, next) => {
 
     res
       .status(200)
-      .json({ success: true, message: "OTP sent to registered email" });
+      .json({ success: true, message: apiResponse.OTP_SENT_TO_REGISTERED_EMAIL });
   } catch (error) {
     next(error);
   }
@@ -141,11 +142,11 @@ exports.verifyOtp = async (req, res, next) => {
     if (!admin)
       return res
         .status(400)
-        .json({ success: false, message: "Invalid or expired OTP" });
+        .json({ success: false, message: apiResponse.INVALID_OR_EXPIRED_OTP });
 
     res
       .status(200)
-      .json({ success: true, message: "OTP verified successfully" });
+      .json({ success: true, message: apiResponse.OTP_VERIFIED_SUCCESSFULLY });
   } catch (error) {
     next(error);
   }
@@ -161,7 +162,7 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
     if (!email || !otp || !newPassword) {
       return res.status(400).json({
         success: false,
-        message: "Email, OTP and new password are required",
+        message: apiResponse.EMAIL_OTP_AND_NEW_PASSWORD_ARE_REQUIRED,
       });
     }
 
@@ -176,7 +177,7 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
     if (!admin) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired OTP",
+        message: apiResponse.INVALID_OR_EXPIRED_OTP,
       });
     }
 
@@ -187,7 +188,7 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      message: "Password reset successful",
+      message: apiResponse.PASSWORD_RESET_SUCCESSFUL,
     });
   } catch (error) {
     next(error);
@@ -206,14 +207,14 @@ exports.changePassword = async (req, res, next) => {
     if (!isMatch)
       return res
         .status(400)
-        .json({ success: false, message: "Current password is incorrect" });
+        .json({ success: false, message: apiResponse.CURRENT_PASSWORD_IS_INCORRECT });
 
     admin.password = newPassword;
     await admin.save();
 
     res
       .status(200)
-      .json({ success: true, message: "Password updated successfully" });
+      .json({ success: true, message: apiResponse.PASSWORD_UPDATED_SUCCESSFULLY });
   } catch (error) {
     next(error);
   }
@@ -241,7 +242,7 @@ exports.updateAdminProfile = async (req, res, next) => {
     if (!name || !email) {
       return res.status(400).json({
         success: false,
-        message: "Name and email are required",
+        message: apiResponse.NAME_AND_EMAIL_ARE_REQUIRED,
       });
     }
 
@@ -253,7 +254,7 @@ exports.updateAdminProfile = async (req, res, next) => {
     if (existing) {
       return res.status(400).json({
         success: false,
-        message: "Email is already used by another admin",
+        message: apiResponse.EMAIL_IS_ALREADY_USED_BY_ANOTHER_ADMIN,
       });
     }
 
@@ -268,7 +269,7 @@ exports.updateAdminProfile = async (req, res, next) => {
 
     return res.status(200).json({
       success: true,
-      message: "Profile updated successfully",
+      message: apiResponse.PROFILE_UPDATED_SUCCESSFULLY,
       admin,
     });
   } catch (error) {
@@ -280,5 +281,5 @@ exports.updateAdminProfile = async (req, res, next) => {
 //  LOGOUT
 // =================================================
 exports.logoutAdmin = async (req, res) => {
-  res.status(200).json({ success: true, message: "Logged out successfully" });
+  res.status(200).json({ success: true, message: apiResponse.LOGGED_OUT_SUCCESSFULLY });
 };

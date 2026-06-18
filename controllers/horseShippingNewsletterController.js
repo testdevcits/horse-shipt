@@ -6,6 +6,8 @@ const transporter = require("../utils/transporter"); // Reusable transporter
 const nodemailer = require("nodemailer");
 const { baseTemplate, escapeHtml } = require("../utils/mailTemplates/baseTemplate");
 const { buildPagination, sendPaginated } = require("../utils/adminQuery");
+const { successResponse, errorResponse } = require("../utils/responseHandler");
+const { newsletterResponse, generalResponse } = require("../responses");
 
 // ================= Email Template =================
 const sendEmail = async ({ email, link }) => {
@@ -38,17 +40,13 @@ exports.subscribeNewsletter = async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email is required" });
+      return errorResponse(res, 400, newsletterResponse.EMAIL_REQUIRED);
     }
 
     const existingUser = await HorseShippingNewsletter.findOne({ email });
 
     if (existingUser && existingUser.isVerified) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email already subscribed" });
+      return errorResponse(res, 400, newsletterResponse.ALREADY_SUBSCRIBED);
     }
 
     const token = crypto.randomBytes(32).toString("hex");
@@ -71,12 +69,12 @@ exports.subscribeNewsletter = async (req, res) => {
 
     await sendEmail({ email, link: verifyLink });
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Verification email sent successfully" });
+    return successResponse(res, 200, newsletterResponse.VERIFICATION_SENT);
   } catch (error) {
     console.error("[ERROR] Subscribe Error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return errorResponse(res, 500, generalResponse.SERVER_ERROR, {
+      error: error.message,
+    });
   }
 };
 
@@ -85,31 +83,29 @@ exports.verifyEmail = async (req, res) => {
   try {
     const { token } = req.query;
     if (!token)
-      return res.status(400).json({ success: false, message: "Token missing" });
+      return errorResponse(res, 400, newsletterResponse.TOKEN_MISSING);
 
     const user = await HorseShippingNewsletter.findOne({
       verificationToken: token,
     });
 
     if (!user)
-      return res
-        .status(401)
-        .json({ success: false, message: "Invalid or expired token" });
+      return errorResponse(res, 401, newsletterResponse.INVALID_OR_EXPIRED_TOKEN);
 
     if (user.tokenExpiry < new Date())
-      return res.status(401).json({ success: false, message: "Token expired" });
+      return errorResponse(res, 401, newsletterResponse.TOKEN_EXPIRED);
 
     user.isVerified = true;
     user.verificationToken = null;
     user.tokenExpiry = null;
     await user.save();
 
-    return res
-      .status(200)
-      .json({ success: true, message: "Email verified successfully" });
+    return successResponse(res, 200, newsletterResponse.VERIFIED);
   } catch (error) {
     console.error("[ERROR] Verify Error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return errorResponse(res, 500, generalResponse.SERVER_ERROR, {
+      error: error.message,
+    });
   }
 };
 
@@ -143,6 +139,7 @@ exports.getAllSubscribers = async (req, res) => {
       total,
       page,
       limit,
+      message: newsletterResponse.SUBSCRIBERS_FETCHED,
       meta: {
         summary: {
           totalSubscribers,
@@ -156,7 +153,9 @@ exports.getAllSubscribers = async (req, res) => {
     });
   } catch (error) {
     console.error("[ERROR] Fetch Error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return errorResponse(res, 500, generalResponse.SERVER_ERROR, {
+      error: error.message,
+    });
   }
 };
 
@@ -174,15 +173,18 @@ exports.deleteSubscriber = async (req, res) => {
       });
 
       if (result.deletedCount === 0) {
-        return res
-          .status(404)
-          .json({ success: false, message: "No subscribers found to delete" });
+        return errorResponse(
+          res,
+          404,
+          newsletterResponse.NO_SUBSCRIBERS_TO_DELETE
+        );
       }
 
-      return res.status(200).json({
-        success: true,
-        message: `${result.deletedCount} subscriber(s) deleted successfully`,
-      });
+      return successResponse(
+        res,
+        200,
+        newsletterResponse.DELETED_COUNT(result.deletedCount)
+      );
     }
 
     // If single ID provided in params
@@ -190,23 +192,19 @@ exports.deleteSubscriber = async (req, res) => {
       const user = await HorseShippingNewsletter.findByIdAndDelete(id);
 
       if (!user) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Subscriber not found" });
+        return errorResponse(res, 404, newsletterResponse.SUBSCRIBER_NOT_FOUND);
       }
 
-      return res
-        .status(200)
-        .json({ success: true, message: "Subscriber deleted successfully" });
+      return successResponse(res, 200, newsletterResponse.SUBSCRIBER_DELETED);
     }
 
     // If neither ID nor ids array provided
-    return res
-      .status(400)
-      .json({ success: false, message: "No subscriber ID(s) provided" });
+    return errorResponse(res, 400, newsletterResponse.SUBSCRIBER_IDS_REQUIRED);
   } catch (error) {
     console.error("[ERROR] Delete Error:", error);
-    return res.status(500).json({ success: false, message: "Server error" });
+    return errorResponse(res, 500, generalResponse.SERVER_ERROR, {
+      error: error.message,
+    });
   }
 };
 
@@ -220,16 +218,11 @@ exports.sendNewsletter = async (req, res) => {
 
     // --- Validation ---
     if (!subject || subject.trim() === "") {
-      return res
-        .status(400)
-        .json({ success: false, message: "Subject is required" });
+      return errorResponse(res, 400, newsletterResponse.SUBJECT_REQUIRED);
     }
 
     if (!message && !htmlContent) {
-      return res.status(400).json({
-        success: false,
-        message: "Message or HTML content is required",
-      });
+      return errorResponse(res, 400, newsletterResponse.CONTENT_REQUIRED);
     }
 
     let targetRecipients = Array.isArray(recipients)
@@ -246,9 +239,7 @@ exports.sendNewsletter = async (req, res) => {
     }
 
     if (targetRecipients.length === 0) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No recipients provided" });
+      return errorResponse(res, 400, newsletterResponse.RECIPIENTS_REQUIRED);
     }
     // --- Setup Nodemailer Transporter ---
     const transporter = nodemailer.createTransport({
@@ -290,17 +281,21 @@ exports.sendNewsletter = async (req, res) => {
       );
     }
 
-    return res.status(200).json({
-      success: true,
-      message: `Newsletter sent to ${succeeded.length} subscriber(s)`,
+    const deliverySummary = {
       sentCount: succeeded.length,
       failedCount: failed.length,
-    });
+    };
+
+    return successResponse(
+      res,
+      200,
+      newsletterResponse.SENT(succeeded.length),
+      deliverySummary,
+      deliverySummary
+    );
   } catch (error) {
     console.error("[ERROR] Send newsletter error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error while sending newsletter",
+    return errorResponse(res, 500, newsletterResponse.SEND_FAILED, {
       error: error.message,
     });
   }

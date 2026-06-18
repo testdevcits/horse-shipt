@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const sharp = require("sharp");
 const streamifier = require("streamifier");
 const ChatRoom = require("../../models/chat/chatRoomModel");
@@ -131,7 +132,7 @@ exports.getOrCreateRoom = async (req, res) => {
     if (!customerId || !shipperId) {
       return res.status(400).json({
         success: false,
-        message: "Shipment customer and shipper are required.",
+        message: apiResponse.SHIPMENT_CUSTOMER_AND_SHIPPER_ARE_REQUIRED,
       });
     }
 
@@ -174,7 +175,7 @@ exports.getRoomMessages = async (req, res) => {
     if (!room) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to view this chat.",
+        message: apiResponse.YOU_ARE_NOT_AUTHORIZED_TO_VIEW_THIS_CHAT,
       });
     }
 
@@ -190,7 +191,7 @@ exports.getRoomMessages = async (req, res) => {
     console.error("getRoomMessages error:", error);
     return res.status(500).json({
       success: false,
-      message: "Failed to load messages.",
+      message: apiResponse.FAILED_TO_LOAD_MESSAGES,
     });
   }
 };
@@ -209,7 +210,7 @@ exports.sendRoomMessage = async (req, res) => {
     if (!room) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to send messages in this chat.",
+        message: apiResponse.YOU_ARE_NOT_AUTHORIZED_TO_SEND_MESSAGES_IN_THIS_CHAT,
       });
     }
 
@@ -223,7 +224,7 @@ exports.sendRoomMessage = async (req, res) => {
       if (shipment.shipment?.status === "delivered") {
         return res.status(403).json({
           success: false,
-          message: "Chat is locked after shipment completion.",
+          message: apiResponse.CHAT_IS_LOCKED_AFTER_SHIPMENT_COMPLETION,
         });
       }
     }
@@ -231,7 +232,7 @@ exports.sendRoomMessage = async (req, res) => {
     if (!messageText && !req.file) {
       return res.status(400).json({
         success: false,
-        message: "Message or image is required.",
+        message: apiResponse.MESSAGE_OR_IMAGE_IS_REQUIRED,
       });
     }
 
@@ -295,7 +296,7 @@ exports.sendRoomMessage = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Message sent successfully.",
+      message: apiResponse.MESSAGE_SENT_SUCCESSFULLY,
       data: chatMessage,
     });
   } catch (error) {

@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Breed = require("../../models/admin/Breed");
 
 /**
@@ -10,14 +11,14 @@ const createBreed = async (req, res) => {
     let { name } = req.body;
 
     if (!name || !name.trim()) {
-      return res.status(400).json({ message: "Breed name is required" });
+      return res.status(400).json({ message: apiResponse.BREED_NAME_IS_REQUIRED });
     }
 
     name = name.trim();
 
     const exists = await Breed.findOne({ name, isActive: true });
     if (exists) {
-      return res.status(400).json({ message: "Breed already exists" });
+      return res.status(400).json({ message: apiResponse.BREED_ALREADY_EXISTS });
     }
 
     const breed = await Breed.create({
@@ -26,12 +27,12 @@ const createBreed = async (req, res) => {
     });
 
     return res.status(201).json({
-      message: "Breed created successfully",
+      message: apiResponse.BREED_CREATED_SUCCESSFULLY,
       data: breed,
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -66,7 +67,7 @@ const getBreeds = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -87,7 +88,7 @@ const getAllBreeds = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -101,18 +102,18 @@ const deleteBreed = async (req, res) => {
     const breed = await Breed.findById(req.params.id);
 
     if (!breed) {
-      return res.status(404).json({ message: "Breed not found" });
+      return res.status(404).json({ message: apiResponse.BREED_NOT_FOUND });
     }
 
     breed.isActive = false;
     await breed.save();
 
     return res.status(200).json({
-      message: "Breed deleted successfully",
+      message: apiResponse.BREED_DELETED_SUCCESSFULLY,
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 
@@ -127,14 +128,14 @@ const updateBreedStatus = async (req, res) => {
 
     if (typeof isActive !== "boolean") {
       return res.status(400).json({
-        message: "isActive must be true or false",
+        message: apiResponse.ISACTIVE_MUST_BE_TRUE_OR_FALSE,
       });
     }
 
     const breed = await Breed.findById(req.params.id);
 
     if (!breed) {
-      return res.status(404).json({ message: "Breed not found" });
+      return res.status(404).json({ message: apiResponse.BREED_NOT_FOUND });
     }
 
     breed.isActive = isActive;
@@ -146,7 +147,7 @@ const updateBreedStatus = async (req, res) => {
     });
   } catch (error) {
     console.error(error);
-    return res.status(500).json({ message: "Server error" });
+    return res.status(500).json({ message: apiResponse.SERVER_ERROR });
   }
 };
 

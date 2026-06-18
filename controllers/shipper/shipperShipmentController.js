@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const mongoose = require("mongoose");
 
 // --------------------------- imports ---------------------------
@@ -88,7 +89,7 @@ exports.getAssignedShipments = async (req, res) => {
     res.status(200).json({ success: true, shipments });
   } catch (err) {
     console.error("[GET ASSIGNED SHIPMENTS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -107,7 +108,7 @@ exports.getShipmentById = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
@@ -115,7 +116,7 @@ exports.getShipmentById = async (req, res) => {
   } catch (error) {
     res.status(400).json({
       success: false,
-      message: "Invalid shipment ID",
+      message: apiResponse.INVALID_SHIPMENT_ID,
     });
   }
 };
@@ -364,7 +365,7 @@ exports.getAvailableShipments = async (req, res) => {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
     res.status(500).json({
       success: false,
-      message: "Server Error",
+      message: apiResponse.SERVER_ERROR_2,
     });
   }
 };
@@ -380,19 +381,19 @@ exports.acceptShipment = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
       return res
         .status(400)
-        .json({ success: false, message: "Invalid shipment ID" });
+        .json({ success: false, message: apiResponse.INVALID_SHIPMENT_ID });
     }
 
     const customerShipment = await CustomerShipment.findById(shipmentId);
     if (!customerShipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     if (customerShipment.status !== "open_for_offers") {
       return res.status(400).json({
         success: false,
-        message: "Shipment is not available for offers",
+        message: apiResponse.SHIPMENT_IS_NOT_AVAILABLE_FOR_OFFERS,
       });
     }
 
@@ -400,7 +401,7 @@ exports.acceptShipment = async (req, res) => {
     if (existing)
       return res.status(400).json({
         success: false,
-        message: "Shipment already accepted by another shipper",
+        message: apiResponse.SHIPMENT_ALREADY_ACCEPTED_BY_ANOTHER_SHIPPER,
       });
 
     const shipperShipment = await ShipperShipment.create({
@@ -424,12 +425,12 @@ exports.acceptShipment = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Shipment accepted successfully",
+      message: apiResponse.SHIPMENT_ACCEPTED_SUCCESSFULLY,
       shipperShipment,
     });
   } catch (err) {
     console.error("[ACCEPT SHIPMENT] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -445,7 +446,7 @@ exports.updateShipmentStatus = async (req, res) => {
     if (!mongoose.Types.ObjectId.isValid(shipmentId)) {
       return res
         .status(400)
-        .json({ success: false, message: "Invalid shipment ID" });
+        .json({ success: false, message: apiResponse.INVALID_SHIPMENT_ID });
     }
 
     const shipperShipment = await ShipperShipment.findOne({
@@ -455,7 +456,7 @@ exports.updateShipmentStatus = async (req, res) => {
     if (!shipperShipment)
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
 
     shipperShipment.status = status;
     await shipperShipment.save();
@@ -471,7 +472,7 @@ exports.updateShipmentStatus = async (req, res) => {
     res.status(200).json({ success: true, shipment: shipperShipment });
   } catch (err) {
     console.error("[UPDATE SHIPMENT STATUS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -624,7 +625,7 @@ exports.getAllPublishedShipmentsForMap = async (req, res) => {
 
     return res.status(500).json({
       success: false,
-      message: "Server Error while fetching shipments for map",
+      message: apiResponse.SERVER_ERROR_WHILE_FETCHING_SHIPMENTS_FOR_MAP,
     });
   }
 };

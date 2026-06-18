@@ -1,3 +1,6 @@
+const { paginatedResponse } = require("./responseHandler");
+const { generalResponse } = require("../responses/common/general.response");
+
 const buildPagination = (query) => {
   const page = Math.max(Number(query.page) || 1, 1);
   const limit = Math.min(Math.max(Number(query.limit) || 20, 1), 100);
@@ -6,19 +9,14 @@ const buildPagination = (query) => {
   return { page, limit, skip };
 };
 
-const sendPaginated = (res, { data, total, page, limit, meta = {} }) =>
-  res.status(200).json({
-    success: true,
-    message: "Data fetched successfully",
-    count: data.length,
-    total,
-    pagination: {
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit) || 1,
-    },
-    ...meta,
+const sendPaginated = (res, { data, total, page, limit, meta = {}, message }) =>
+  paginatedResponse(res, {
     data,
+    total,
+    page,
+    limit,
+    meta,
+    message: message || generalResponse.FETCHED_SUCCESSFULLY,
   });
 
 module.exports = { buildPagination, sendPaginated };

@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const ShipmentMessage = require("../../models/ShipmentMessage");
@@ -37,7 +38,7 @@ exports.getAllShipments = async (req, res) => {
 
     return sendPaginated(res, { data: shipments, total, page, limit });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -50,7 +51,7 @@ exports.getShipmentById = async (req, res) => {
     if (!shipment) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
     }
 
     const [quotes, messages] = await Promise.all([
@@ -88,7 +89,7 @@ exports.getShipmentById = async (req, res) => {
       },
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -100,7 +101,7 @@ exports.getShipmentTracking = async (req, res) => {
     if (!shipment) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found" });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
     }
 
     const quotes = await ShipmentQuote.find({ shipment: id })
@@ -136,6 +137,6 @@ exports.getShipmentTracking = async (req, res) => {
       },
     });
   } catch (error) {
-    return res.status(500).json({ success: false, message: "Server Error" });
+    return res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };

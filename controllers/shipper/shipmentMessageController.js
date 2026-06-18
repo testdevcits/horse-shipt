@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const ShipmentMessage = require("../../models/ShipmentMessage");
 const CustomerShipment = require("../../models/shipper/ShipperShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
@@ -16,7 +17,7 @@ exports.sendMessage = async (req, res) => {
     if (!shipmentId || !message) {
       return res.status(400).json({
         success: false,
-        message: "Shipment ID and message are required.",
+        message: apiResponse.SHIPMENT_ID_AND_MESSAGE_ARE_REQUIRED,
       });
     }
 
@@ -27,7 +28,7 @@ exports.sendMessage = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found.",
+        message: apiResponse.SHIPMENT_NOT_FOUND_2,
       });
     }
 
@@ -37,7 +38,7 @@ exports.sendMessage = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-        message: "You can only message shipments assigned to you.",
+        message: apiResponse.YOU_CAN_ONLY_MESSAGE_SHIPMENTS_ASSIGNED_TO_YOU,
       });
     }
 
@@ -91,14 +92,14 @@ exports.sendMessage = async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: "Message sent successfully.",
+      message: apiResponse.MESSAGE_SENT_SUCCESSFULLY,
       data: newMessage,
     });
   } catch (error) {
     console.error("Shipper message error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error while sending message.",
+      message: apiResponse.SERVER_ERROR_WHILE_SENDING_MESSAGE,
       error: error.message,
     });
   }
@@ -116,7 +117,7 @@ exports.getMessages = async (req, res) => {
     if (!shipment) {
       return res
         .status(404)
-        .json({ success: false, message: "Shipment not found." });
+        .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND_2 });
     }
 
     if (
@@ -125,7 +126,7 @@ exports.getMessages = async (req, res) => {
     ) {
       return res.status(403).json({
         success: false,
-        message: "You are not authorized to view these messages.",
+        message: apiResponse.YOU_ARE_NOT_AUTHORIZED_TO_VIEW_THESE_MESSAGES,
       });
     }
 
@@ -142,7 +143,7 @@ exports.getMessages = async (req, res) => {
     console.error("Get shipper messages error:", error);
     res.status(500).json({
       success: false,
-      message: "Server error while fetching messages.",
+      message: apiResponse.SERVER_ERROR_WHILE_FETCHING_MESSAGES,
       error: error.message,
     });
   }

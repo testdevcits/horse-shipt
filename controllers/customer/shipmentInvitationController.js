@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Invitation = require("../../models/common/ShipmentInvitation");
 const Shipment = require("../../models/customer/CustomerShipment");
 const Customer = require("../../models/customer/customerModel");
@@ -49,7 +50,7 @@ exports.sendInvitation = async (req, res) => {
     if (!shipmentId || !shipperId) {
       return res.status(400).json({
         success: false,
-        message: "shipmentId and shipperId required",
+        message: apiResponse.SHIPMENTID_AND_SHIPPERID_REQUIRED,
       });
     }
 
@@ -62,14 +63,14 @@ exports.sendInvitation = async (req, res) => {
     if (!shipment) {
       return res.status(404).json({
         success: false,
-        message: "Shipment not found",
+        message: apiResponse.SHIPMENT_NOT_FOUND,
       });
     }
 
     if (shipment.customer?.toString() !== req.user.id?.toString()) {
       return res.status(403).json({
         success: false,
-        message: "You can only request quotes for your own shipment.",
+        message: apiResponse.YOU_CAN_ONLY_REQUEST_QUOTES_FOR_YOUR_OWN_SHIPMENT,
       });
     }
 
@@ -77,7 +78,7 @@ exports.sendInvitation = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Please publish this shipment before requesting quotes. Draft shipments are not visible to shippers.",
+          apiResponse.PLEASE_PUBLISH_THIS_SHIPMENT_BEFORE_REQUESTING_QUOTES_DRAFT_SHIPMENTS_AR,
       });
     }
 
@@ -85,14 +86,14 @@ exports.sendInvitation = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Invitations can only be sent while the shipment is open for offers.",
+          apiResponse.INVITATIONS_CAN_ONLY_BE_SENT_WHILE_THE_SHIPMENT_IS_OPEN_FOR_OFFERS,
       });
     }
 
     if (!shipper) {
       return res.status(404).json({
         success: false,
-        message: "Shipper not found",
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
@@ -105,7 +106,7 @@ exports.sendInvitation = async (req, res) => {
     if (existing) {
       return res.status(400).json({
         success: false,
-        message: "Quote already requested",
+        message: apiResponse.QUOTE_ALREADY_REQUESTED,
       });
     }
 
@@ -254,7 +255,7 @@ exports.sendInvitation = async (req, res) => {
     if (err.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Quote request already exists",
+        message: apiResponse.QUOTE_REQUEST_ALREADY_EXISTS,
       });
     }
 

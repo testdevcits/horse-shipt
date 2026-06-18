@@ -1,3 +1,4 @@
+const { apiResponse } = require("../../responses/api.response");
 const Customer = require("../../models/customer/customerModel");
 const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
 const fs = require("fs");
@@ -53,7 +54,7 @@ exports.updateCustomerDetails = async (req, res) => {
       if (!phoneRegex.test(cleanedPhone)) {
         return res.status(400).json({
           success: false,
-          message: "Invalid phone number format. Use valid number",
+          message: apiResponse.INVALID_PHONE_NUMBER_FORMAT_USE_VALID_NUMBER,
         });
       }
 
@@ -70,14 +71,14 @@ exports.updateCustomerDetails = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Profile details updated successfully",
+      message: apiResponse.PROFILE_DETAILS_UPDATED_SUCCESSFULLY,
       data: customer,
     });
   } catch (error) {
     console.error("Update Customer Details Error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to update profile details",
+      message: apiResponse.FAILED_TO_UPDATE_PROFILE_DETAILS,
     });
   }
 };
@@ -91,7 +92,7 @@ exports.addOrUpdatePayment = async (req, res) => {
     if (!pkLive || !skLive) {
       return res.status(400).json({
         success: false,
-        message: "PK_LIVE and SK_LIVE are required",
+        message: apiResponse.PK_LIVE_AND_SK_LIVE_ARE_REQUIRED,
       });
     }
 
@@ -105,7 +106,7 @@ exports.addOrUpdatePayment = async (req, res) => {
       if (!existingPayment) {
         return res.status(404).json({
           success: false,
-          message: "Payment not found for this ID",
+          message: apiResponse.PAYMENT_NOT_FOUND_FOR_THIS_ID,
         });
       }
 
@@ -117,7 +118,7 @@ exports.addOrUpdatePayment = async (req, res) => {
       return res.status(200).json({
         success: true,
         data: existingPayment,
-        message: "Payment updated successfully",
+        message: apiResponse.PAYMENT_UPDATED_SUCCESSFULLY,
       });
     }
 
@@ -126,7 +127,7 @@ exports.addOrUpdatePayment = async (req, res) => {
     if (existingPayment) {
       return res.status(400).json({
         success: false,
-        message: "Payment already exists. Use OTP to update.",
+        message: apiResponse.PAYMENT_ALREADY_EXISTS_USE_OTP_TO_UPDATE,
         data: existingPayment,
       });
     }
@@ -143,11 +144,11 @@ exports.addOrUpdatePayment = async (req, res) => {
     res.status(201).json({
       success: true,
       data: payment,
-      message: "Payment setup created successfully",
+      message: apiResponse.PAYMENT_SETUP_CREATED_SUCCESSFULLY,
     });
   } catch (err) {
     console.error("[CUSTOMER ADD/UPDATE PAYMENT] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -159,13 +160,13 @@ exports.getPaymentByUser = async (req, res) => {
       return res.status(200).json({
         success: true,
         data: null,
-        message: "No payment setup found",
+        message: apiResponse.NO_PAYMENT_SETUP_FOUND,
       });
     }
     res.status(200).json({ success: true, data: payment });
   } catch (err) {
     console.error("[GET PAYMENT BY USER] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -179,12 +180,12 @@ exports.getPaymentById = async (req, res) => {
     if (!payment) {
       return res
         .status(404)
-        .json({ success: false, message: "Payment not found" });
+        .json({ success: false, message: apiResponse.PAYMENT_NOT_FOUND });
     }
     res.status(200).json({ success: true, data: payment });
   } catch (err) {
     console.error("[GET PAYMENT BY ID] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -198,7 +199,7 @@ exports.getAllPayments = async (req, res) => {
     res.status(200).json({ success: true, data: payments });
   } catch (err) {
     console.error("[GET ALL PAYMENTS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -209,7 +210,7 @@ exports.togglePaymentStatus = async (req, res) => {
     if (!payment) {
       return res
         .status(404)
-        .json({ success: false, message: "Payment not found" });
+        .json({ success: false, message: apiResponse.PAYMENT_NOT_FOUND });
     }
     payment.active = !payment.active;
     await payment.save();
@@ -222,7 +223,7 @@ exports.togglePaymentStatus = async (req, res) => {
     });
   } catch (err) {
     console.error("[TOGGLE PAYMENT STATUS] Error:", err);
-    res.status(500).json({ success: false, message: "Server Error" });
+    res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
 };
 
@@ -235,7 +236,7 @@ exports.requestOtp = async (req, res) => {
     if (!pkLive || !skLive) {
       return res.status(400).json({
         success: false,
-        message: "PK_LIVE and SK_LIVE are required to request OTP",
+        message: apiResponse.PK_LIVE_AND_SK_LIVE_ARE_REQUIRED_TO_REQUEST_OTP,
       });
     }
 
@@ -273,12 +274,12 @@ exports.requestOtp = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "OTP sent to your email.",
+      message: apiResponse.OTP_SENT_TO_YOUR_EMAIL,
       paymentId: payment._id, // send paymentId so frontend can verify OTP
     });
   } catch (err) {
     console.error("[REQUEST OTP] Error:", err);
-    res.status(500).json({ success: false, message: "Failed to send OTP" });
+    res.status(500).json({ success: false, message: apiResponse.FAILED_TO_SEND_OTP });
   }
 };
 
@@ -291,7 +292,7 @@ exports.verifyOtp = async (req, res) => {
     if (!paymentId || !pkLive || !skLive || !otp) {
       return res.status(400).json({
         success: false,
-        message: "Payment ID, PK_LIVE, SK_LIVE, and OTP are required",
+        message: apiResponse.PAYMENT_ID_PK_LIVE_SK_LIVE_AND_OTP_ARE_REQUIRED,
       });
     }
 
@@ -304,18 +305,18 @@ exports.verifyOtp = async (req, res) => {
     if (!payment) {
       return res
         .status(404)
-        .json({ success: false, message: "Payment not found" });
+        .json({ success: false, message: apiResponse.PAYMENT_NOT_FOUND });
     }
 
     // Check OTP match
     if (!payment.otp || payment.otp !== trimmedOtp) {
-      return res.status(400).json({ success: false, message: "Invalid OTP" });
+      return res.status(400).json({ success: false, message: apiResponse.INVALID_OTP });
     }
 
     // Optional: check OTP expiration (e.g., 10 minutes)
     const otpAge = (new Date() - payment.lastOtpSentAt) / 1000; // in seconds
     if (otpAge > 600) {
-      return res.status(400).json({ success: false, message: "OTP expired" });
+      return res.status(400).json({ success: false, message: apiResponse.OTP_EXPIRED });
     }
 
     // Save payment
@@ -328,11 +329,11 @@ exports.verifyOtp = async (req, res) => {
     res.status(200).json({
       success: true,
       data: payment,
-      message: "Payment saved successfully via OTP",
+      message: apiResponse.PAYMENT_SAVED_SUCCESSFULLY_VIA_OTP,
     });
   } catch (err) {
     console.error("[VERIFY OTP] Error:", err);
-    res.status(500).json({ success: false, message: "Failed to verify OTP" });
+    res.status(500).json({ success: false, message: apiResponse.FAILED_TO_VERIFY_OTP });
   }
 };
 
@@ -344,7 +345,7 @@ exports.updateCustomerProfileImage = async (req, res) => {
     if (!req.file) {
       return res
         .status(400)
-        .json({ success: false, message: "No file uploaded" });
+        .json({ success: false, message: apiResponse.NO_FILE_UPLOADED });
     }
 
     const customer = req.user; // already authenticated
@@ -369,14 +370,14 @@ exports.updateCustomerProfileImage = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Profile image updated successfully",
+      message: apiResponse.PROFILE_IMAGE_UPDATED_SUCCESSFULLY,
       profileImage: customer.profileImage,
     });
   } catch (error) {
     console.error("Update Customer Profile Image error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to upload profile image",
+      message: apiResponse.FAILED_TO_UPLOAD_PROFILE_IMAGE,
     });
   }
 };
@@ -397,7 +398,7 @@ exports.getCustomerProfile = async (req, res) => {
     if (!customer) {
       return res.status(404).json({
         success: false,
-        message: "Customer not found",
+        message: apiResponse.CUSTOMER_NOT_FOUND,
       });
     }
 
@@ -417,7 +418,7 @@ exports.getCustomerProfile = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: "Customer profile fetched successfully",
+      message: apiResponse.CUSTOMER_PROFILE_FETCHED_SUCCESSFULLY,
       data: {
         uniqueId: customer.uniqueId,
         name: customer.name,
@@ -442,7 +443,7 @@ exports.getCustomerProfile = async (req, res) => {
     console.error("Get Customer Profile error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to fetch customer profile",
+      message: apiResponse.FAILED_TO_FETCH_CUSTOMER_PROFILE,
     });
   }
 };
