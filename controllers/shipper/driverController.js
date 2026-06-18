@@ -1,14 +1,67 @@
 const Driver = require("../../models/shipper/Driver");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
-const bcrypt = require("bcryptjs");
 const cloudinary = require("../../utils/cloudinary");
+const { buildPagination, sendPaginated } = require("../../utils/adminQuery");
+
+const PASSWORD_MIN_LENGTH = 8;
+
+const normalizeEmail = (email = "") => String(email).trim().toLowerCase();
+
+const publicDriver = (driver) => {
+  const doc = driver?.toObject ? driver.toObject() : driver;
+  if (!doc) return null;
+  delete doc.password;
+  return doc;
+};
+
+const validateDriverPayload = (
+  payload = {},
+  { requirePassword = false, requireFields = false } = {}
+) => {
+  const errors = {};
+  const requiredFields = ["name", "email", "phone", "licenseNumber"];
+
+  requiredFields.forEach((field) => {
+    if (requireFields && !String(payload[field] || "").trim()) {
+      errors[field] = `${field} is required`;
+    }
+  });
+
+  const email = normalizeEmail(payload.email);
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    errors.email = "Valid email is required";
+  }
+
+  if (requirePassword || payload.password) {
+    if (!String(payload.password || "").trim()) {
+      errors.password = "Password is required";
+    } else if (String(payload.password).length < PASSWORD_MIN_LENGTH) {
+      errors.password = `Password must be at least ${PASSWORD_MIN_LENGTH} characters`;
+    }
+  }
+
+  return errors;
+};
 
 // ====================================================
 // ADD DRIVER
 // ====================================================
 exports.addDriver = async (req, res) => {
   try {
-    const { name, email, password, phone, licenseNumber, notes } = req.body;
+    const { name, password, phone, licenseNumber, notes } = req.body;
+    const email = normalizeEmail(req.body.email);
+    const errors = validateDriverPayload(
+      { name, email, password, phone, licenseNumber },
+      { requirePassword: true, requireFields: true }
+    );
+
+    if (Object.keys(errors).length) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid driver details",
+        errors,
+      });
+    }
 
     // Check if driver already exists
     const existingDriver = await Driver.findOne({ email });
@@ -19,24 +72,30 @@ exports.addDriver = async (req, res) => {
       });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
     const driver = new Driver({
-      name,
+      name: String(name).trim(),
       email,
-      password: hashedPassword,
-      phone,
-      licenseNumber,
-      notes,
+      password,
+      phone: String(phone).trim(),
+      licenseNumber: String(licenseNumber).trim(),
+      notes: String(notes || "").trim(),
       shipper: req.shipper._id,
     });
 
     await driver.save();
-    res.status(201).json({ success: true, driver });
+    res.status(201).json({
+      success: true,
+      message: "Driver created successfully",
+      data: publicDriver(driver),
+      driver: publicDriver(driver),
+    });
   } catch (error) {
     console.error("[ADD DRIVER] Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to create driver",
+      errors: { server: error.message },
+    });
   }
 };
 
@@ -45,13 +104,44 @@ exports.addDriver = async (req, res) => {
 // ====================================================
 exports.getMyDrivers = async (req, res) => {
   try {
-    const drivers = await Driver.find({ shipper: req.shipper._id }).populate(
-      "assignedVehicles"
-    );
-    res.json({ success: true, drivers });
+    const { page, limit, skip } = buildPagination(req.query);
+    const { search, status, sortBy = "createdAt", sortOrder = "desc" } = req.query;
+    const filter = { shipper: req.shipper._id };
+
+    if (status === "active") filter.isActive = true;
+    if (status === "inactive") filter.isActive = false;
+    if (search) {
+      const term = String(search).trim();
+      filter.$or = [
+        { name: { $regex: term, $options: "i" } },
+        { email: { $regex: term, $options: "i" } },
+        { phone: { $regex: term, $options: "i" } },
+        { licenseNumber: { $regex: term, $options: "i" } },
+      ];
+    }
+
+    const allowedSortFields = ["createdAt", "name", "email", "driverStatus"];
+    const sortField = allowedSortFields.includes(sortBy) ? sortBy : "createdAt";
+    const sortDirection = sortOrder === "asc" ? 1 : -1;
+
+    const [drivers, total] = await Promise.all([
+      Driver.find(filter)
+        .select("-password")
+        .populate("assignedVehicles")
+        .sort({ [sortField]: sortDirection })
+        .skip(skip)
+        .limit(limit),
+      Driver.countDocuments(filter),
+    ]);
+
+    return sendPaginated(res, { data: drivers, total, page, limit });
   } catch (error) {
     console.error("[GET DRIVERS] Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch drivers",
+      errors: { server: error.message },
+    });
   }
 };
 
@@ -96,14 +186,17 @@ exports.assignVehiclesToDriver = async (req, res) => {
 
     res.json({
       success: true,
-      driver: populatedDriver,
+      message: "Vehicles assigned successfully",
+      data: publicDriver(populatedDriver),
+      driver: publicDriver(populatedDriver),
     });
   } catch (error) {
     console.error("[ASSIGN VEHICLES] Error:", error);
 
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to assign vehicles",
+      errors: { server: error.message },
     });
   }
 };
@@ -115,29 +208,64 @@ exports.updateDriver = async (req, res) => {
   try {
     const { driverId } = req.params;
     const updates = { ...req.body };
+    const errors = validateDriverPayload(updates);
 
-    // Hash password only if it exists
-    if (updates.password) {
-      updates.password = await bcrypt.hash(updates.password, 10);
-    } else {
-      delete updates.password;
+    if (Object.keys(errors).length) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid driver details",
+        errors,
+      });
     }
 
-    const driver = await Driver.findOneAndUpdate(
-      { _id: driverId, shipper: req.shipper._id },
-      updates,
-      { new: true }
-    );
+    const driver = await Driver.findOne({
+      _id: driverId,
+      shipper: req.shipper._id,
+    });
 
     if (!driver)
       return res
         .status(404)
         .json({ success: false, message: "Driver not found" });
 
-    res.json({ success: true, driver });
+    if (updates.email !== undefined) {
+      const nextEmail = normalizeEmail(updates.email);
+      const emailOwner = await Driver.findOne({
+        email: nextEmail,
+        _id: { $ne: driverId },
+      }).select("_id");
+
+      if (emailOwner) {
+        return res.status(400).json({
+          success: false,
+          message: "Driver with this email already exists",
+          errors: { email: "Driver with this email already exists" },
+        });
+      }
+    }
+
+    ["name", "phone", "licenseNumber", "notes"].forEach((field) => {
+      if (updates[field] !== undefined) driver[field] = String(updates[field]).trim();
+    });
+    if (updates.email !== undefined) driver.email = normalizeEmail(updates.email);
+    if (updates.password) driver.password = updates.password;
+
+    await driver.save();
+    await driver.populate("assignedVehicles");
+
+    res.json({
+      success: true,
+      message: "Driver updated successfully",
+      data: publicDriver(driver),
+      driver: publicDriver(driver),
+    });
   } catch (error) {
     console.error("[UPDATE DRIVER] Error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to update driver",
+      errors: { server: error.message },
+    });
   }
 };
 
@@ -172,7 +300,10 @@ exports.toggleDriverStatus = async (req, res) => {
   try {
     const { driverId } = req.params;
 
-    const driver = await Driver.findById(driverId);
+    const driver = await Driver.findOne({
+      _id: driverId,
+      shipper: req.shipper._id,
+    });
     if (!driver)
       return res
         .status(404)

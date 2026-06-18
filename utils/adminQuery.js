@@ -9,6 +9,7 @@ const buildPagination = (query) => {
 const sendPaginated = (res, { data, total, page, limit }) =>
   res.status(200).json({
     success: true,
+    message: "Data fetched successfully",
     count: data.length,
     total,
     pagination: {

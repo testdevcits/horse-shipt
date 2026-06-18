@@ -8,12 +8,32 @@ const sendDeliveryMail = require("../../../utils/sendDeliveryMail");
 const platformSettings = require("../../../models/admin/payment/platformSettings");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+const publicDriver = (driver) => {
+  const doc = driver?.toObject ? driver.toObject() : driver;
+  if (!doc) return null;
+  delete doc.password;
+  return doc;
+};
+
 // ====================================================
 // DRIVER LOGIN
 // ====================================================
 exports.driverLogin = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const email = String(req.body.email || "").trim().toLowerCase();
+    const { password } = req.body;
+
+    if (!email || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email and password are required",
+        errors: {
+          ...(!email ? { email: "Email is required" } : {}),
+          ...(!password ? { password: "Password is required" } : {}),
+        },
+      });
+    }
 
     const driver = await Driver.findOne({ email });
     if (!driver) {
@@ -46,12 +66,21 @@ exports.driverLogin = async (req, res) => {
 
     res.json({
       success: true,
+      message: "Driver logged in successfully",
+      data: {
+        token,
+        driver: publicDriver(driver),
+      },
       token,
-      driver,
+      driver: publicDriver(driver),
     });
   } catch (error) {
     console.error("[DRIVER LOGIN]", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: "Failed to login driver",
+      errors: { server: error.message },
+    });
   }
 };
 

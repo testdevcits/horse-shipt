@@ -1,25 +1,39 @@
 const Customer = require("../../models/customer/customerModel");
-const CustomerPayment = require("../../models/customer/CustomerPaymentModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const Shipper = require("../../models/shipper/shipperModel");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const PendingSignup = require("../../models/PendingSignup");
 
-const startOfMonth = (date) =>
-  new Date(date.getFullYear(), date.getMonth(), 1);
-
 const monthKey = (date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
+    2,
+    "0"
+  )}`;
+
+const utcDateKey = (date) =>
+  `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(
+    2,
+    "0"
+  )}-${String(date.getUTCDate()).padStart(2, "0")}`;
+
+const utcHourKey = (date) =>
+  `${utcDateKey(date)}-${String(date.getUTCHours()).padStart(2, "0")}`;
 
 const buildMonthBuckets = (months = 6) => {
   const buckets = [];
   const now = new Date();
 
   for (let index = months - 1; index >= 0; index -= 1) {
-    const date = new Date(now.getFullYear(), now.getMonth() - index, 1);
+    const date = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1)
+    );
     buckets.push({
       key: monthKey(date),
-      label: date.toLocaleString("en-US", { month: "short", year: "numeric" }),
+      label: date.toLocaleString("en-US", {
+        month: "short",
+        year: "numeric",
+        timeZone: "UTC",
+      }),
       payments: 0,
       shippers: 0,
       customers: 0,
@@ -30,14 +44,98 @@ const buildMonthBuckets = (months = 6) => {
   return buckets;
 };
 
-const groupCountsByMonth = async (Model, dateField, fromDate, extraMatch = {}) =>
+const buildChartBuckets = (range = "month", months = 6) => {
+  const normalizedRange = ["day", "week", "month"].includes(range)
+    ? range
+    : "month";
+  const now = new Date();
+
+  if (normalizedRange === "day") {
+    const currentHour = new Date(now);
+    currentHour.setUTCMinutes(0, 0, 0);
+
+    const buckets = [];
+    let fromDate = new Date(currentHour);
+    for (let index = 23; index >= 0; index -= 1) {
+      const date = new Date(currentHour);
+      date.setUTCHours(currentHour.getUTCHours() - index);
+      if (index === 23) fromDate = new Date(date);
+      buckets.push({
+        key: utcHourKey(date),
+        label: date.toLocaleString("en-US", {
+          hour: "numeric",
+          hour12: true,
+          timeZone: "UTC",
+        }),
+        payments: 0,
+        shippers: 0,
+        customers: 0,
+        shipments: 0,
+      });
+    }
+
+    return {
+      buckets,
+      fromDate,
+      groupFormat: "%Y-%m-%d-%H",
+    };
+  }
+
+  if (normalizedRange === "week") {
+    const today = new Date(now);
+    today.setUTCHours(0, 0, 0, 0);
+
+    const buckets = [];
+    for (let index = 6; index >= 0; index -= 1) {
+      const date = new Date(today);
+      date.setUTCDate(today.getUTCDate() - index);
+      buckets.push({
+        key: utcDateKey(date),
+        label: date.toLocaleString("en-US", {
+          weekday: "short",
+          timeZone: "UTC",
+        }),
+        payments: 0,
+        shippers: 0,
+        customers: 0,
+        shipments: 0,
+      });
+    }
+
+    return {
+      buckets,
+      fromDate: buckets[0] ? new Date(`${buckets[0].key}T00:00:00Z`) : today,
+      groupFormat: "%Y-%m-%d",
+    };
+  }
+
+  const buckets = buildMonthBuckets(months);
+  return {
+    buckets,
+    fromDate: new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - months + 1, 1)
+    ),
+    groupFormat: "%Y-%m",
+  };
+};
+
+const groupCountsByPeriod = async (
+  Model,
+  dateField,
+  fromDate,
+  groupFormat,
+  extraMatch = {}
+) =>
   Model.aggregate([
     { $match: { ...extraMatch, [dateField]: { $gte: fromDate } } },
     {
       $group: {
         _id: {
-          year: { $year: `$${dateField}` },
-          month: { $month: `$${dateField}` },
+          $dateToString: {
+            format: groupFormat,
+            date: `$${dateField}`,
+            timezone: "UTC",
+          },
         },
         count: { $sum: 1 },
       },
@@ -47,10 +145,8 @@ const groupCountsByMonth = async (Model, dateField, fromDate, extraMatch = {}) =
 exports.getDashboardOverview = async (req, res) => {
   try {
     const months = Math.min(Math.max(Number(req.query.months) || 6, 1), 12);
-    const buckets = buildMonthBuckets(months);
-    const fromDate = startOfMonth(
-      new Date(new Date().getFullYear(), new Date().getMonth() - months + 1, 1)
-    );
+    const range = String(req.query.range || "month").toLowerCase();
+    const { buckets, fromDate, groupFormat } = buildChartBuckets(range, months);
 
     const [
       totalCustomers,
@@ -98,9 +194,9 @@ exports.getDashboardOverview = async (req, res) => {
         .populate("shipper", "name email uniqueId companyName")
         .sort({ createdAt: -1 })
         .limit(6),
-      groupCountsByMonth(Customer, "createdAt", fromDate),
-      groupCountsByMonth(Shipper, "createdAt", fromDate),
-      groupCountsByMonth(CustomerShipment, "createdAt", fromDate),
+      groupCountsByPeriod(Customer, "createdAt", fromDate, groupFormat),
+      groupCountsByPeriod(Shipper, "createdAt", fromDate, groupFormat),
+      groupCountsByPeriod(CustomerShipment, "createdAt", fromDate, groupFormat),
       ShipmentQuote.aggregate([
         {
           $match: {
@@ -111,8 +207,11 @@ exports.getDashboardOverview = async (req, res) => {
         {
           $group: {
             _id: {
-              year: { $year: { $ifNull: ["$paidAt", "$createdAt"] } },
-              month: { $month: { $ifNull: ["$paidAt", "$createdAt"] } },
+              $dateToString: {
+                format: groupFormat,
+                date: { $ifNull: ["$paidAt", "$createdAt"] },
+                timezone: "UTC",
+              },
             },
             payments: { $sum: "$totalPrice" },
           },
@@ -132,7 +231,10 @@ exports.getDashboardOverview = async (req, res) => {
 
     const applyCounts = (rows, field) => {
       rows.forEach((row) => {
-        const key = `${row._id.year}-${String(row._id.month).padStart(2, "0")}`;
+        const key =
+          typeof row._id === "string"
+            ? row._id
+            : `${row._id.year}-${String(row._id.month).padStart(2, "0")}`;
         if (bucketMap[key]) bucketMap[key][field] = row.count;
       });
     };
@@ -141,7 +243,10 @@ exports.getDashboardOverview = async (req, res) => {
     applyCounts(shipperMonthly, "shippers");
     applyCounts(shipmentMonthly, "shipments");
     paymentMonthly.forEach((row) => {
-      const key = `${row._id.year}-${String(row._id.month).padStart(2, "0")}`;
+      const key =
+        typeof row._id === "string"
+          ? row._id
+          : `${row._id.year}-${String(row._id.month).padStart(2, "0")}`;
       if (bucketMap[key]) bucketMap[key].payments = row.payments || 0;
     });
 
@@ -171,6 +276,8 @@ exports.getDashboardOverview = async (req, res) => {
           platformEarnings,
         },
         charts: {
+          range,
+          trend: buckets,
           monthly: buckets,
           shipmentStatus: [
             { name: "Pending", value: pendingShipments },
