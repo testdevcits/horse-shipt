@@ -6,7 +6,7 @@ const buildPagination = (query) => {
   return { page, limit, skip };
 };
 
-const sendPaginated = (res, { data, total, page, limit }) =>
+const sendPaginated = (res, { data, total, page, limit, meta = {} }) =>
   res.status(200).json({
     success: true,
     message: "Data fetched successfully",
@@ -17,6 +17,7 @@ const sendPaginated = (res, { data, total, page, limit }) =>
       limit,
       totalPages: Math.ceil(total / limit) || 1,
     },
+    ...meta,
     data,
   });
 

@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const transporter = require("../utils/transporter"); // Reusable transporter
 const nodemailer = require("nodemailer");
 const { baseTemplate, escapeHtml } = require("../utils/mailTemplates/baseTemplate");
+const { buildPagination, sendPaginated } = require("../utils/adminQuery");
 
 // ================= Email Template =================
 const sendEmail = async ({ email, link }) => {
@@ -115,10 +116,44 @@ exports.verifyEmail = async (req, res) => {
 // ================= Get All Subscribers =================
 exports.getAllSubscribers = async (req, res) => {
   try {
-    const users = await HorseShippingNewsletter.find().sort({ createdAt: -1 });
-    return res
-      .status(200)
-      .json({ success: true, count: users.length, data: users });
+    const { page, limit, skip } = buildPagination(req.query);
+    const { search, status } = req.query;
+    const filter = {};
+
+    if (status === "verified") filter.isVerified = true;
+    if (status === "unverified") filter.isVerified = false;
+    if (search) {
+      filter.email = { $regex: String(search).trim(), $options: "i" };
+    }
+
+    const [users, total, totalSubscribers, verifiedSubscribers] =
+      await Promise.all([
+        HorseShippingNewsletter.find(filter)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        HorseShippingNewsletter.countDocuments(filter),
+        HorseShippingNewsletter.countDocuments(),
+        HorseShippingNewsletter.countDocuments({ isVerified: true }),
+      ]);
+
+    return sendPaginated(res, {
+      data: users,
+      total,
+      page,
+      limit,
+      meta: {
+        summary: {
+          totalSubscribers,
+          verifiedSubscribers,
+          unverifiedSubscribers: Math.max(
+            totalSubscribers - verifiedSubscribers,
+            0
+          ),
+        },
+      },
+    });
   } catch (error) {
     console.error("[ERROR] Fetch Error:", error);
     return res.status(500).json({ success: false, message: "Server error" });
@@ -197,7 +232,20 @@ exports.sendNewsletter = async (req, res) => {
       });
     }
 
-    if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    let targetRecipients = Array.isArray(recipients)
+      ? recipients.filter(Boolean)
+      : [];
+
+    if (targetRecipients.length === 0) {
+      const verifiedSubscribers = await HorseShippingNewsletter.find({
+        isVerified: true,
+      })
+        .select("email")
+        .lean();
+      targetRecipients = verifiedSubscribers.map((subscriber) => subscriber.email);
+    }
+
+    if (targetRecipients.length === 0) {
       return res
         .status(400)
         .json({ success: false, message: "No recipients provided" });
@@ -214,7 +262,7 @@ exports.sendNewsletter = async (req, res) => {
     });
     // --- Send emails in parallel ---
     const results = await Promise.allSettled(
-      recipients.map((email) =>
+      targetRecipients.map((email) =>
         transporter.sendMail({
           from: process.env.EMAIL_FROM,
           to: email,
