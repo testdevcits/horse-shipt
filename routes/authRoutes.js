@@ -23,6 +23,9 @@ router.post("/signup/verify-otp", authController.verifySignupOtp);
 router.post("/signup/resend-otp", authController.resendSignupOtp);
 router.post("/login", authController.login);
 router.post("/logout", authController.logout);
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/verify-reset-otp", authController.verifyResetOtp);
+router.post("/reset-password", authController.resetPassword);
 
 // ========================
 // GOOGLE OAUTH START

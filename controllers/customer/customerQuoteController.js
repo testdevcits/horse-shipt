@@ -646,6 +646,7 @@ exports.createPaymentIntent = async (req, res) => {
       currency: quote.currency || "usd",
 
       payment_method_types: ["card"],
+      transfer_group: `quote_${quote._id.toString()}`,
 
       receipt_email: customerEmail,
 

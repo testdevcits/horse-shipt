@@ -15,7 +15,7 @@ const messageSchema = new mongoose.Schema(
 
     senderRole: {
       type: String,
-      enum: ["customer", "shipper"],
+      enum: ["customer", "shipper", "driver"],
       required: true,
     },
 

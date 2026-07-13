@@ -2,14 +2,23 @@ const { apiResponse } = require("../responses/api.response");
 const bcrypt = require("bcryptjs");
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
+const Driver = require("../models/shipper/Driver");
 const PendingSignup = require("../models/PendingSignup");
+const PasswordResetOtp = require("../models/PasswordResetOtp");
 const generateToken = require("../utils/generateToken");
-const { sendOtpMail } = require("../utils/mailService");
+const { sendOtpMail, sendPasswordResetOtpMail } = require("../utils/mailService");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ----------------- Utility Functions -----------------
 const getModel = (role) => {
   if (role === "shipper") return Shipper;
   if (role === "customer") return Customer;
+  return null;
+};
+
+const getPasswordResetModel = (role) => {
+  if (role === "shipper") return Shipper;
+  if (role === "customer") return Customer;
+  if (role === "driver") return Driver;
   return null;
 };
 
@@ -215,7 +224,7 @@ exports.verifySignupOtp = async (req, res) => {
     }
 
     const email = normalizeEmail(rawEmail);
-    const Model = getModel(role);
+    const Model = getPasswordResetModel(role);
 
     if (!Model) {
       return res.status(400).json({
@@ -484,5 +493,205 @@ exports.logout = async (req, res) => {
   } catch (err) {
     console.error("[LOGOUT ERROR]", err);
     res.status(500).json({ success: false, errors: [apiResponse.SERVER_ERROR_2] });
+  }
+};
+
+// ----------------- Forgot Password -----------------
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { role, email: rawEmail } = req.body;
+
+    if (!role || !rawEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Role and email are required",
+      });
+    }
+
+    const email = normalizeEmail(rawEmail);
+    const Model = getPasswordResetModel(role);
+
+    if (!Model) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    const user = await Model.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "No account found for this email and role",
+      });
+    }
+
+    if (user.provider === "google" && !user.password) {
+      return res.status(400).json({
+        success: false,
+        message: "This account uses Google sign-in. Please continue with Google.",
+      });
+    }
+
+    const otp = generateOtp();
+
+    await PasswordResetOtp.findOneAndUpdate(
+      { email, role },
+      {
+        email,
+        role,
+        otpHash: await hashOtp(otp),
+        verified: false,
+        attempts: 0,
+        expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+        verifiedAt: null,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await sendPasswordResetOtpMail(email, otp);
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP sent to your registered email",
+      data: { email, role },
+    });
+  } catch (err) {
+    console.error("[FORGOT PASSWORD ERROR]", err);
+    return res.status(500).json({
+      success: false,
+      message: apiResponse.SERVER_ERROR_2,
+    });
+  }
+};
+
+// ----------------- Verify Password Reset OTP -----------------
+exports.verifyResetOtp = async (req, res) => {
+  try {
+    const { role, email: rawEmail, otp } = req.body;
+
+    if (!role || !rawEmail || !otp) {
+      return res.status(400).json({
+        success: false,
+        message: "Role, email, and OTP are required",
+      });
+    }
+
+    const email = normalizeEmail(rawEmail);
+    const resetOtp = await PasswordResetOtp.findOne({ email, role });
+
+    if (!resetOtp || resetOtp.expiresAt < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired OTP",
+      });
+    }
+
+    if (resetOtp.attempts >= 5) {
+      return res.status(429).json({
+        success: false,
+        message: "Too many invalid attempts. Please request a new OTP.",
+      });
+    }
+
+    const isOtpValid = await bcrypt.compare(String(otp).trim(), resetOtp.otpHash);
+
+    if (!isOtpValid) {
+      resetOtp.attempts += 1;
+      await resetOtp.save();
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    resetOtp.verified = true;
+    resetOtp.verifiedAt = new Date();
+    await resetOtp.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "OTP verified successfully",
+      data: { email, role },
+    });
+  } catch (err) {
+    console.error("[VERIFY RESET OTP ERROR]", err);
+    return res.status(500).json({
+      success: false,
+      message: apiResponse.SERVER_ERROR_2,
+    });
+  }
+};
+
+// ----------------- Reset Password After OTP Verification -----------------
+exports.resetPassword = async (req, res) => {
+  try {
+    const { role, email: rawEmail, otp, newPassword } = req.body;
+
+    if (!role || !rawEmail || !otp || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Role, email, OTP, and new password are required",
+      });
+    }
+
+    if (String(newPassword).length < 6) {
+      return res.status(400).json({
+        success: false,
+        message: "Password must be at least 6 characters",
+      });
+    }
+
+    const email = normalizeEmail(rawEmail);
+    const Model = getPasswordResetModel(role);
+
+    if (!Model) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    const resetOtp = await PasswordResetOtp.findOne({ email, role, verified: true });
+
+    if (!resetOtp || resetOtp.expiresAt < new Date()) {
+      return res.status(400).json({
+        success: false,
+        message: "Please verify OTP before resetting password",
+      });
+    }
+
+    const isOtpValid = await bcrypt.compare(String(otp).trim(), resetOtp.otpHash);
+    if (!isOtpValid) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid OTP",
+      });
+    }
+
+    const user = await Model.findOne({ email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "Account not found",
+      });
+    }
+
+    user.password = newPassword;
+    user.provider = user.provider || "local";
+    await user.save();
+    await PasswordResetOtp.deleteOne({ email, role });
+
+    return res.status(200).json({
+      success: true,
+      message: "Password reset successfully",
+    });
+  } catch (err) {
+    console.error("[RESET PASSWORD ERROR]", err);
+    return res.status(500).json({
+      success: false,
+      message: apiResponse.SERVER_ERROR_2,
+    });
   }
 };

@@ -7,6 +7,13 @@ const stripeAdminController = require("../../../controllers/admin/Payments/strip
 // Stripe balance details
 router.get("/balance", adminAuth, stripeAdminController.getStripeBalance);
 
+// Platform funds available for client bank transfer
+router.get(
+  "/transfer-availability",
+  adminAuth,
+  stripeAdminController.getTransferAvailability
+);
+
 // Stripe recent transactions
 router.get(
   "/transactions",

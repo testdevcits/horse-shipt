@@ -18,7 +18,7 @@ const chatRoomSchema = new mongoose.Schema(
         },
         role: {
           type: String,
-          enum: ["customer", "shipper"],
+          enum: ["customer", "shipper", "driver"],
           required: true,
         },
       },

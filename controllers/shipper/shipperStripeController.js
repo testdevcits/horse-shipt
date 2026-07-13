@@ -263,7 +263,7 @@ exports.stripeWebhook = async (req, res) => {
         if (quoteId) {
           await ShipmentQuote.findByIdAndUpdate(quoteId, {
             paymentStatus: "paid",
-            paymentCompletedAt: new Date(),
+            paidAt: new Date(),
             stripePaymentIntentId: data.id,
           });
         }
@@ -288,7 +288,7 @@ exports.stripeWebhook = async (req, res) => {
 
         if (quoteId) {
           await ShipmentQuote.findByIdAndUpdate(quoteId, {
-            transferId: data.id,
+            stripeTransferId: data.id,
           });
         }
         break;

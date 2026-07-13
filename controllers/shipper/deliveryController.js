@@ -206,15 +206,23 @@ exports.verifyDeliveryOtp = async (req, res) => {
       const shipperCents = netAfterStripeCents - platformFee;
 
       const transfer = await stripe.transfers.create({
-        amount: shipperCents,
+        amount: Math.max(shipperCents, 0),
         currency: balanceTx.currency,
         destination: quote.shipper.stripeAccountId,
         source_transaction: charge.id,
+        transfer_group: `quote_${quote._id.toString()}`,
+        metadata: {
+          quoteId: quote._id.toString(),
+          shipmentId: quote.shipment.toString(),
+          shipperId: quote.shipper._id.toString(),
+        },
       });
 
       quote.stripeTransferId = transfer.id;
       quote.payoutStatus = "transferred";
       quote.paymentReleasedAt = new Date();
+      quote.platformFee = platformFee / 100;
+      quote.balanceInWallet = 0;
     } catch (err) {
 
       quote.payoutStatus = "pending";

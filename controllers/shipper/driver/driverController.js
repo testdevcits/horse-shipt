@@ -2,6 +2,8 @@ const { apiResponse } = require("../../../responses/api.response");
 const Driver = require("../../../models/shipper/Driver");
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const ShipperVehicle = require("../../../models/shipper/ShipperVehicle");
+const ChatRoom = require("../../../models/chat/chatRoomModel");
+const Message = require("../../../models/chat/messageModel");
 const jwt = require("jsonwebtoken");
 const cloudinary = require("../../../utils/cloudinary");
 const CustomerShipment = require("../../../models/customer/CustomerShipment");
@@ -15,6 +17,44 @@ const publicDriver = (driver) => {
   if (!doc) return null;
   delete doc.password;
   return doc;
+};
+
+const getOrCreateDriverChatRoom = async ({ shipmentId, shipperId, driverId }) => {
+  const participantQuery = {
+    participants: {
+      $all: [
+        { $elemMatch: { userId: shipperId, role: "shipper" } },
+        { $elemMatch: { userId: driverId, role: "driver" } },
+      ],
+    },
+  };
+
+  let room = await ChatRoom.findOne({ shipment: shipmentId, ...participantQuery });
+
+  if (!room) {
+    room = await ChatRoom.create({
+      shipment: shipmentId,
+      participants: [
+        { userId: shipperId, role: "shipper" },
+        { userId: driverId, role: "driver" },
+      ],
+    });
+  }
+
+  return room;
+};
+
+const ensureDriverRoomParticipant = async ({ roomId, driverId }) => {
+  const room = await ChatRoom.findById(roomId).lean();
+  if (!room) return null;
+
+  const isParticipant = room.participants.some(
+    (participant) =>
+      participant.role === "driver" &&
+      participant.userId.toString() === driverId.toString()
+  );
+
+  return isParticipant ? room : null;
 };
 
 // ====================================================
@@ -456,6 +496,194 @@ exports.getDriverDashboard = async (req, res) => {
     res.status(500).json({ success: false, message: error.message });
   }
 };
+
+// ====================================================
+// DRIVER CHAT LIST
+// ====================================================
+exports.getDriverChatShipments = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
+
+    const quotes = await ShipmentQuote.find({
+      assignedDriver: driverId,
+      tripStatus: { $ne: "completed" },
+    })
+      .populate(
+        "shipment",
+        "_id shipmentCode pickupLocation deliveryLocation status pickupDate deliveryDate"
+      )
+      .populate("shipper", "_id name email profileImage profilePicture isLogin")
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    const chats = quotes
+      .filter((quote) => quote.shipment && quote.shipper)
+      .map((quote) => ({
+        _id: quote.shipper._id,
+        name: quote.shipper.name || "Shipper",
+        email: quote.shipper.email,
+        profileImage: quote.shipper.profileImage,
+        profilePicture: quote.shipper.profilePicture,
+        isOnline: Boolean(quote.shipper.isLogin),
+        shipmentId: quote.shipment._id,
+        quoteId: quote._id,
+        shipmentCode: quote.shipment.shipmentCode,
+        chatTitle: `${quote.shipment.shipmentCode || "Shipment"} - ${
+          quote.shipment.pickupLocation || "Pickup"
+        } to ${quote.shipment.deliveryLocation || "Delivery"}`,
+        pickupLocation: quote.shipment.pickupLocation,
+        deliveryLocation: quote.shipment.deliveryLocation,
+        status: quote.tripStatus || quote.shipment.status,
+      }));
+
+    return res.status(200).json({ success: true, chats });
+  } catch (error) {
+    console.error("[GET DRIVER CHATS]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load driver chats",
+    });
+  }
+};
+
+// ====================================================
+// DRIVER OPEN CHAT ROOM
+// ====================================================
+exports.getOrCreateDriverChatRoom = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
+    const { shipmentId } = req.body;
+
+    if (!shipmentId) {
+      return res.status(400).json({
+        success: false,
+        message: "shipmentId is required",
+      });
+    }
+
+    const quote = await ShipmentQuote.findOne({
+      assignedDriver: driverId,
+      shipment: shipmentId,
+    })
+      .populate("shipment", "_id shipmentCode pickupLocation deliveryLocation status")
+      .populate("shipper", "_id name email profileImage profilePicture isLogin");
+
+    if (!quote || !quote.shipper || !quote.shipment) {
+      return res.status(404).json({
+        success: false,
+        message: "Assigned shipment chat not found",
+      });
+    }
+
+    const room = await getOrCreateDriverChatRoom({
+      shipmentId: quote.shipment._id,
+      shipperId: quote.shipper._id,
+      driverId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      room,
+      roomId: room._id,
+      shipper: quote.shipper,
+      shipment: quote.shipment,
+    });
+  } catch (error) {
+    console.error("[OPEN DRIVER CHAT]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to open driver chat",
+    });
+  }
+};
+
+// ====================================================
+// DRIVER CHAT MESSAGES
+// ====================================================
+exports.getDriverRoomMessages = async (req, res) => {
+  try {
+    const room = await ensureDriverRoomParticipant({
+      roomId: req.params.roomId,
+      driverId: req.driver._id,
+    });
+
+    if (!room) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to view this chat",
+      });
+    }
+
+    const messages = await Message.find({ chatRoom: req.params.roomId }).sort({
+      createdAt: 1,
+    });
+
+    return res.status(200).json({ success: true, messages });
+  } catch (error) {
+    console.error("[GET DRIVER CHAT MESSAGES]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load messages",
+    });
+  }
+};
+
+// ====================================================
+// DRIVER SEND CHAT MESSAGE
+// ====================================================
+exports.sendDriverRoomMessage = async (req, res) => {
+  try {
+    const driverId = req.driver._id;
+    const messageText = String(req.body.message || "").trim();
+
+    if (!messageText) {
+      return res.status(400).json({
+        success: false,
+        message: "Message is required",
+      });
+    }
+
+    const room = await ensureDriverRoomParticipant({
+      roomId: req.params.roomId,
+      driverId,
+    });
+
+    if (!room) {
+      return res.status(403).json({
+        success: false,
+        message: "You are not authorized to send messages in this chat",
+      });
+    }
+
+    const chatMessage = await Message.create({
+      chatRoom: req.params.roomId,
+      senderId: driverId,
+      senderRole: "driver",
+      message: messageText,
+      media: [],
+    });
+
+    await ChatRoom.findByIdAndUpdate(req.params.roomId, {
+      lastMessage: messageText,
+      lastMessageAt: new Date(),
+    });
+
+    const io = req.app.get("io");
+    if (io) io.to(req.params.roomId).emit("receiveMessage", chatMessage);
+
+    return res.status(201).json({
+      success: true,
+      message: "Message sent successfully",
+      data: chatMessage,
+    });
+  } catch (error) {
+    console.error("[SEND DRIVER CHAT MESSAGE]", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to send message",
+    });
+  }
+};
 // ====================================================
 // UPDATE DRIVER PROFILE IMAGE
 // ====================================================
@@ -742,15 +970,23 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
       const shipperCents = netAfterStripeCents - platformFee;
 
       const transfer = await stripe.transfers.create({
-        amount: shipperCents,
+        amount: Math.max(shipperCents, 0),
         currency: balanceTx.currency,
         destination: quote.shipper.stripeAccountId,
         source_transaction: charge.id,
+        transfer_group: `quote_${quote._id.toString()}`,
+        metadata: {
+          quoteId: quote._id.toString(),
+          shipmentId: quote.shipment.toString(),
+          shipperId: quote.shipper._id.toString(),
+        },
       });
 
       quote.stripeTransferId = transfer.id;
       quote.payoutStatus = "transferred";
       quote.paymentReleasedAt = new Date();
+      quote.platformFee = platformFee / 100;
+      quote.balanceInWallet = 0;
     } catch (err) {
 
       quote.payoutStatus = "pending";

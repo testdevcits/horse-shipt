@@ -3,7 +3,23 @@ const Stripe = require("stripe");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const ShipmentQuote = require("../../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../../models/admin/payment/platformSettings");
+const Subscription = require("../../../models/shipper/subscriptionModel");
 const { buildPaginationMeta } = require("../../../utils/adminQuery");
+
+const centsToMoney = (amount = 0) => Math.round(amount) / 100;
+
+const sumStripeBalance = (items = []) =>
+  items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
+const getPlatformFeeForQuote = (quote, settings) => {
+  if (Number(quote.platformFee) > 0) return Number(quote.platformFee);
+
+  const platformPercent = Number(settings?.platformFeePercent || 0);
+  const platformFlat = Number(settings?.platformFeeFlat || 0);
+  const totalPrice = Number(quote.totalPrice || 0);
+
+  return totalPrice * (platformPercent / 100) + platformFlat;
+};
 
 /* =====================================================
    GET STRIPE BALANCE
@@ -132,6 +148,123 @@ exports.getStripeTransactions = async (req, res) => {
     res.status(500).json({
       success: false,
       message: apiResponse.FAILED_TO_FETCH_STRIPE_TRANSACTIONS,
+    });
+  }
+};
+
+/* =====================================================
+   GET FUNDS AVAILABLE FOR PLATFORM BANK TRANSFER
+   - Stripe available/pending balance is the source of truth
+   - App ledger explains how much of that is platform income
+===================================================== */
+exports.getTransferAvailability = async (req, res) => {
+  try {
+    const balance = await stripe.balance.retrieve();
+    const availableCents = sumStripeBalance(balance.available);
+    const pendingCents = sumStripeBalance(balance.pending);
+    const currency =
+      balance.available[0]?.currency || balance.pending[0]?.currency || "usd";
+
+    const settings = await PlatformSettings.findOne();
+
+    const [
+      completedPaidQuotes,
+      pendingTransferQuotes,
+      paidSubscriptions,
+    ] = await Promise.all([
+      ShipmentQuote.find({
+        paymentStatus: "paid",
+        tripStatus: "completed",
+        payoutStatus: "transferred",
+      })
+        .populate("shipper", "name email companyName")
+        .sort({ paymentReleasedAt: -1, updatedAt: -1 })
+        .limit(25)
+        .lean(),
+      ShipmentQuote.find({
+        paymentStatus: "paid",
+        tripStatus: "completed",
+        payoutStatus: { $ne: "transferred" },
+      })
+        .select("totalPrice platformFee currency paymentStatus payoutStatus tripStatus")
+        .lean(),
+      Subscription.find({
+        status: { $in: ["active", "trialing"] },
+        lastPaymentDate: { $ne: null },
+      })
+        .select("amount currency interval planType status lastPaymentDate")
+        .lean(),
+    ]);
+
+    const shipmentPlatformFees = completedPaidQuotes.reduce(
+      (sum, quote) => sum + getPlatformFeeForQuote(quote, settings),
+      0
+    );
+
+    const pendingShipperTransfers = pendingTransferQuotes.reduce(
+      (sum, quote) => {
+        const platformFee = getPlatformFeeForQuote(quote, settings);
+        return sum + Math.max(Number(quote.totalPrice || 0) - platformFee, 0);
+      },
+      0
+    );
+
+    const subscriptionFees = paidSubscriptions.reduce(
+      (sum, subscription) => sum + Number(subscription.amount || 0),
+      0
+    );
+
+    const appLedgerPlatformFunds = shipmentPlatformFees + subscriptionFees;
+    const stripeAvailable = centsToMoney(availableCents);
+    const stripePending = centsToMoney(pendingCents);
+    const recommendedTransferToClientBank = Math.max(
+      Math.min(stripeAvailable, appLedgerPlatformFunds),
+      0
+    );
+
+    const recentCompletedShipmentFees = completedPaidQuotes
+      .slice(0, 10)
+      .map((quote) => ({
+        quoteId: quote._id,
+        shipper: quote.shipper,
+        shipment: quote.shipment,
+        totalPrice: Number(quote.totalPrice || 0),
+        platformFee: getPlatformFeeForQuote(quote, settings),
+        currency: quote.currency || currency,
+        paidAt: quote.paidAt || quote.paymentReleasedAt || quote.updatedAt,
+        paymentReleasedAt: quote.paymentReleasedAt,
+        stripePaymentIntentId: quote.stripePaymentIntentId,
+        stripeTransferId: quote.stripeTransferId,
+      }));
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        currency,
+        stripe: {
+          available: stripeAvailable,
+          pending: stripePending,
+        },
+        ledger: {
+          subscriptionFees,
+          shipmentPlatformFees,
+          appLedgerPlatformFunds,
+          pendingShipperTransfers,
+          completedPaidTransferredShipments: completedPaidQuotes.length,
+          completedPaidPendingTransferShipments: pendingTransferQuotes.length,
+        },
+        recommendedTransferToClientBank,
+        recentCompletedShipmentFees,
+        note:
+          "Use Stripe available balance as the live limit. The app ledger explains expected platform-owned funds from subscriptions and completed paid shipments after shipper transfers.",
+      },
+    });
+  } catch (error) {
+    console.error("Stripe transfer availability error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch transfer availability report",
     });
   }
 };

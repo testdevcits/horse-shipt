@@ -100,6 +100,10 @@ const {
 const {
   driverLogin,
   getDriverDashboard,
+  getDriverChatShipments,
+  getOrCreateDriverChatRoom,
+  getDriverRoomMessages,
+  sendDriverRoomMessage,
   updateDriverProfileImage,
   deleteDriverProfileImage,
   getDriverAssignedShipments,
@@ -324,6 +328,12 @@ router.post("/driver/login", driverLogin);
 
 // DASHBOARD
 router.get("/driver/me", driverAuth, getDriverDashboard);
+
+// CHAT
+router.get("/driver/chat/shipments", driverAuth, getDriverChatShipments);
+router.post("/driver/chat/room", driverAuth, getOrCreateDriverChatRoom);
+router.get("/driver/chat/rooms/:roomId/messages", driverAuth, getDriverRoomMessages);
+router.post("/driver/chat/rooms/:roomId/messages", driverAuth, sendDriverRoomMessage);
 
 // PROFILE
 router.put(
