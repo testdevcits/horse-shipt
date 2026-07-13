@@ -11,6 +11,32 @@ const centsToMoney = (amount = 0) => Math.round(amount) / 100;
 const sumStripeBalance = (items = []) =>
   items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
+const parseDateBoundary = (value, boundary = "start") => {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  if (boundary === "end") date.setUTCHours(23, 59, 59, 999);
+  return date;
+};
+
+const getDateBounds = (query = {}) => {
+  const startDate = parseDateBoundary(query.startDate, "start");
+  const endDate = parseDateBoundary(query.endDate, "end");
+
+  if (startDate && endDate && startDate <= endDate) {
+    return { startDate, endDate, hasCustomRange: true };
+  }
+
+  return { startDate: null, endDate: null, hasCustomRange: false };
+};
+
+const buildMongoDateWindow = (startDate, endDate) => {
+  const window = {};
+  if (startDate) window.$gte = startDate;
+  if (endDate) window.$lte = endDate;
+  return window;
+};
+
 const getPlatformFeeForQuote = (quote, settings) => {
   if (Number(quote.platformFee) > 0) return Number(quote.platformFee);
 
@@ -64,25 +90,33 @@ exports.getStripeTransactions = async (req, res) => {
     const { range } = req.query; // today | week | month
     const page = Math.max(Number(req.query.page) || 1, 1);
     const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 100);
+    const { startDate: customStartDate, endDate, hasCustomRange } =
+      getDateBounds(req.query);
 
     const now = new Date();
-    let startDate;
+    let startDate = customStartDate;
 
-    if (range === "today") {
+    if (!hasCustomRange && range === "today") {
       startDate = new Date(now.setHours(0, 0, 0, 0));
-    } else if (range === "week") {
+    } else if (!hasCustomRange && range === "week") {
       startDate = new Date();
       startDate.setDate(now.getDate() - 7);
-    } else if (range === "month") {
+    } else if (!hasCustomRange && range === "month") {
       startDate = new Date();
       startDate.setMonth(now.getMonth() - 1);
+    }
+
+    const stripeCreatedFilter = {};
+    if (startDate) stripeCreatedFilter.gte = Math.floor(startDate.getTime() / 1000);
+    if (hasCustomRange && endDate) {
+      stripeCreatedFilter.lte = Math.floor(endDate.getTime() / 1000);
     }
 
     // Fetch raw Stripe transactions
     const transactions = await stripe.balanceTransactions.list({
       limit: 100,
-      created: startDate
-        ? { gte: Math.floor(startDate.getTime() / 1000) }
+      created: Object.keys(stripeCreatedFilter).length
+        ? stripeCreatedFilter
         : undefined,
     });
 
@@ -131,7 +165,7 @@ exports.getStripeTransactions = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      filter: range || "all",
+      filter: hasCustomRange ? "custom" : range || "all",
       totalTransactions: formatted.length,
       totalAmount,
       totalNet,
@@ -159,6 +193,10 @@ exports.getStripeTransactions = async (req, res) => {
 ===================================================== */
 exports.getTransferAvailability = async (req, res) => {
   try {
+    const { startDate, endDate, hasCustomRange } = getDateBounds(req.query);
+    const ledgerDateWindow = hasCustomRange
+      ? buildMongoDateWindow(startDate, endDate)
+      : null;
     const balance = await stripe.balance.retrieve();
     const availableCents = sumStripeBalance(balance.available);
     const pendingCents = sumStripeBalance(balance.pending);
@@ -176,6 +214,15 @@ exports.getTransferAvailability = async (req, res) => {
         paymentStatus: "paid",
         tripStatus: "completed",
         payoutStatus: "transferred",
+        ...(ledgerDateWindow
+          ? {
+              $or: [
+                { paymentReleasedAt: ledgerDateWindow },
+                { paidAt: ledgerDateWindow },
+                { updatedAt: ledgerDateWindow },
+              ],
+            }
+          : {}),
       })
         .populate("shipper", "name email companyName")
         .sort({ paymentReleasedAt: -1, updatedAt: -1 })
@@ -185,12 +232,13 @@ exports.getTransferAvailability = async (req, res) => {
         paymentStatus: "paid",
         tripStatus: "completed",
         payoutStatus: { $ne: "transferred" },
+        ...(ledgerDateWindow ? { updatedAt: ledgerDateWindow } : {}),
       })
         .select("totalPrice platformFee currency paymentStatus payoutStatus tripStatus")
         .lean(),
       Subscription.find({
         status: { $in: ["active", "trialing"] },
-        lastPaymentDate: { $ne: null },
+        lastPaymentDate: ledgerDateWindow || { $ne: null },
       })
         .select("amount currency interval planType status lastPaymentDate")
         .lean(),

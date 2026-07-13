@@ -120,15 +120,94 @@ const buildChartBuckets = (range = "month", months = 6) => {
   };
 };
 
+const parseDateBoundary = (value, boundary = "start") => {
+  if (!value) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  if (Number.isNaN(date.getTime())) return null;
+  if (boundary === "end") date.setUTCHours(23, 59, 59, 999);
+  return date;
+};
+
+const daysBetween = (startDate, endDate) =>
+  Math.max(
+    1,
+    Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000) + 1
+  );
+
+const buildCustomChartBuckets = (startDate, endDate) => {
+  const totalDays = daysBetween(startDate, endDate);
+
+  if (totalDays > 92) {
+    const buckets = [];
+    const cursor = new Date(
+      Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth(), 1)
+    );
+    const lastMonth = new Date(
+      Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth(), 1)
+    );
+
+    while (cursor <= lastMonth) {
+      buckets.push({
+        key: monthKey(cursor),
+        label: cursor.toLocaleString("en-US", {
+          month: "short",
+          year: "numeric",
+          timeZone: "UTC",
+        }),
+        payments: 0,
+        shippers: 0,
+        customers: 0,
+        shipments: 0,
+      });
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+
+    return { buckets, fromDate: startDate, toDate: endDate, groupFormat: "%Y-%m" };
+  }
+
+  const buckets = [];
+  const cursor = new Date(startDate);
+  cursor.setUTCHours(0, 0, 0, 0);
+  while (cursor <= endDate) {
+    buckets.push({
+      key: utcDateKey(cursor),
+      label: cursor.toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        timeZone: "UTC",
+      }),
+      payments: 0,
+      shippers: 0,
+      customers: 0,
+      shipments: 0,
+    });
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+
+  return { buckets, fromDate: startDate, toDate: endDate, groupFormat: "%Y-%m-%d" };
+};
+
+const buildDateWindow = (fromDate, toDate) => {
+  const window = {};
+  if (fromDate) window.$gte = fromDate;
+  if (toDate) window.$lte = toDate;
+  return window;
+};
+
+const withDateWindow = (field, fromDate, toDate) => ({
+  [field]: buildDateWindow(fromDate, toDate),
+});
+
 const groupCountsByPeriod = async (
   Model,
   dateField,
   fromDate,
+  toDate,
   groupFormat,
   extraMatch = {}
 ) =>
   Model.aggregate([
-    { $match: { ...extraMatch, [dateField]: { $gte: fromDate } } },
+    { $match: { ...extraMatch, [dateField]: buildDateWindow(fromDate, toDate) } },
     {
       $group: {
         _id: {
@@ -147,7 +226,22 @@ exports.getDashboardOverview = async (req, res) => {
   try {
     const months = Math.min(Math.max(Number(req.query.months) || 6, 1), 12);
     const range = String(req.query.range || "month").toLowerCase();
-    const { buckets, fromDate, groupFormat } = buildChartBuckets(range, months);
+    const requestedStartDate = parseDateBoundary(req.query.startDate, "start");
+    const requestedEndDate = parseDateBoundary(req.query.endDate, "end");
+    const hasCustomRange =
+      requestedStartDate && requestedEndDate && requestedStartDate <= requestedEndDate;
+    const chartWindow = hasCustomRange
+      ? buildCustomChartBuckets(requestedStartDate, requestedEndDate)
+      : buildChartBuckets(range, months);
+    const { buckets, fromDate, groupFormat } = chartWindow;
+    const toDate = chartWindow.toDate || new Date();
+    const createdDateMatch = withDateWindow("createdAt", fromDate, toDate);
+    const paidQuoteDateMatch = {
+      $or: [
+        { paidAt: buildDateWindow(fromDate, toDate) },
+        { createdAt: buildDateWindow(fromDate, toDate) },
+      ],
+    };
 
     const [
       totalCustomers,
@@ -167,26 +261,34 @@ exports.getDashboardOverview = async (req, res) => {
       pendingSignupCount,
       pendingSignups,
     ] = await Promise.all([
-      Customer.countDocuments(),
-      Shipper.countDocuments(),
-      CustomerShipment.countDocuments(),
+      Customer.countDocuments(createdDateMatch),
+      Shipper.countDocuments(createdDateMatch),
+      CustomerShipment.countDocuments(createdDateMatch),
       CustomerShipment.countDocuments({
+        ...createdDateMatch,
         status: { $in: ["assigned", "picked", "in_transit"] },
       }),
       CustomerShipment.countDocuments({
+        ...createdDateMatch,
         status: { $in: ["pending", "open_for_offers"] },
       }),
-      CustomerShipment.countDocuments({ status: "delivered" }),
-      ShipmentQuote.find({ paymentStatus: "paid" }).select(
+      CustomerShipment.countDocuments({ ...createdDateMatch, status: "delivered" }),
+      ShipmentQuote.find({ paymentStatus: "paid", ...paidQuoteDateMatch }).select(
         "totalPrice platformFee paidAt createdAt"
       ),
-      ShipmentQuote.countDocuments({ paymentStatus: "pending" }),
-      CustomerShipment.find()
+      ShipmentQuote.countDocuments({
+        paymentStatus: "pending",
+        ...createdDateMatch,
+      }),
+      CustomerShipment.find(createdDateMatch)
         .populate("customer", "name email uniqueId")
         .populate("shipper", "name email uniqueId")
         .sort({ createdAt: -1 })
         .limit(6),
-      ShipmentQuote.find({ paymentStatus: { $in: ["paid", "pending"] } })
+      ShipmentQuote.find({
+        paymentStatus: { $in: ["paid", "pending"] },
+        ...paidQuoteDateMatch,
+      })
         .populate({
           path: "shipment",
           select: "shipmentCode customer pickupLocation deliveryLocation",
@@ -195,14 +297,20 @@ exports.getDashboardOverview = async (req, res) => {
         .populate("shipper", "name email uniqueId companyName")
         .sort({ createdAt: -1 })
         .limit(6),
-      groupCountsByPeriod(Customer, "createdAt", fromDate, groupFormat),
-      groupCountsByPeriod(Shipper, "createdAt", fromDate, groupFormat),
-      groupCountsByPeriod(CustomerShipment, "createdAt", fromDate, groupFormat),
+      groupCountsByPeriod(Customer, "createdAt", fromDate, toDate, groupFormat),
+      groupCountsByPeriod(Shipper, "createdAt", fromDate, toDate, groupFormat),
+      groupCountsByPeriod(
+        CustomerShipment,
+        "createdAt",
+        fromDate,
+        toDate,
+        groupFormat
+      ),
       ShipmentQuote.aggregate([
         {
           $match: {
             paymentStatus: "paid",
-            $or: [{ paidAt: { $gte: fromDate } }, { createdAt: { $gte: fromDate } }],
+            ...paidQuoteDateMatch,
           },
         },
         {
@@ -218,8 +326,8 @@ exports.getDashboardOverview = async (req, res) => {
           },
         },
       ]),
-      PendingSignup.countDocuments(),
-      PendingSignup.find()
+      PendingSignup.countDocuments(createdDateMatch),
+      PendingSignup.find(createdDateMatch)
         .select("name email role createdAt lastSentAt otpExpiresAt attempts")
         .sort({ createdAt: -1 })
         .limit(6),
@@ -277,7 +385,7 @@ exports.getDashboardOverview = async (req, res) => {
           platformEarnings,
         },
         charts: {
-          range,
+          range: hasCustomRange ? "custom" : range,
           trend: buckets,
           monthly: buckets,
           shipmentStatus: [
