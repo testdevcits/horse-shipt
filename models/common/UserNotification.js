@@ -4,7 +4,7 @@ const userNotificationSchema = new mongoose.Schema(
   {
     role: {
       type: String,
-      enum: ["customer", "shipper"],
+      enum: ["customer", "shipper", "admin", "super-admin"],
       required: true,
       index: true,
     },

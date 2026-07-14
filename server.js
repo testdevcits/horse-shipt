@@ -69,6 +69,7 @@ app.use((req, res, next) => {
   const allowedOrigins = [
     "http://localhost:3000",
     "http://localhost:3001",
+    "http://192.168.16.42:3000",
     "https://horse-shipt-frontend.vercel.app",
     "https://admin-horse-shipt.vercel.app",
   ];
@@ -182,6 +183,7 @@ const privacyPolicyRoutes = require("./routes/admin/privacyPolicy.routes");
 const termsConditionRoutes = require("./routes/admin/termsCondition.routes");
 const adminSocialMediaSettingsRoutes = require("./routes/admin/socialMediaSettings.routes");
 const publicSocialMediaSettingsRoutes = require("./routes/common/socialMediaSettings.routes");
+const adminNotificationRoutes = require("./routes/admin/adminNotification.routes");
 
 const horseShippingNewsletterRoutes = require("./routes/horseShippingNewsletterRoutes");
 
@@ -210,6 +212,7 @@ app.use("/api/admin/privacy-policy", privacyPolicyRoutes);
 app.use("/api/admin/terms-condition", termsConditionRoutes);
 app.use("/api/admin/horse-newsletter", horseShippingNewsletterRoutes);
 app.use("/api/admin/social-media-settings", adminSocialMediaSettingsRoutes);
+app.use("/api/admin/notifications", adminNotificationRoutes);
 
 app.use("/api/horse-newsletter", horseShippingNewsletterRoutes);
 
