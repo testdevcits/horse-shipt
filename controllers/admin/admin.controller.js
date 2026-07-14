@@ -13,6 +13,8 @@ const generateToken = (admin) => {
   });
 };
 
+const isSixDigitOtp = (otp) => /^\d{6}$/.test(String(otp || ""));
+
 // ===============================
 //  EMAIL / SMTP SETUP
 // ===============================
@@ -132,6 +134,14 @@ exports.forgotPassword = async (req, res, next) => {
 exports.verifyOtp = async (req, res, next) => {
   try {
     const { email, otp } = req.body;
+
+    if (!isSixDigitOtp(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP must be 6 digits",
+      });
+    }
+
     const hashedOtp = crypto.createHash("sha256").update(otp).digest("hex");
 
     const admin = await HorseAdmin.findOne({
@@ -163,6 +173,13 @@ exports.resetPasswordWithOtp = async (req, res, next) => {
       return res.status(400).json({
         success: false,
         message: apiResponse.EMAIL_OTP_AND_NEW_PASSWORD_ARE_REQUIRED,
+      });
+    }
+
+    if (!isSixDigitOtp(otp)) {
+      return res.status(400).json({
+        success: false,
+        message: "OTP must be 6 digits",
       });
     }
 

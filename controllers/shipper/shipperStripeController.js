@@ -12,6 +12,7 @@ const subscriptionModel = require("../../models/shipper/subscriptionModel");
 const {
   sendSubscriptionEmail,
 } = require("../../utils/subscriptionEmailService");
+const { sendAdminNotification } = require("../../utils/adminNotifications");
 
 const LIVE_SUBSCRIPTION_STATUSES = [
   "active",
@@ -261,11 +262,37 @@ exports.stripeWebhook = async (req, res) => {
         const quoteId = data.metadata?.quoteId;
 
         if (quoteId) {
-          await ShipmentQuote.findByIdAndUpdate(quoteId, {
-            paymentStatus: "paid",
-            paidAt: new Date(),
-            stripePaymentIntentId: data.id,
-          });
+          const quote = await ShipmentQuote.findByIdAndUpdate(
+            quoteId,
+            {
+              paymentStatus: "paid",
+              paidAt: new Date(),
+              stripePaymentIntentId: data.id,
+            },
+            { new: true }
+          )
+            .populate("shipment", "shipmentCode customer pickupLocation deliveryLocation")
+            .populate("shipper", "name email companyName");
+
+          sendAdminNotification({
+            title: "Payment received",
+            message: `Payment received for shipment ${
+              quote?.shipment?.shipmentCode || quote?.shipment?._id || quoteId
+            }.`,
+            event: "horse_shipt:payment_received",
+            type: "payment_received",
+            data: {
+              quoteId,
+              shipmentId: quote?.shipment?._id,
+              shipmentCode: quote?.shipment?.shipmentCode,
+              shipperId: quote?.shipper?._id,
+              amount: quote?.totalPrice,
+              currency: quote?.currency,
+              stripePaymentIntentId: data.id,
+            },
+          }).catch((error) =>
+            console.error("[ADMIN NOTIFICATION] payment_received failed:", error.message)
+          );
         }
         break;
       }

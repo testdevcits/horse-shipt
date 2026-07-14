@@ -6,5 +6,7 @@ const controller = require("../../controllers/admin/adminNotification.controller
 router.get("/settings", adminAuth, controller.getNotificationSettings);
 router.put("/settings", adminAuth, controller.updateNotificationSettings);
 router.get("/", adminAuth, controller.getNotifications);
+router.delete("/", adminAuth, controller.deleteNotifications);
+router.delete("/:notificationId", adminAuth, controller.deleteNotification);
 
 module.exports = router;

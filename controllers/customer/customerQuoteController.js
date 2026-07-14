@@ -23,6 +23,7 @@ const {
   authResponse,
   generalResponse,
 } = require("../../responses");
+const { sendAdminNotification } = require("../../utils/adminNotifications");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 const destroyQuoteAsset = async (asset) => {
@@ -269,6 +270,26 @@ exports.acceptQuoteWithSignature = async (req, res) => {
         shipmentCode: quote.shipment.shipmentCode,
       },
     });
+
+    sendAdminNotification({
+      title: "Quote accepted",
+      message: `${quote.shipment.customer.name || "A customer"} accepted a quote for shipment ${
+        quote.shipment.shipmentCode || quote.shipment._id
+      }.`,
+      event: "horse_shipt:quote_accepted",
+      type: "quote_accepted",
+      data: {
+        quoteId: quote._id,
+        shipmentId: quote.shipment._id,
+        shipmentCode: quote.shipment.shipmentCode,
+        customerId,
+        shipperId: quote.shipper._id,
+        amount: quote.totalPrice,
+        currency: quote.currency,
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] quote_accepted failed:", error.message)
+    );
 
     // ---------------- RESPONSE ----------------
     const receipt = {

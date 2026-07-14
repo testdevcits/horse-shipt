@@ -1,5 +1,6 @@
 const AdminSettings = require("../../models/admin/AdminSettings");
 const UserNotification = require("../../models/common/UserNotification");
+const mongoose = require("mongoose");
 
 const getAdminSettings = async () => {
   let settings = await AdminSettings.findOne();
@@ -168,6 +169,71 @@ exports.getNotifications = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to fetch admin notifications",
+    });
+  }
+};
+
+const normalizeIds = (ids = []) =>
+  (Array.isArray(ids) ? ids : [])
+    .map((id) => id?.toString?.() || "")
+    .filter((id) => mongoose.Types.ObjectId.isValid(id));
+
+exports.deleteNotifications = async (req, res) => {
+  try {
+    const ids = normalizeIds(req.body?.ids);
+
+    if (!ids.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Select at least one notification",
+      });
+    }
+
+    const result = await UserNotification.deleteMany({ _id: { $in: ids } });
+
+    return res.json({
+      success: true,
+      message: "Notifications deleted successfully",
+      data: { deletedCount: result.deletedCount || 0 },
+    });
+  } catch (error) {
+    console.error("Delete admin notifications error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete notifications",
+    });
+  }
+};
+
+exports.deleteNotification = async (req, res) => {
+  try {
+    const { notificationId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(notificationId)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid notification id",
+      });
+    }
+
+    const deleted = await UserNotification.findByIdAndDelete(notificationId);
+
+    if (!deleted) {
+      return res.status(404).json({
+        success: false,
+        message: "Notification not found",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Notification deleted successfully",
+    });
+  } catch (error) {
+    console.error("Delete admin notification error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete notification",
     });
   }
 };

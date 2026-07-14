@@ -10,6 +10,7 @@ const webpush = require("web-push");
 const mongoose = require("mongoose");
 const crypto = require("crypto");
 const sharp = require("sharp");
+const { sendAdminNotification } = require("../../utils/adminNotifications");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, type = "photo") => {
@@ -376,6 +377,24 @@ exports.createShipment = async (req, res) => {
       shipment.shipmentCode = `HS-SHIP-${year}-${shortId}`;
       await shipment.save();
     }
+
+    sendAdminNotification({
+      title: "New shipment added",
+      message: `${req.user?.name || req.user?.email || "A customer"} added shipment ${
+        shipment.shipmentCode || shipment._id
+      }.`,
+      event: "horse_shipt:shipment_created",
+      type: "shipment_created",
+      data: {
+        shipmentId: shipment._id,
+        shipmentCode: shipment.shipmentCode,
+        customerId,
+        pickupLocation: shipment.pickupLocation,
+        deliveryLocation: shipment.deliveryLocation,
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] shipment_created failed:", error.message)
+    );
 
     return res.status(201).json({
       success: true,
