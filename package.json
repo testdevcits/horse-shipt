@@ -4,7 +4,8 @@
   "main": "server.js",
   "scripts": {
     "start": "NODE_ENV=production node server.js",
-    "dev": "NODE_ENV=development nodemon server.js"
+    "dev": "NODE_ENV=development nodemon server.js",
+    "seed:legal": "node scripts/seedLegalContent.js"
   },
   "keywords": [],
   "author": "",

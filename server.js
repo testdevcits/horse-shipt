@@ -183,6 +183,7 @@ const privacyPolicyRoutes = require("./routes/admin/privacyPolicy.routes");
 const termsConditionRoutes = require("./routes/admin/termsCondition.routes");
 const adminSocialMediaSettingsRoutes = require("./routes/admin/socialMediaSettings.routes");
 const publicSocialMediaSettingsRoutes = require("./routes/common/socialMediaSettings.routes");
+const platformStatsRoutes = require("./routes/common/platformStats.routes");
 const adminNotificationRoutes = require("./routes/admin/adminNotification.routes");
 
 const horseShippingNewsletterRoutes = require("./routes/horseShippingNewsletterRoutes");
@@ -196,6 +197,7 @@ app.use("/api/questions", shipmentQuestionRoutes);
 
 app.use("/api/tracking", shipmentTrackingRoutes);
 app.use("/api/settings/social-media", publicSocialMediaSettingsRoutes);
+app.use("/api/platform-stats", platformStatsRoutes);
 
 // Admin APIs
 app.use("/api/admin", adminRoutes);
