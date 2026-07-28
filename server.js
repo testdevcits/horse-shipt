@@ -52,11 +52,30 @@ app.use((req, res, next) => {
 // -------------------------
 // Allowed Origins
 // -------------------------
-const allowedOrigins = [
+const defaultAllowedOrigins = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "http://192.168.16.42:3000",
   "https://admin-horse-shipt.vercel.app",
   "https://horse-shipt-frontend.vercel.app",
+  "http://3.16.24.236",
+  "http://3.16.24.236:80",
+  "http://3.16.24.236:3000",
+];
+
+const envAllowedOrigins = [
+  process.env.CORS_ORIGIN,
+  process.env.CORS_ORIGINS,
+  process.env.FRONTEND_URL,
+  process.env.REACT_APP_FRONTEND_URL,
+]
+  .filter(Boolean)
+  .flatMap((origin) => origin.split(","))
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const allowedOrigins = [
+  ...new Set([...defaultAllowedOrigins, ...envAllowedOrigins]),
 ];
 
 // -------------------------
@@ -66,29 +85,25 @@ const allowedOrigins = [
 // FORCE CORS HEADERS
 // ==========================
 app.use((req, res, next) => {
-  const allowedOrigins = [
-    "http://localhost:3000",
-    "http://localhost:3001",
-    "http://192.168.16.42:3000",
-    "https://horse-shipt-frontend.vercel.app",
-    "https://admin-horse-shipt.vercel.app",
-  ];
-
   const origin = req.headers.origin;
 
   if (allowedOrigins.includes(origin)) {
     res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Vary", "Origin");
   }
 
   res.setHeader(
     "Access-Control-Allow-Methods",
     "GET,POST,PUT,DELETE,PATCH,OPTIONS"
   );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, X-Requested-With, Accept"
+  );
   res.setHeader("Access-Control-Allow-Credentials", "true");
 
   if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
+    return res.sendStatus(204);
   }
 
   next();

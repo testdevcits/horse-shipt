@@ -3,6 +3,7 @@ const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
+const { isBlockedEmail } = require("../utils/emailDomainPolicy");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const generateUniqueId = require("../utils/generateUniqueId");
@@ -73,6 +74,13 @@ passport.use(
         }
 
         const email = profile.emails?.[0]?.value || `${profile.id}@google.fake`;
+
+        if (isBlockedEmail(email)) {
+          return done(
+            new Error("Temporary or disposable email addresses are not allowed"),
+            null
+          );
+        }
 
         const existingShipper = await Shipper.findOne({ email });
         const existingCustomer = await Customer.findOne({ email });

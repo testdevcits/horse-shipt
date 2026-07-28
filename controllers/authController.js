@@ -7,6 +7,7 @@ const PendingSignup = require("../models/PendingSignup");
 const PasswordResetOtp = require("../models/PasswordResetOtp");
 const generateToken = require("../utils/generateToken");
 const { sendOtpMail, sendPasswordResetOtpMail } = require("../utils/mailService");
+const { isBlockedEmail } = require("../utils/emailDomainPolicy");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ----------------- Utility Functions -----------------
 const getModel = (role) => {
@@ -23,6 +24,12 @@ const getPasswordResetModel = (role) => {
 };
 
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
+
+const blockedEmailResponse = (res) =>
+  res.status(400).json({
+    success: false,
+    errors: ["Temporary or disposable email addresses are not allowed"],
+  });
 
 const generateOtp = () => Math.floor(100000 + Math.random() * 900000).toString();
 
@@ -102,6 +109,10 @@ exports.signup = async (req, res) => {
     }
 
     const email = normalizeEmail(rawEmail);
+
+    if (isBlockedEmail(email)) {
+      return blockedEmailResponse(res);
+    }
 
     const Model = getModel(role);
     if (!Model) {
@@ -224,6 +235,12 @@ exports.verifySignupOtp = async (req, res) => {
     }
 
     const email = normalizeEmail(rawEmail);
+
+    if (isBlockedEmail(email)) {
+      await PendingSignup.deleteMany({ email });
+      return blockedEmailResponse(res);
+    }
+
     const Model = getPasswordResetModel(role);
 
     if (!Model) {
@@ -328,6 +345,11 @@ exports.resendSignupOtp = async (req, res) => {
     }
 
     const email = normalizeEmail(rawEmail);
+
+    if (isBlockedEmail(email)) {
+      await PendingSignup.deleteMany({ email });
+      return blockedEmailResponse(res);
+    }
 
     if (!getModel(role)) {
       return res.status(400).json({
