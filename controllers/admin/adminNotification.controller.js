@@ -178,6 +178,52 @@ const normalizeIds = (ids = []) =>
     .map((id) => id?.toString?.() || "")
     .filter((id) => mongoose.Types.ObjectId.isValid(id));
 
+exports.markNotificationsRead = async (req, res) => {
+  try {
+    const ids = normalizeIds(req.body?.ids);
+    const markAll = req.body?.all === true;
+    const adminId = req.admin?._id || req.admin?.id || req.user?._id;
+    const adminRole = req.admin?.role || req.user?.role;
+
+    if (!adminId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized",
+      });
+    }
+
+    if (!markAll && !ids.length) {
+      return res.status(400).json({
+        success: false,
+        message: "Select at least one notification",
+      });
+    }
+
+    const query = {
+      user: adminId,
+      role: adminRole,
+      read: false,
+      ...(markAll ? {} : { _id: { $in: ids } }),
+    };
+
+    const result = await UserNotification.updateMany(query, {
+      $set: { read: true },
+    });
+
+    return res.json({
+      success: true,
+      message: "Notifications marked as read",
+      data: { modifiedCount: result.modifiedCount || 0 },
+    });
+  } catch (error) {
+    console.error("Mark admin notifications read error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to mark notifications read",
+    });
+  }
+};
+
 exports.deleteNotifications = async (req, res) => {
   try {
     const ids = normalizeIds(req.body?.ids);
