@@ -1,3 +1,5 @@
+const { buildFrontendUrl } = require("./frontendUrl");
+
 const getCallbackURL = () => {
   return process.env.NODE_ENV === "production"
     ? process.env.GOOGLE_REDIRECT_URI_PROD
@@ -80,15 +82,13 @@ passport.use(
         // ---------- Generate JWT ----------
         const token = generateToken({ id: user._id, role: user.role });
 
-        const redirectUrl = `${
-          process.env.FRONTEND_URL
-        }/login?token=${token}&id=${user._id}&role=${
+        const redirectUrl = buildFrontendUrl(`/login?token=${token}&id=${user._id}&role=${
           user.role
         }&name=${encodeURIComponent(user.name)}&email=${encodeURIComponent(
           user.email
         )}&photo=${encodeURIComponent(
           user.profilePicture || ""
-        )}&provider=google&providerId=${profile.id}`;
+        )}&provider=google&providerId=${profile.id}`);
 
         done(null, { redirectUrl });
       } catch (err) {

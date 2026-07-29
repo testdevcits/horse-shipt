@@ -4,6 +4,7 @@ const Shipper = require("../models/shipper/shipperModel");
 const Customer = require("../models/customer/customerModel");
 const generateToken = require("../utils/generateToken");
 const { isBlockedEmail } = require("../utils/emailDomainPolicy");
+const { buildFrontendUrl } = require("../utils/frontendUrl");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
 const generateUniqueId = require("../utils/generateUniqueId");
@@ -163,7 +164,7 @@ passport.use(
           photo: user.profilePicture || "",
         });
 
-        const redirectUrl = `${process.env.FRONTEND_URL}/oauth-success?${params.toString()}`;
+        const redirectUrl = buildFrontendUrl(`/oauth-success?${params.toString()}`);
 
         done(null, { redirectUrl });
       } catch (err) {

@@ -1,6 +1,7 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
+const { getFrontendUrl } = require("./frontendUrl");
 
 const sendQuoteEmail = async (shipperId, subject, data) => {
   try {
@@ -25,7 +26,7 @@ const sendQuoteEmail = async (shipperId, subject, data) => {
       title: "Quote Sent Successfully",
       preheader: `Shipment ${data?.shipmentCode || ""} quote was sent.`,
       buttonText: "View Dashboard",
-      buttonUrl: process.env.FRONTEND_URL,
+      buttonUrl: getFrontendUrl(),
       body: `
         <p>Hello <strong>${escapeHtml(shipper.name || "Shipper")}</strong>,</p>
         <p>Your quote has been sent to the customer. We will notify you when they respond.</p>

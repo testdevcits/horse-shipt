@@ -1,6 +1,7 @@
 // utils/notifyQuote/notifyQuote.js
 const { sendEmail } = require("./sendEmail");
 const { sendSMS } = require("./sendSMS");
+const { buildFrontendUrl } = require("../frontendUrl");
 
 /**
  * Format phone to E.164 (+91XXXXXXXXXX)
@@ -73,7 +74,7 @@ const notifyQuote = async ({
     // ---------------- SMS ----------------
     if (phoneToUse) {
       try {
-        const message = `Hi ${customerName}, your quote for ${shipment.shipmentCode} is accepted. Amount: ${quote.totalPrice} ${quote.currency}. View here: https://horse-shipt-frontend.vercel.app/shipper/shipments`;
+        const message = `Hi ${customerName}, your quote for ${shipment.shipmentCode} is accepted. Amount: ${quote.totalPrice} ${quote.currency}. View here: ${buildFrontendUrl("/shipper/shipments")}`;
 
         await sendSMS({ phone: phoneToUse, message });
       } catch (smsError) {

@@ -3,15 +3,16 @@ const passport = require("passport");
 
 const router = express.Router();
 const authController = require("../controllers/authController");
+const { buildFrontendUrl } = require("../utils/frontendUrl");
 
 // ------------------------
 // OAuth Error Redirect
 // ------------------------
 const redirectOAuthError = (res, message) => {
   return res.redirect(
-    `${process.env.FRONTEND_URL}/oauth-error?message=${encodeURIComponent(
+    buildFrontendUrl(`/oauth-error?message=${encodeURIComponent(
       message || "Authentication failed"
-    )}`
+    )}`)
   );
 };
 

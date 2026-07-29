@@ -1,5 +1,6 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
+const { getFrontendUrl } = require("./frontendUrl");
 
 const sendSubscriptionEmail = async ({
   shipperId,
@@ -60,7 +61,7 @@ const sendSubscriptionEmail = async ({
         </div>
 
         <div style="margin:20px 0;">
-          <a href="${process.env.FRONTEND_URL}"
+          <a href="${getFrontendUrl()}"
              style="background:#BF9B53;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;">
             Go to Dashboard
           </a>

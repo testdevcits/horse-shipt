@@ -1,6 +1,7 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
+const { getFrontendUrl } = require("./frontendUrl");
 
 /**
  * Send email to a shipper by ID
@@ -38,7 +39,7 @@ const sendShipperEmail = async (shipperId, subject, text) => {
         preheader: text,
         body: `<p>${escapeHtml(text).replace(/\n/g, "<br/>")}</p>`,
         buttonText: "Open Horse Shipt",
-        buttonUrl: process.env.FRONTEND_URL,
+        buttonUrl: getFrontendUrl(),
       }),
     });
   } catch (error) {

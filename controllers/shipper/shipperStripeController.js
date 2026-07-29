@@ -13,6 +13,7 @@ const {
   sendSubscriptionEmail,
 } = require("../../utils/subscriptionEmailService");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
+const { buildFrontendUrl } = require("../../utils/frontendUrl");
 
 const LIVE_SUBSCRIPTION_STATUSES = [
   "active",
@@ -140,11 +141,9 @@ exports.createOnboardingLink = async (req, res) => {
     const accountLink = await stripe.accountLinks.create({
       account: shipper.stripeAccountId,
 
-      refresh_url:
-        "https://horse-shipt-frontend.vercel.app/shipper/dashboard?stripe=refresh",
+      refresh_url: buildFrontendUrl("/shipper/dashboard?stripe=refresh"),
 
-      return_url:
-        "https://horse-shipt-frontend.vercel.app/shipper/dashboard?stripe=success",
+      return_url: buildFrontendUrl("/shipper/dashboard?stripe=success"),
 
       type: "account_onboarding",
 

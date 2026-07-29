@@ -11,6 +11,7 @@ const mongoose = require("mongoose");
 const crypto = require("crypto");
 const sharp = require("sharp");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
+const { buildFrontendUrl, getFrontendUrl } = require("../../utils/frontendUrl");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, type = "photo") => {
@@ -1016,7 +1017,7 @@ exports.getSingleShipmentForMap = async (req, res) => {
 // ===================== PUBLISH SHIPMENT =====================
 // ============================================================
 const logoUrl = `${process.env.BACKEND_URL}/assets/logo.png`;
-const FRONTEND_URL = process.env.FRONTEND_URL;
+const FRONTEND_URL = getFrontendUrl();
 
 const ENCRYPTION_KEY =
   process.env.EMAIL_ENCRYPTION_KEY || process.env.ENCRYPTION_KEY;
@@ -1145,7 +1146,7 @@ const sendRecipientInviteEmail = async ({
           <p style="font-size:12px; color:#777;">
             Link expires in 24 hours. To track more shipments, please sign up.
             <br/>
-            <a href="${process.env.FRONTEND_URL}/signup">Sign Up</a>
+            <a href="${buildFrontendUrl("/signup")}">Sign Up</a>
           </p>
         </div>
 
@@ -1231,7 +1232,7 @@ exports.publishShipment = async (req, res) => {
           throw new Error("Email encryption failed");
         }
 
-        const link = `${process.env.FRONTEND_URL}/invite/${token}?e=${encryptedEmail}`;
+        const link = buildFrontendUrl(`/invite/${token}?e=${encryptedEmail}`);
 
         await sendRecipientInviteEmail({
           email: normalizedEmail,

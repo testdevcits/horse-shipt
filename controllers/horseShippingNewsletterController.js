@@ -8,6 +8,7 @@ const { baseTemplate, escapeHtml } = require("../utils/mailTemplates/baseTemplat
 const { buildPagination, sendPaginated } = require("../utils/adminQuery");
 const { successResponse, errorResponse } = require("../utils/responseHandler");
 const { newsletterResponse, generalResponse } = require("../responses");
+const { buildFrontendUrl } = require("../utils/frontendUrl");
 
 // ================= Email Template =================
 const sendEmail = async ({ email, link }) => {
@@ -65,7 +66,7 @@ exports.subscribeNewsletter = async (req, res) => {
       });
     }
 
-    const verifyLink = `${process.env.FRONTEND_URL}/verify?token=${token}`;
+    const verifyLink = buildFrontendUrl(`/verify?token=${token}`);
 
     await sendEmail({ email, link: verifyLink });
 
