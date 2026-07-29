@@ -1,5 +1,21 @@
 const trimTrailingSlash = (value = "") => String(value).replace(/\/+$/, "");
 
+const normalizePublicFrontendUrl = (value = "") => {
+  const trimmedUrl = trimTrailingSlash(value);
+
+  try {
+    const url = new URL(trimmedUrl);
+    if (url.hostname === "52.14.251.189" && url.port === "4000") {
+      url.port = "";
+      return trimTrailingSlash(url.toString());
+    }
+  } catch {
+    return trimmedUrl;
+  }
+
+  return trimmedUrl;
+};
+
 const getFrontendUrl = () => {
   const appEnv =
     process.env.APP_ENV ||
@@ -16,7 +32,7 @@ const getFrontendUrl = () => {
         "https://horse-shipt-frontend.vercel.app"
       : "http://52.14.251.189");
 
-  return trimTrailingSlash(selectedUrl);
+  return normalizePublicFrontendUrl(selectedUrl);
 };
 
 const buildFrontendUrl = (path = "") => {

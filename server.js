@@ -267,16 +267,27 @@ app.use((err, req, res, next) => {
 // HTTP SERVER + SOCKET.IO
 // =================================================
 const server = http.createServer(app);
+const SOCKET_PATH = process.env.SOCKET_PATH || "/socket.io";
 
 const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     credentials: true,
-    methods: ["GET", "POST", "PUT"],
+    methods: ["GET", "POST", "PUT", "OPTIONS"],
   },
-  transports: ["websocket", "polling"],
-  path: "/socket.io",
+  transports: ["polling", "websocket"],
+  path: SOCKET_PATH,
   maxHttpBufferSize: 10 * 1024 * 1024,
+  pingTimeout: 30000,
+  pingInterval: 25000,
+});
+
+io.engine.on("connection_error", (err) => {
+  console.warn("[SOCKET CONNECTION ERROR]", {
+    code: err.code,
+    message: err.message,
+    context: err.context,
+  });
 });
 
 // Make io accessible
