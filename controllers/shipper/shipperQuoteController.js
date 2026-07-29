@@ -12,6 +12,7 @@ const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 const { emitToUser } = require("../../sockets/realtimeSocket");
+const { sendAdminNotification } = require("../../utils/adminNotifications");
 
 // ==========================================================
 // SHIPPER CANCEL QUOTE / ASSIGNED SHIPMENT
@@ -162,6 +163,25 @@ exports.shipperCancelQuote = async (req, res) => {
         message: apiResponse.A_SHIPPER_CANCELLED_AN_ACCEPTED_QUOTE,
       },
     });
+
+    sendAdminNotification({
+      title: "Quote cancelled by shipper",
+      message: `${shipper.name || "A shipper"} cancelled an accepted quote for ${
+        shipment.shipmentCode || "a shipment"
+      }.`,
+      event: "horse_shipt:quote_cancelled",
+      type: "quote_cancelled",
+      data: {
+        quoteId: quote._id,
+        shipmentId: shipment._id,
+        shipmentCode: shipment.shipmentCode,
+        shipperId,
+        customerId: shipment.customer,
+        cancelledBy: "shipper",
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] quote_cancelled failed:", error.message)
+    );
 
     return res.status(200).json({
       success: true,
@@ -453,6 +473,26 @@ exports.addQuote = async (req, res) => {
       },
     });
 
+    sendAdminNotification({
+      title: "New quote submitted",
+      message: `${shipper.name || "A shipper"} submitted a quote for ${
+        shipmentExists.shipmentCode || "a shipment"
+      }.`,
+      event: "horse_shipt:quote_created",
+      type: "quote_created",
+      data: {
+        quoteId: quote._id,
+        shipmentId: shipmentExists._id,
+        shipmentCode: shipmentExists.shipmentCode,
+        shipperId,
+        customerId: shipmentExists.customer._id,
+        amount: quote.totalPrice,
+        currency: quote.currency,
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] quote_created failed:", error.message)
+    );
+
     return res.status(201).json({
       success: true,
       message: apiResponse.QUOTE_SENT_SUCCESSFULLY,
@@ -594,6 +634,29 @@ exports.assignVehicleToQuote = async (req, res) => {
         }.`,
       },
     });
+
+    sendAdminNotification({
+      title: "Vehicle assigned",
+      message: `A vehicle was assigned for ${
+        shipmentForQuote?.shipmentCode || "a shipment"
+      }.`,
+      event: "horse_shipt:quote_vehicle_assigned",
+      type: "vehicle_assigned",
+      data: {
+        quoteId: quote._id,
+        shipmentId: quote.shipment,
+        shipmentCode: shipmentForQuote?.shipmentCode,
+        shipperId,
+        customerId: shipmentForQuote?.customer,
+        vehicleId,
+        driverId: vehicle.driver?._id,
+      },
+    }).catch((error) =>
+      console.error(
+        "[ADMIN NOTIFICATION] quote_vehicle_assigned failed:",
+        error.message
+      )
+    );
 
     return res.status(200).json({
       success: true,
@@ -813,6 +876,26 @@ exports.deleteQuote = async (req, res) => {
         }.`,
       },
     });
+
+    sendAdminNotification({
+      title: "Quote removed by shipper",
+      message: `A shipper removed a quote for ${
+        quote.shipment?.shipmentCode || "a shipment"
+      }.`,
+      event: "horse_shipt:quote_cancelled",
+      type: "quote_cancelled",
+      data: {
+        quoteId,
+        shipmentId,
+        shipmentCode: quote.shipment?.shipmentCode,
+        shipperId,
+        customerId,
+        cancelledBy: "shipper",
+        deleted: true,
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] quote_deleted failed:", error.message)
+    );
 
     // ---------------- RESPONSE ----------------
     return res.status(200).json({

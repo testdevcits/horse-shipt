@@ -478,6 +478,26 @@ exports.rejectQuote = async (req, res) => {
       },
     });
 
+    sendAdminNotification({
+      title: "Quote rejected",
+      message: `A customer rejected a quote for ${
+        quote.shipment.shipmentCode || "a shipment"
+      }.`,
+      event: "horse_shipt:quote_rejected",
+      type: "quote_rejected",
+      data: {
+        quoteId: quote._id,
+        shipmentId,
+        shipmentCode: quote.shipment.shipmentCode,
+        customerId,
+        shipperId,
+        reason: cancelReason,
+        deleted: true,
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] quote_rejected failed:", error.message)
+    );
+
     return successResponse(
       res,
       200,
@@ -829,6 +849,24 @@ exports.cancelQuote = async (req, res) => {
         message: apiResponse.A_CUSTOMER_CANCELLED_A_QUOTE,
       },
     });
+
+    sendAdminNotification({
+      title: "Quote cancelled",
+      message: "A customer cancelled a quote.",
+      event: "horse_shipt:quote_cancelled",
+      type: "quote_cancelled",
+      data: {
+        quoteId: quote._id,
+        shipmentId: quote.shipment._id,
+        customerId,
+        shipperId: quote.shipper,
+        cancelledBy: "customer",
+        refundAmount,
+        refundStatus,
+      },
+    }).catch((error) =>
+      console.error("[ADMIN NOTIFICATION] quote_cancelled failed:", error.message)
+    );
 
     /* ---------------- RESPONSE ---------------- */
     return res.status(200).json({
