@@ -1,15 +1,20 @@
 const trimTrailingSlash = (value = "") => String(value).replace(/\/+$/, "");
 
 const getFrontendUrl = () => {
-  const isProduction = process.env.NODE_ENV === "production";
+  const appEnv =
+    process.env.APP_ENV ||
+    process.env.BACKEND_ENV ||
+    process.env.NODE_ENV ||
+    "";
+  const isDevelopment = appEnv === "development";
 
-  const selectedUrl = isProduction
-    ? process.env.PRODUCTION_FRONTEND_URL ||
-      process.env.FRONTEND_URL ||
-      "http://52.14.251.189:4000"
-    : process.env.DEVELOPMENT_FRONTEND_URL ||
-      process.env.FRONTEND_URL ||
-      "https://horse-shipt-frontend.vercel.app";
+  const selectedUrl =
+    process.env.PRODUCTION_FRONTEND_URL ||
+    process.env.FRONTEND_URL ||
+    (isDevelopment
+      ? process.env.DEVELOPMENT_FRONTEND_URL ||
+        "https://horse-shipt-frontend.vercel.app"
+      : "http://52.14.251.189:4000");
 
   return trimTrailingSlash(selectedUrl);
 };
