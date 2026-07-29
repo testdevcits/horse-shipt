@@ -61,6 +61,7 @@ const defaultAllowedOrigins = [
   "http://52.14.251.189",
   "http://52.14.251.189:80",
   "http://52.14.251.189:3000",
+  "http://52.14.251.189:5000",
 ];
 
 const envAllowedOrigins = [
@@ -283,6 +284,7 @@ app.set("io", io);
 // Attach socket logic
 require("./sockets/chatSocket")(io);
 require("./sockets/realtimeSocket")(io);
+require("./sockets/invitationSocket")(io);
 
 // -------------------------
 // Start Server
