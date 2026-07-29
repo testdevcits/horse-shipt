@@ -715,7 +715,10 @@ exports.deleteQuote = async (req, res) => {
     }
 
     // ---------------- FETCH QUOTE ----------------
-    const quote = await ShipmentQuote.findById(quoteId);
+    const quote = await ShipmentQuote.findById(quoteId).populate(
+      "shipment",
+      "customer shipmentCode"
+    );
 
     if (!quote) {
       return res.status(404).json({
@@ -764,8 +767,52 @@ exports.deleteQuote = async (req, res) => {
       }
     }
 
+    const quoteSnapshot = quote.toObject ? quote.toObject() : quote;
+    const customerId = quote.shipment?.customer;
+    const shipmentId = quote.shipment?._id || quote.shipment;
+
     // ---------------- DELETE QUOTE ----------------
-    await ShipmentQuote.findByIdAndDelete(quoteId);
+    const deleteOperations = [
+      ShipmentQuote.findByIdAndDelete(quoteId),
+    ];
+
+    if (shipmentId) {
+      deleteOperations.push(
+        CustomerQuote.deleteMany({
+          shipmentId,
+          shipperId,
+        })
+      );
+    }
+
+    await Promise.all(deleteOperations);
+
+    emitToUser(req.app.get("io"), {
+      role: "customer",
+      userId: customerId,
+      event: "horse_shipt:quote_cancelled",
+      payload: {
+        quote: {
+          ...quoteSnapshot,
+          status: "rejected",
+          isDeleted: true,
+          cancelReason: "Deleted by shipper",
+        },
+        quoteId,
+        deleted: true,
+        quoteStatus: "deleted",
+        shipmentId,
+        shipmentCode: quote.shipment?.shipmentCode,
+        cancelledBy: "shipper",
+      },
+      notification: {
+        type: "quote_cancelled",
+        title: "Quote removed",
+        message: `A shipper removed their quote for ${
+          quote.shipment?.shipmentCode || "your shipment"
+        }.`,
+      },
+    });
 
     // ---------------- RESPONSE ----------------
     return res.status(200).json({

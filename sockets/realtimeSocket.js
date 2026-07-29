@@ -1,5 +1,6 @@
 const getUserRoom = ({ role, userId }) => `horse_shipt:${role}:${userId}`;
 const getShipmentRoom = (shipmentId) => `horse_shipt:shipment:${shipmentId}`;
+const ADMIN_ROOM = "horse_shipt:admin";
 const UserNotification = require("../models/common/UserNotification");
 const {
   isInAppNotificationEnabled,
@@ -78,10 +79,15 @@ module.exports = (io) => {
       if (!shipmentId) return;
       socket.join(getShipmentRoom(shipmentId));
     });
+
+    socket.on("horse_shipt:join_admin_room", () => {
+      socket.join(ADMIN_ROOM);
+    });
   });
 };
 
 module.exports.getUserRoom = getUserRoom;
 module.exports.getShipmentRoom = getShipmentRoom;
+module.exports.ADMIN_ROOM = ADMIN_ROOM;
 module.exports.emitToUser = emitToUser;
 module.exports.emitToShipment = emitToShipment;

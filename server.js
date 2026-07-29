@@ -281,6 +281,7 @@ const io = new Server(server, {
 
 // Make io accessible
 app.set("io", io);
+require("./utils/adminNotifications").setAdminNotificationIo(io);
 
 // Attach socket logic
 require("./sockets/chatSocket")(io);

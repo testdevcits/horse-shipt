@@ -3,6 +3,13 @@ const AdminSettings = require("../models/admin/AdminSettings");
 const UserNotification = require("../models/common/UserNotification");
 const transporter = require("./transporter");
 const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
+const { ADMIN_ROOM } = require("../sockets/realtimeSocket");
+
+let notificationIo = null;
+
+const setAdminNotificationIo = (io) => {
+  notificationIo = io;
+};
 
 const getAdminNotificationSettings = async () => {
   let settings = await AdminSettings.findOne();
@@ -35,8 +42,10 @@ const sendAdminNotification = async ({
 
   if (!admins.length) return { inApp: false, email: false };
 
+  let createdNotifications = [];
+
   if (settings.inApp) {
-    await UserNotification.insertMany(
+    createdNotifications = await UserNotification.insertMany(
       admins.map((admin) => ({
         role: admin.role,
         user: admin._id,
@@ -47,6 +56,20 @@ const sendAdminNotification = async ({
         data,
       }))
     );
+
+    if (notificationIo) {
+      notificationIo.to(ADMIN_ROOM).emit("horse_shipt:admin_notification", {
+        event,
+        type,
+        title,
+        message,
+        data,
+        notifications: createdNotifications.map((item) =>
+          item.toObject ? item.toObject() : item
+        ),
+        createdAt: new Date().toISOString(),
+      });
+    }
   }
 
   if (settings.email) {
@@ -77,4 +100,5 @@ const sendAdminNotification = async ({
 module.exports = {
   getAdminNotificationSettings,
   sendAdminNotification,
+  setAdminNotificationIo,
 };

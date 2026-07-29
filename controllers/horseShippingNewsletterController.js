@@ -9,6 +9,17 @@ const { buildPagination, sendPaginated } = require("../utils/adminQuery");
 const { successResponse, errorResponse } = require("../utils/responseHandler");
 const { newsletterResponse, generalResponse } = require("../responses");
 const { buildFrontendUrl } = require("../utils/frontendUrl");
+const { sendAdminNotification } = require("../utils/adminNotifications");
+const { ADMIN_ROOM } = require("../sockets/realtimeSocket");
+
+const emitNewsletterUpdate = (req, payload) => {
+  const io = req.app.get("io");
+  if (!io) return;
+  io.to(ADMIN_ROOM).emit("horse_shipt:newsletter_updated", {
+    ...payload,
+    createdAt: new Date().toISOString(),
+  });
+};
 
 // ================= Email Template =================
 const sendEmail = async ({ email, link }) => {
@@ -70,6 +81,26 @@ exports.subscribeNewsletter = async (req, res) => {
 
     await sendEmail({ email, link: verifyLink });
 
+    emitNewsletterUpdate(req, {
+      action: existingUser ? "resubscribed" : "subscribed",
+      subscriber: {
+        _id: user._id,
+        email: user.email,
+        isVerified: user.isVerified,
+      },
+    });
+
+    await sendAdminNotification({
+      title: "Newsletter subscriber",
+      message: `${email} subscribed to the newsletter.`,
+      event: "newsletter_subscribed",
+      type: "newsletter",
+      data: {
+        subscriberId: user._id,
+        email: user.email,
+      },
+    });
+
     return successResponse(res, 200, newsletterResponse.VERIFICATION_SENT);
   } catch (error) {
     console.error("[ERROR] Subscribe Error:", error);
@@ -100,6 +131,26 @@ exports.verifyEmail = async (req, res) => {
     user.verificationToken = null;
     user.tokenExpiry = null;
     await user.save();
+
+    emitNewsletterUpdate(req, {
+      action: "verified",
+      subscriber: {
+        _id: user._id,
+        email: user.email,
+        isVerified: user.isVerified,
+      },
+    });
+
+    await sendAdminNotification({
+      title: "Newsletter verified",
+      message: `${user.email} verified newsletter subscription.`,
+      event: "newsletter_verified",
+      type: "newsletter",
+      data: {
+        subscriberId: user._id,
+        email: user.email,
+      },
+    });
 
     return successResponse(res, 200, newsletterResponse.VERIFIED);
   } catch (error) {
@@ -181,6 +232,23 @@ exports.deleteSubscriber = async (req, res) => {
         );
       }
 
+      emitNewsletterUpdate(req, {
+        action: "deleted_many",
+        deletedCount: result.deletedCount,
+        ids,
+      });
+
+      await sendAdminNotification({
+        title: "Newsletter subscribers deleted",
+        message: `${result.deletedCount} newsletter subscriber(s) deleted.`,
+        event: "newsletter_deleted",
+        type: "newsletter",
+        data: {
+          deletedCount: result.deletedCount,
+          ids,
+        },
+      });
+
       return successResponse(
         res,
         200,
@@ -195,6 +263,26 @@ exports.deleteSubscriber = async (req, res) => {
       if (!user) {
         return errorResponse(res, 404, newsletterResponse.SUBSCRIBER_NOT_FOUND);
       }
+
+      emitNewsletterUpdate(req, {
+        action: "deleted",
+        subscriber: {
+          _id: user._id,
+          email: user.email,
+          isVerified: user.isVerified,
+        },
+      });
+
+      await sendAdminNotification({
+        title: "Newsletter subscriber deleted",
+        message: `${user.email} was removed from newsletter subscribers.`,
+        event: "newsletter_deleted",
+        type: "newsletter",
+        data: {
+          subscriberId: user._id,
+          email: user.email,
+        },
+      });
 
       return successResponse(res, 200, newsletterResponse.SUBSCRIBER_DELETED);
     }
@@ -286,6 +374,23 @@ exports.sendNewsletter = async (req, res) => {
       sentCount: succeeded.length,
       failedCount: failed.length,
     };
+
+    emitNewsletterUpdate(req, {
+      action: "sent",
+      subject: subject.trim(),
+      ...deliverySummary,
+    });
+
+    await sendAdminNotification({
+      title: "Newsletter sent",
+      message: `Newsletter "${subject.trim()}" sent to ${succeeded.length} subscriber(s).`,
+      event: "newsletter_sent",
+      type: "newsletter",
+      data: {
+        subject: subject.trim(),
+        ...deliverySummary,
+      },
+    });
 
     return successResponse(
       res,
