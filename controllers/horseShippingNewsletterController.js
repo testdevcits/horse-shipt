@@ -238,17 +238,6 @@ exports.deleteSubscriber = async (req, res) => {
         ids,
       });
 
-      await sendAdminNotification({
-        title: "Newsletter subscribers deleted",
-        message: `${result.deletedCount} newsletter subscriber(s) deleted.`,
-        event: "newsletter_deleted",
-        type: "newsletter",
-        data: {
-          deletedCount: result.deletedCount,
-          ids,
-        },
-      });
-
       return successResponse(
         res,
         200,
@@ -270,17 +259,6 @@ exports.deleteSubscriber = async (req, res) => {
           _id: user._id,
           email: user.email,
           isVerified: user.isVerified,
-        },
-      });
-
-      await sendAdminNotification({
-        title: "Newsletter subscriber deleted",
-        message: `${user.email} was removed from newsletter subscribers.`,
-        event: "newsletter_deleted",
-        type: "newsletter",
-        data: {
-          subscriberId: user._id,
-          email: user.email,
         },
       });
 

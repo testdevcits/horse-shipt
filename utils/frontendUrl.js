@@ -14,7 +14,7 @@ const getFrontendUrl = () => {
     (isDevelopment
       ? process.env.DEVELOPMENT_FRONTEND_URL ||
         "https://horse-shipt-frontend.vercel.app"
-      : "http://52.14.251.189:4000");
+      : "http://52.14.251.189");
 
   return trimTrailingSlash(selectedUrl);
 };
