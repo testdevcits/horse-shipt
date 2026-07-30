@@ -48,6 +48,18 @@ exports.shipperCancelQuote = async (req, res) => {
     }
 
     const shipment = await CustomerShipment.findById(quote.shipment._id);
+
+    if (
+      quote.tripStatus === "completed" ||
+      shipment?.status === "delivered" ||
+      shipment?.status === "completed"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Completed shipment cannot be cancelled.",
+      });
+    }
+
     const shipper = await Shipper.findById(shipperId);
 
     if (!shipper?.stripeCustomerId || !shipper?.paymentMethodId) {
