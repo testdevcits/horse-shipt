@@ -60,6 +60,7 @@ exports.getShipperById = async (req, res) => {
     const driverPaging = buildNamedPagination(req.query, "driver", 5);
     const areaPaging = buildNamedPagination(req.query, "area", 5);
     const contractPaging = buildNamedPagination(req.query, "contract", 5);
+    const payoutPaging = buildNamedPagination(req.query, "payout", 5);
 
     const shipper = await Shipper.findById(id).select("-password");
 
@@ -82,6 +83,9 @@ exports.getShipperById = async (req, res) => {
       preferredAreasTotal,
       contracts,
       contractsTotal,
+      payoutHistory,
+      payoutHistoryTotal,
+      payoutSummary,
     ] =
       await Promise.all([
         CustomerShipment.find({ shipper: id })
@@ -121,6 +125,93 @@ exports.getShipperById = async (req, res) => {
           .skip(contractPaging.skip)
           .limit(contractPaging.limit),
         ShipperContract.countDocuments({ shipper: id }),
+        ShipmentQuote.find({
+          shipper: id,
+          paymentStatus: "paid",
+          tripStatus: "completed",
+        })
+          .populate({
+            path: "shipment",
+            select: "shipmentCode pickupLocation deliveryLocation status deliveredAt customer",
+            populate: { path: "customer", select: "name email uniqueId" },
+          })
+          .sort({ paymentReleasedAt: -1, updatedAt: -1 })
+          .skip(payoutPaging.skip)
+          .limit(payoutPaging.limit)
+          .lean(),
+        ShipmentQuote.countDocuments({
+          shipper: id,
+          paymentStatus: "paid",
+          tripStatus: "completed",
+        }),
+        ShipmentQuote.aggregate([
+          {
+            $match: {
+              shipper: shipper._id,
+              paymentStatus: "paid",
+              tripStatus: "completed",
+            },
+          },
+          {
+            $group: {
+              _id: null,
+              totalShipments: { $sum: 1 },
+              transferredShipments: {
+                $sum: {
+                  $cond: [{ $eq: ["$payoutStatus", "transferred"] }, 1, 0],
+                },
+              },
+              pendingShipments: {
+                $sum: {
+                  $cond: [{ $ne: ["$payoutStatus", "transferred"] }, 1, 0],
+                },
+              },
+              grossPaid: { $sum: { $ifNull: ["$totalPrice", 0] } },
+              stripeFees: { $sum: { $ifNull: ["$stripeFee", 0] } },
+              platformFees: { $sum: { $ifNull: ["$platformFee", 0] } },
+              shipperPayouts: {
+                $sum: {
+                  $cond: [
+                    { $gt: [{ $ifNull: ["$shipperPayoutAmount", 0] }, 0] },
+                    "$shipperPayoutAmount",
+                    {
+                      $cond: [
+                        {
+                          $gt: [
+                            {
+                              $subtract: [
+                                {
+                                  $subtract: [
+                                    { $ifNull: ["$totalPrice", 0] },
+                                    { $ifNull: ["$stripeFee", 0] },
+                                  ],
+                                },
+                                { $ifNull: ["$platformFee", 0] },
+                              ],
+                            },
+                            0,
+                          ],
+                        },
+                        {
+                          $subtract: [
+                            {
+                              $subtract: [
+                                { $ifNull: ["$totalPrice", 0] },
+                                { $ifNull: ["$stripeFee", 0] },
+                              ],
+                            },
+                            { $ifNull: ["$platformFee", 0] },
+                          ],
+                        },
+                        0,
+                      ],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+        ]),
       ]);
 
     res.status(200).json({
@@ -133,6 +224,16 @@ exports.getShipperById = async (req, res) => {
         drivers,
         preferredAreas,
         contracts,
+        payoutHistory,
+        payoutSummary: payoutSummary[0] || {
+          totalShipments: 0,
+          transferredShipments: 0,
+          pendingShipments: 0,
+          grossPaid: 0,
+          stripeFees: 0,
+          platformFees: 0,
+          shipperPayouts: 0,
+        },
         pagination: {
           shipments: buildPaginationMeta({
             total: shipmentsTotal,
@@ -163,6 +264,11 @@ exports.getShipperById = async (req, res) => {
             total: contractsTotal,
             page: contractPaging.page,
             limit: contractPaging.limit,
+          }),
+          payoutHistory: buildPaginationMeta({
+            total: payoutHistoryTotal,
+            page: payoutPaging.page,
+            limit: payoutPaging.limit,
           }),
         },
       },

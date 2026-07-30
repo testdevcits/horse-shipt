@@ -985,8 +985,12 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
       quote.stripeTransferId = transfer.id;
       quote.payoutStatus = "transferred";
       quote.paymentReleasedAt = new Date();
+      quote.stripeFee = stripeFeeCents / 100;
       quote.platformFee = platformFee / 100;
+      quote.shipperPayoutAmount = Math.max(shipperCents, 0) / 100;
+      quote.payoutCurrency = balanceTx.currency?.toUpperCase?.() || "USD";
       quote.balanceInWallet = 0;
+      quote.payoutError = "";
     } catch (err) {
 
       quote.payoutStatus = "pending";
