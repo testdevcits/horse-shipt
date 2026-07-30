@@ -1,4 +1,5 @@
 const { apiResponse } = require("../../responses/api.response");
+const Stripe = require("stripe");
 const Shipper = require("../../models/shipper/shipperModel");
 const Driver = require("../../models/shipper/Driver");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
@@ -12,6 +13,54 @@ const {
   buildPaginationMeta,
   sendPaginated,
 } = require("../../utils/adminQuery");
+
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+const getQuotePayoutAmount = (quote = {}) => {
+  const storedPayout = Number(quote.shipperPayoutAmount || 0);
+  if (storedPayout > 0) return storedPayout;
+
+  return Math.max(
+    Number(quote.totalPrice || 0) -
+      Number(quote.stripeFee || 0) -
+      Number(quote.platformFee || 0),
+    0
+  );
+};
+
+const enrichPayoutHistory = async (quotes = []) =>
+  Promise.all(
+    quotes.map(async (quote) => {
+      const payout = getQuotePayoutAmount(quote);
+      const hasStoredStripeFee = Number(quote.stripeFee || 0) > 0;
+
+      if (!stripe || hasStoredStripeFee || !quote.stripeTransferId) {
+        return { ...quote, shipperPayoutAmount: payout };
+      }
+
+      try {
+        const transfer = await stripe.transfers.retrieve(quote.stripeTransferId);
+        const transferAmount = Number(transfer.amount || 0) / 100;
+        const stripeFee = Math.max(
+          Number(quote.totalPrice || 0) -
+            Number(quote.platformFee || 0) -
+            transferAmount,
+          0
+        );
+
+        return {
+          ...quote,
+          stripeFee,
+          shipperPayoutAmount: transferAmount,
+          payoutCurrency: transfer.currency?.toUpperCase?.() || quote.currency,
+        };
+      } catch (error) {
+        return { ...quote, shipperPayoutAmount: payout };
+      }
+    })
+  );
 
 // ================================
 //  GET ALL SHIPPERS
@@ -213,6 +262,7 @@ exports.getShipperById = async (req, res) => {
           },
         ]),
       ]);
+    const enrichedPayoutHistory = await enrichPayoutHistory(payoutHistory);
 
     res.status(200).json({
       success: true,
@@ -224,7 +274,7 @@ exports.getShipperById = async (req, res) => {
         drivers,
         preferredAreas,
         contracts,
-        payoutHistory,
+        payoutHistory: enrichedPayoutHistory,
         payoutSummary: payoutSummary[0] || {
           totalShipments: 0,
           transferredShipments: 0,

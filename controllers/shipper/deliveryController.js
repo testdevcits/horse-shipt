@@ -338,6 +338,71 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
 
     const limit = parseInt(req.query.limit) || 10;
     const startingAfter = req.query.starting_after || null;
+    const query = {
+      shipper: req.user.id,
+      paymentStatus: "paid",
+      tripStatus: "completed",
+      payoutStatus: "transferred",
+    };
+
+    if (startingAfter) {
+      const cursorQuote = await ShipmentQuote.findOne({
+        stripeTransferId: startingAfter,
+      }).select("paymentReleasedAt updatedAt");
+
+      if (cursorQuote) {
+        query.$or = [
+          { paymentReleasedAt: { $lt: cursorQuote.paymentReleasedAt } },
+          {
+            paymentReleasedAt: cursorQuote.paymentReleasedAt,
+            updatedAt: { $lt: cursorQuote.updatedAt },
+          },
+        ];
+      }
+    }
+
+    const quotePayouts = await ShipmentQuote.find(query)
+      .populate("shipment", "shipmentCode pickupLocation deliveryLocation")
+      .sort({ paymentReleasedAt: -1, updatedAt: -1 })
+      .limit(limit + 1)
+      .lean();
+
+    if (quotePayouts.length) {
+      const pageItems = quotePayouts.slice(0, limit);
+      const payoutHistory = pageItems.map((quote) => {
+        const storedPayout = Number(quote.shipperPayoutAmount || 0);
+        const amount =
+          storedPayout > 0
+            ? storedPayout
+            : Math.max(
+                Number(quote.totalPrice || 0) -
+                  Number(quote.stripeFee || 0) -
+                  Number(quote.platformFee || 0),
+                0
+              );
+
+        return {
+          id: quote.stripeTransferId || quote._id,
+          amount,
+          currency: quote.payoutCurrency || quote.currency || "USD",
+          status: "paid",
+          method: "platform_transfer",
+          shipmentCode: quote.shipment?.shipmentCode,
+          arrivalDate: quote.paymentReleasedAt || quote.updatedAt,
+          createdAt: quote.paymentReleasedAt || quote.updatedAt,
+        };
+      });
+
+      return res.json({
+        success: true,
+        totalTransactions: payoutHistory.length,
+        hasMore: quotePayouts.length > limit,
+        nextCursor: payoutHistory.length
+          ? payoutHistory[payoutHistory.length - 1].id
+          : null,
+        transactions: payoutHistory,
+      });
+    }
 
     // Fetch transfers to this shipper account
     const transfers = await stripe.transfers.list({
