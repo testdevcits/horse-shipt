@@ -58,6 +58,8 @@ const defaultAllowedOrigins = [
   "http://192.168.16.42:3000",
   "https://admin-horse-shipt.vercel.app",
   "https://horse-shipt-frontend.vercel.app",
+  "http://horseshipt.com",
+  "http://admin.horseshipt.com",
   "http://52.14.251.189",
   "http://52.14.251.189:80",
   "http://52.14.251.189:3000",
