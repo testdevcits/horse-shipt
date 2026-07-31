@@ -21,4 +21,12 @@ router.get(
   stripeAdminController.getStripeTransactions
 );
 
+
+// Get Stripe Product & Subscription Prices
+router.get(
+  "/subscription-product/:productId",
+  adminAuth,
+  stripeAdminController.getSubscriptionProduct
+);
+
 module.exports = router;

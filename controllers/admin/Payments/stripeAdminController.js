@@ -186,6 +186,65 @@ exports.getStripeTransactions = async (req, res) => {
   }
 };
 
+
+
+/* =====================================================
+   GET STRIPE SUBSCRIPTION PRODUCT
+===================================================== */
+
+exports.getSubscriptionProduct = async (req, res) => {
+  try {
+    const { productId } = req.params;
+
+    if (!productId) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID is required.",
+      });
+    }
+
+    // Get Product
+    const product = await stripe.products.retrieve(productId);
+
+    // Get all active prices of this product
+    const prices = await stripe.prices.list({
+      product: productId,
+      active: true,
+      limit: 100,
+    });
+
+    const plans = prices.data
+      .filter((price) => price.type === "recurring")
+      .map((price) => ({
+        priceId: price.id,
+        amount: price.unit_amount / 100,
+        currency: price.currency,
+        interval: price.recurring.interval,
+        intervalCount: price.recurring.interval_count,
+        active: price.active,
+        created: new Date(price.created * 1000),
+      }))
+      .sort((a, b) => a.amount - b.amount);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        productId: product.id,
+        productName: product.name,
+        description: product.description,
+        active: product.active,
+        subscriptionPlans: plans,
+      },
+    });
+  } catch (error) {
+    console.error("Stripe Product Error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
 /* =====================================================
    GET FUNDS AVAILABLE FOR PLATFORM BANK TRANSFER
    - Stripe available/pending balance is the source of truth
