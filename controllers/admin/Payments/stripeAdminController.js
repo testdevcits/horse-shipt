@@ -196,45 +196,72 @@ exports.getSubscriptionProduct = async (req, res) => {
   try {
     const { productId } = req.params;
 
-    if (!productId) {
-      return res.status(400).json({
-        success: false,
-        message: "Product ID is required.",
+    let products = [];
+
+    // ============================
+    // IF PRODUCT ID PASSED
+    // ============================
+    if (productId) {
+      try {
+        const product = await stripe.products.retrieve(productId);
+
+        products.push(product);
+      } catch (err) {
+        return res.status(404).json({
+          success: false,
+          message: "Stripe Product not found.",
+        });
+      }
+    } else {
+      // ============================
+      // GET ALL ACTIVE PRODUCTS
+      // ============================
+      const response = await stripe.products.list({
+        active: true,
+        limit: 100,
       });
+
+      products = response.data;
     }
 
-    // Get Product
-    const product = await stripe.products.retrieve(productId);
+    // ============================
+    // BUILD RESPONSE
+    // ============================
+    const result = [];
 
-    // Get all active prices of this product
-    const prices = await stripe.prices.list({
-      product: productId,
-      active: true,
-      limit: 100,
-    });
+    for (const product of products) {
+      const prices = await stripe.prices.list({
+        product: product.id,
+        active: true,
+        limit: 100,
+      });
 
-    const plans = prices.data
-      .filter((price) => price.type === "recurring")
-      .map((price) => ({
-        priceId: price.id,
-        amount: price.unit_amount / 100,
-        currency: price.currency,
-        interval: price.recurring.interval,
-        intervalCount: price.recurring.interval_count,
-        active: price.active,
-        created: new Date(price.created * 1000),
-      }))
-      .sort((a, b) => a.amount - b.amount);
+      const subscriptionPlans = prices.data
+        .filter((price) => price.type === "recurring")
+        .map((price) => ({
+          priceId: price.id,
+          amount: price.unit_amount / 100,
+          currency: price.currency,
+          interval: price.recurring?.interval,
+          intervalCount: price.recurring?.interval_count,
+          active: price.active,
+          created: new Date(price.created * 1000),
+        }))
+        .sort((a, b) => a.amount - b.amount);
 
-    return res.status(200).json({
-      success: true,
-      data: {
+      result.push({
         productId: product.id,
         productName: product.name,
         description: product.description,
         active: product.active,
-        subscriptionPlans: plans,
-      },
+        subscriptionPlans,
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      totalProducts: result.length,
+      data: result,
     });
   } catch (error) {
     console.error("Stripe Product Error:", error);
