@@ -24,9 +24,8 @@ router.get(
 
 // Get Stripe Product & Subscription Prices
 router.get(
-  "/subscription-product/:productId",
+  "/subscription-products",
   adminAuth,
   stripeAdminController.getSubscriptionProduct
 );
-
 module.exports = router;
