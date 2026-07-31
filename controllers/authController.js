@@ -7,6 +7,7 @@ const PendingSignup = require("../models/PendingSignup");
 const PasswordResetOtp = require("../models/PasswordResetOtp");
 const generateToken = require("../utils/generateToken");
 const { sendOtpMail, sendPasswordResetOtpMail } = require("../utils/mailService");
+const { sendNewUserSignupAdminNotification } = require("../utils/adminNotifications");
 const { isBlockedEmail } = require("../utils/emailDomainPolicy");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 // ----------------- Utility Functions -----------------
@@ -85,6 +86,14 @@ const sendPendingSignupOtp = async (pending) => {
 const buildAuthResponse = (user) => {
   const token = generateToken({ id: user._id, role: user.role });
   return { ...user.toObject(), token };
+};
+
+const notifyAdminAboutNewUser = async (user, role) => {
+  try {
+    await sendNewUserSignupAdminNotification({ user, role });
+  } catch (error) {
+    console.error("[ADMIN NEW USER MAIL ERROR]", error.message);
+  }
 };
 
 // ----------------- Signup -----------------
@@ -208,6 +217,7 @@ exports.signup = async (req, res) => {
     await createStripeCustomer(user);
 
     await user.save();
+    await notifyAdminAboutNewUser(user, role);
 
     return res.status(201).json({
       success: true,
@@ -317,6 +327,7 @@ exports.verifySignupOtp = async (req, res) => {
     await createStripeCustomer(user);
     await user.save();
     await PendingSignup.deleteMany({ email });
+    await notifyAdminAboutNewUser(user, role);
 
     return res.status(201).json({
       success: true,

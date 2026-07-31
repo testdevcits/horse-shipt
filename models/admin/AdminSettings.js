@@ -15,6 +15,12 @@ const adminSettingsSchema = new mongoose.Schema(
         type: Boolean,
         default: true,
       },
+      emailRecipient: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        default: "",
+      },
     },
   },
   { timestamps: true }

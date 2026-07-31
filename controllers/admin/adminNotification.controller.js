@@ -16,17 +16,23 @@ const getAdminSettings = async () => {
   if (settings.notifications.email === undefined) {
     settings.notifications.email = true;
   }
+  if (settings.notifications.emailRecipient === undefined) {
+    settings.notifications.emailRecipient = "";
+  }
   if (settings.isModified?.()) {
     await settings.save();
   }
   return settings;
 };
 
+const isValidEmail = (email = "") => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
 const formatSettings = (settings) => ({
   notificationEnabled: settings.notifications?.inApp !== false,
   notifications: {
     inApp: settings.notifications?.inApp !== false,
     email: settings.notifications?.email !== false,
+    emailRecipient: settings.notifications?.emailRecipient || "",
   },
 });
 
@@ -55,8 +61,15 @@ exports.updateNotificationSettings = async (req, res) => {
     const hasLegacyValue = typeof notificationEnabled === "boolean";
     const hasInAppValue = typeof notifications.inApp === "boolean";
     const hasEmailValue = typeof notifications.email === "boolean";
+    const hasEmailRecipientValue =
+      Object.prototype.hasOwnProperty.call(notifications, "emailRecipient");
 
-    if (!hasLegacyValue && !hasInAppValue && !hasEmailValue) {
+    if (
+      !hasLegacyValue &&
+      !hasInAppValue &&
+      !hasEmailValue &&
+      !hasEmailRecipientValue
+    ) {
       return res.status(400).json({
         success: false,
         message: "Provide at least one notification setting",
@@ -64,6 +77,18 @@ exports.updateNotificationSettings = async (req, res) => {
     }
 
     const current = await getAdminSettings();
+    const nextEmailRecipient = hasEmailRecipientValue
+      ? String(notifications.emailRecipient || "").trim().toLowerCase()
+      : current.notifications?.emailRecipient || "";
+
+    if (nextEmailRecipient && !isValidEmail(nextEmailRecipient)) {
+      return res.status(400).json({
+        success: false,
+        message: "Enter a valid admin notification email",
+        errors: { emailRecipient: "Enter a valid email address" },
+      });
+    }
+
     const nextInApp = hasInAppValue
       ? notifications.inApp
       : hasLegacyValue
@@ -80,6 +105,7 @@ exports.updateNotificationSettings = async (req, res) => {
           notificationEnabled: nextInApp,
           "notifications.inApp": nextInApp,
           "notifications.email": nextEmail,
+          "notifications.emailRecipient": nextEmailRecipient,
         },
       },
       { new: true, upsert: true, runValidators: true }
