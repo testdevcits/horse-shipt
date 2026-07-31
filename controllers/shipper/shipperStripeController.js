@@ -38,6 +38,27 @@ const normalizeStripeId = (value) => {
   return value.id || null;
 };
 
+const getSubscriptionPlanConfig = (planType = "daily") => {
+  const normalizedPlanType =
+    String(planType || "daily").toLowerCase() === "monthly"
+      ? "monthly"
+      : "daily";
+
+  const priceId =
+    normalizedPlanType === "monthly"
+      ? process.env.STRIPE_MONTHLY_PRICE_ID
+      : process.env.STRIPE_DAILY_PRICE_ID;
+
+  return {
+    planType: normalizedPlanType,
+    priceId,
+    planName:
+      normalizedPlanType === "monthly"
+        ? "Test Monthly Subscription"
+        : "Test Daily Subscription",
+  };
+};
+
 // ==========================================================
 // GET PLATFORM COUNTRY
 // ==========================================================
@@ -341,8 +362,8 @@ exports.stripeWebhook = async (req, res) => {
           stripeCustomerId: subscription.customer,
           stripePriceId: price.id,
 
-          planName: "Shipper Monthly Plan",
-          interval: "month",
+          planName: price.product?.name || "Subscription",
+          interval: price.recurring?.interval || "month",
 
           amount: price?.unit_amount / 100 || 0,
           currency: price?.currency,
@@ -670,14 +691,14 @@ exports.getPaymentStatus = async (req, res) => {
 
 exports.createSubscription = async (req, res) => {
   try {
-    const { withTrial = true } = req.body;
+    const { withTrial = true, planType = "daily" } = req.body;
 
-    const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
+    const selectedPlan = getSubscriptionPlanConfig(planType);
 
-    if (!MONTHLY_PRICE_ID) {
+    if (!selectedPlan.priceId) {
       return res.status(400).json({
         success: false,
-        message: apiResponse.MONTHLY_PRICE_ID_NOT_CONFIGURED,
+        message: `${selectedPlan.planType} price ID is not configured.`,
       });
     }
 
@@ -734,10 +755,10 @@ exports.createSubscription = async (req, res) => {
           stripeCustomerId: shipper.stripeCustomerId,
           stripeSubscriptionId: existingLiveSub.id,
           stripePriceId: price.id || null,
-          planName: "Shipper Monthly Plan",
+          planName: price.product?.name || "Subscription",
           amount: price?.unit_amount ? price.unit_amount / 100 : 0,
           currency: price?.currency || "usd",
-          interval: "month",
+          interval: price.recurring?.interval || "month",
           status: existingLiveSub.status,
           trialStart: existingLiveSub.trial_start
             ? new Date(existingLiveSub.trial_start * 1000).toISOString()
@@ -808,12 +829,12 @@ exports.createSubscription = async (req, res) => {
     // ============================
     const subscriptionData = {
       customer: shipper.stripeCustomerId,
-      items: [{ price: MONTHLY_PRICE_ID }],
+      items: [{ price: selectedPlan.priceId }],
       default_payment_method: shipper.paymentMethodId,
       metadata: {
         shipperId: shipper._id.toString(),
         email: shipper.email,
-        plan: "monthly",
+        plan: selectedPlan.planType,
       },
     };
 
@@ -823,9 +844,7 @@ exports.createSubscription = async (req, res) => {
       subscriptionData.trial_period_days = TRIAL_DAYS;
     }
 
-    const subscription = await stripe.subscriptions.create(subscriptionData, {
-      idempotencyKey: `sub_${shipper._id}`,
-    });
+    const subscription = await stripe.subscriptions.create(subscriptionData);
 
     const price = subscription.items.data[0].price;
 
@@ -856,10 +875,10 @@ exports.createSubscription = async (req, res) => {
       stripeCustomerId: shipper.stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: price.id,
-      planName: "Shipper Monthly Plan",
+      planName: selectedPlan.planName,
       amount: price.unit_amount / 100,
       currency: price.currency,
-      interval: "month",
+      interval: price.recurring?.interval || selectedPlan.planType,
       status: subscription.status,
       trialStart,
       trialEnd,
@@ -881,7 +900,7 @@ exports.createSubscription = async (req, res) => {
     // ============================
     await sendSubscriptionEmail({
       shipperId: shipper._id,
-      planName: "Shipper Monthly Plan",
+      planName: selectedPlan.planName,
       amount: price.unit_amount / 100,
       trialEnd,
     });
@@ -896,7 +915,7 @@ exports.createSubscription = async (req, res) => {
         subscriptionId: newSubscription._id,
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
-        plan: "monthly",
+        plan: selectedPlan.planType,
         trialStart,
         trialEnd,
         currentPeriodStart,
@@ -932,7 +951,6 @@ exports.cancelSubscription = async (req, res) => {
 
     const subscription = await subscriptionModel.findOne({
       shipperId: shipper._id,
-      interval: "month",
       status: { $in: ["active", "trialing", "past_due"] },
     });
 
@@ -965,7 +983,7 @@ exports.cancelSubscription = async (req, res) => {
         message:
           apiResponse.YOU_ARE_CURRENTLY_IN_THE_FREE_TRIAL_PERIOD_CANCELLATION_IS_NOT_AVAILABLE,
         data: {
-          plan: "monthly",
+          plan: subscription.interval || "subscription",
           status: "trialing",
           trialEnd: stripeSub.trial_end
             ? new Date(stripeSub.trial_end * 1000).toISOString()
@@ -1054,12 +1072,13 @@ const toISO = (timestamp) => {
 // ============================
 exports.getSubscriptionPlan = async (req, res) => {
   try {
+    const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
     const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
 
-    if (!MONTHLY_PRICE_ID) {
+    if (!DAILY_PRICE_ID && !MONTHLY_PRICE_ID) {
       return res.status(500).json({
         success: false,
-        message: apiResponse.MONTHLY_PRICE_ID_NOT_CONFIGURED,
+        message: "Daily or monthly price ID is not configured.",
       });
     }
 
@@ -1078,19 +1097,27 @@ exports.getSubscriptionPlan = async (req, res) => {
     // ============================
     // FETCH PRICE
     // ============================
-    const price = await stripe.prices.retrieve(MONTHLY_PRICE_ID, {
-      expand: ["product"],
-    });
-
-    const monthly = {
+    const buildPlan = (price, planType) => ({
       priceId: price.id,
       amount: price.unit_amount / 100,
       currency: price.currency,
       interval: price.recurring?.interval || "month",
       productName: price.product?.name || "Subscription",
-      label: "Monthly Plan",
-      planType: "monthly",
-    };
+      label: planType === "daily" ? "Daily Plan" : "Monthly Plan",
+      planType,
+    });
+
+    const [dailyPrice, monthlyPrice] = await Promise.all([
+      DAILY_PRICE_ID
+        ? stripe.prices.retrieve(DAILY_PRICE_ID, { expand: ["product"] })
+        : null,
+      MONTHLY_PRICE_ID
+        ? stripe.prices.retrieve(MONTHLY_PRICE_ID, { expand: ["product"] })
+        : null,
+    ]);
+
+    const daily = dailyPrice ? buildPlan(dailyPrice, "daily") : null;
+    const monthly = monthlyPrice ? buildPlan(monthlyPrice, "monthly") : null;
 
     // ============================
     // TRIAL CHECK (FIXED)
@@ -1124,7 +1151,6 @@ exports.getSubscriptionPlan = async (req, res) => {
     // ============================
     const dbSub = await subscriptionModel.findOne({
       shipperId: shipper._id,
-      interval: "month",
       status: { $in: ["active", "trialing", "past_due"] },
     });
 
@@ -1238,7 +1264,8 @@ exports.getSubscriptionPlan = async (req, res) => {
         trialActive,
         remainingTrialDays,
         trialEndDate,
-        currency: monthly.currency,
+        currency: daily?.currency || monthly?.currency || "usd",
+        daily,
 
         subscriptionStatus,
         nextBillingDate,
@@ -1299,7 +1326,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         success: true,
         hasSubscription: false,
         status: "none",
-        planType: "monthly",
+        planType: null,
         hasAccess: false,
         needsSubscription: true,
       });
@@ -1370,10 +1397,10 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         stripeSubscriptionId: currentSub.id,
         stripePriceId: price.id,
 
-        planName: "Shipper Monthly Plan",
+        planName: price.product?.name || "Subscription",
         amount: price?.unit_amount / 100 || 0,
         currency: price?.currency || "usd",
-        interval: "month",
+        interval: price.recurring?.interval || "month",
 
         status: currentSub.status,
 
@@ -1400,7 +1427,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
 
       hasSubscription: true,
       status: currentSub.status,
-      planType: "monthly",
+      planType: price.recurring?.interval || "subscription",
 
       hasAccess,
 
@@ -1471,6 +1498,8 @@ exports.getBillingHistory = async (req, res) => {
     const invoiceById = new Map(invoices.data.map((inv) => [inv.id, inv]));
 
     const subscriptionData = invoices.data.map((inv) => {
+      const planType =
+        inv.lines?.data?.[0]?.price?.recurring?.interval || "subscription";
       const linePeriod = inv.lines?.data?.[0]?.period || {};
       const periodStart = linePeriod.start || inv.period_start;
       const periodEnd = linePeriod.end || inv.period_end;
@@ -1484,7 +1513,7 @@ exports.getBillingHistory = async (req, res) => {
         id: inv.id,
         stripeSubscriptionId,
 
-        planType: "monthly",
+        planType,
 
         amount,
         currency: inv.currency,
@@ -1492,10 +1521,10 @@ exports.getBillingHistory = async (req, res) => {
         status: inv.status,
         billingReason: inv.billing_reason,
         displayType: isTrialInvoice ? "trial" : "invoice",
-        title: isTrialInvoice ? "Free trial started" : "Monthly subscription invoice",
+        title: isTrialInvoice ? "Free trial started" : "Subscription invoice",
         description: isTrialInvoice
           ? "No payment was charged for this invoice."
-          : "Monthly plan invoice generated by Stripe.",
+          : "Subscription invoice generated by Stripe.",
         isTrialInvoice,
         isNoChargeInvoice,
 
@@ -1525,7 +1554,9 @@ exports.getBillingHistory = async (req, res) => {
         invoiceById.get(normalizeStripeId(ch.invoice))
       ),
 
-      planType: "monthly",
+      planType:
+        invoiceById.get(normalizeStripeId(ch.invoice))?.lines?.data?.[0]?.price
+          ?.recurring?.interval || "subscription",
 
       amount: ch.amount / 100,
       currency: ch.currency,
@@ -1569,7 +1600,7 @@ exports.getBillingHistory = async (req, res) => {
       success: true,
 
       data: {
-        planType: "monthly",
+        planType: "subscription",
 
         subscriptions: subscriptionData,
         payments: paymentData,
