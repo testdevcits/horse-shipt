@@ -198,13 +198,9 @@ exports.getSubscriptionProduct = async (req, res) => {
 
     let products = [];
 
-    // ============================
-    // IF PRODUCT ID PASSED
-    // ============================
     if (productId) {
       try {
         const product = await stripe.products.retrieve(productId);
-
         products.push(product);
       } catch (err) {
         return res.status(404).json({
@@ -213,9 +209,6 @@ exports.getSubscriptionProduct = async (req, res) => {
         });
       }
     } else {
-      // ============================
-      // GET ALL ACTIVE PRODUCTS
-      // ============================
       const response = await stripe.products.list({
         active: true,
         limit: 100,
@@ -224,9 +217,6 @@ exports.getSubscriptionProduct = async (req, res) => {
       products = response.data;
     }
 
-    // ============================
-    // BUILD RESPONSE
-    // ============================
     const result = [];
 
     for (const product of products) {
@@ -237,14 +227,18 @@ exports.getSubscriptionProduct = async (req, res) => {
       });
 
       const subscriptionPlans = prices.data
-        .filter((price) => price.type === "recurring")
         .map((price) => ({
           priceId: price.id,
           amount: price.unit_amount / 100,
           currency: price.currency,
-          interval: price.recurring?.interval,
-          intervalCount: price.recurring?.interval_count,
+
+          type: price.type,
+
+          interval: price.recurring?.interval || null,
+          intervalCount: price.recurring?.interval_count || null,
+
           active: price.active,
+
           created: new Date(price.created * 1000),
         }))
         .sort((a, b) => a.amount - b.amount);
@@ -258,13 +252,13 @@ exports.getSubscriptionProduct = async (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    return res.json({
       success: true,
       totalProducts: result.length,
       data: result,
     });
   } catch (error) {
-    console.error("Stripe Product Error:", error);
+    console.log(error);
 
     return res.status(500).json({
       success: false,
@@ -280,125 +274,115 @@ exports.createSubscriptionPrice = async (req, res) => {
       amount,
       currency = "usd",
       interval,
+      type = "recurring",
     } = req.body;
 
-    if (!productId || !amount || !interval) {
+    if (!productId || !amount) {
       return res.status(400).json({
         success: false,
-        message: "Product ID, Amount and Interval are required."
+        message: "Product ID and Amount are required.",
       });
     }
 
     const product = await stripe.products.retrieve(productId);
 
-    if (!product || !product.active) {
+    if (!product.active) {
       return res.status(404).json({
         success: false,
-        message: "Product not found."
+        message: "Product not found.",
       });
     }
 
-    const price = await stripe.prices.create({
-      unit_amount: Number(amount) * 100,
-      currency,
-      recurring: {
-        interval,
-      },
+    let payload = {
       product: productId,
-    });
+      currency,
+      unit_amount: Number(amount) * 100,
+    };
+
+    if (type === "recurring") {
+      if (!interval) {
+        return res.status(400).json({
+          success: false,
+          message: "Interval is required.",
+        });
+      }
+
+      payload.recurring = {
+        interval,
+      };
+    }
+
+    const price = await stripe.prices.create(payload);
 
     return res.json({
       success: true,
       message: "Price created successfully.",
       data: price,
     });
-
   } catch (err) {
-
     console.log(err);
 
     return res.status(500).json({
-      success:false,
-      message:err.message
+      success: false,
+      message: err.message,
     });
-
   }
 };
 
 exports.updateSubscriptionPrice = async (req, res) => {
-
   try {
-
     const { priceId } = req.params;
     const { amount } = req.body;
 
     if (!priceId || !amount) {
       return res.status(400).json({
-        success:false,
-        message:"Price ID and Amount required."
+        success: false,
+        message: "Price ID and Amount required.",
       });
     }
 
-    const oldPrice = await stripe.prices.retrieve(priceId,{
-      expand:["product"]
+    const oldPrice = await stripe.prices.retrieve(priceId, {
+      expand: ["product"],
     });
 
-    if (!oldPrice.recurring) {
-      return res.status(400).json({
-        success:false,
-        message:"Not a recurring price."
-      });
+    let payload = {
+      unit_amount: Number(amount) * 100,
+      currency: oldPrice.currency,
+      product: oldPrice.product.id,
+    };
+
+    if (oldPrice.type === "recurring") {
+      payload.recurring = {
+        interval: oldPrice.recurring.interval,
+      };
     }
 
-    const newPrice = await stripe.prices.create({
+    const newPrice = await stripe.prices.create(payload);
 
-      unit_amount:Number(amount)*100,
-
-      currency:oldPrice.currency,
-
-      recurring:{
-        interval:oldPrice.recurring.interval,
-      },
-
-      product:oldPrice.product.id
-
-    });
-
-    await stripe.prices.update(priceId,{
-      active:false
+    await stripe.prices.update(priceId, {
+      active: false,
     });
 
     return res.json({
-
-      success:true,
-
-      message:"Subscription price updated successfully.",
-
-      data:{
-
-        oldPriceId:priceId,
-
-        newPriceId:newPrice.id,
-
-        amount:newPrice.unit_amount/100,
-
-        interval:newPrice.recurring.interval
-
-      }
-
+      success: true,
+      message: "Price updated successfully.",
+      data: {
+        oldPriceId: oldPrice.id,
+        newPriceId: newPrice.id,
+        amount: newPrice.unit_amount / 100,
+        currency: newPrice.currency,
+        type: newPrice.type,
+        interval: newPrice.recurring?.interval || null,
+      },
     });
-
-  } catch(err){
-
+  } catch (err) {
     console.log(err);
 
     return res.status(500).json({
-      success:false,
-      message:err.message
+      success: false,
+      message: err.message,
     });
-
   }
-
 };
 /* =====================================================
    GET FUNDS AVAILABLE FOR PLATFORM BANK TRANSFER
