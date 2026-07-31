@@ -28,4 +28,16 @@ router.get(
   adminAuth,
   stripeAdminController.getSubscriptionProduct
 );
+
+router.post(
+    "/subscription-price",
+    adminAuth,
+    stripeAdminController.createSubscriptionPrice
+);
+
+router.put(
+    "/subscription-price/:priceId",
+    adminAuth,
+    stripeAdminController.updateSubscriptionPrice
+);
 module.exports = router;

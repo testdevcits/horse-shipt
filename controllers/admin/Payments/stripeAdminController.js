@@ -272,6 +272,134 @@ exports.getSubscriptionProduct = async (req, res) => {
     });
   }
 };
+
+exports.createSubscriptionPrice = async (req, res) => {
+  try {
+    const {
+      productId,
+      amount,
+      currency = "usd",
+      interval,
+    } = req.body;
+
+    if (!productId || !amount || !interval) {
+      return res.status(400).json({
+        success: false,
+        message: "Product ID, Amount and Interval are required."
+      });
+    }
+
+    const product = await stripe.products.retrieve(productId);
+
+    if (!product || !product.active) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found."
+      });
+    }
+
+    const price = await stripe.prices.create({
+      unit_amount: Number(amount) * 100,
+      currency,
+      recurring: {
+        interval,
+      },
+      product: productId,
+    });
+
+    return res.json({
+      success: true,
+      message: "Price created successfully.",
+      data: price,
+    });
+
+  } catch (err) {
+
+    console.log(err);
+
+    return res.status(500).json({
+      success:false,
+      message:err.message
+    });
+
+  }
+};
+
+exports.updateSubscriptionPrice = async (req, res) => {
+
+  try {
+
+    const { priceId } = req.params;
+    const { amount } = req.body;
+
+    if (!priceId || !amount) {
+      return res.status(400).json({
+        success:false,
+        message:"Price ID and Amount required."
+      });
+    }
+
+    const oldPrice = await stripe.prices.retrieve(priceId,{
+      expand:["product"]
+    });
+
+    if (!oldPrice.recurring) {
+      return res.status(400).json({
+        success:false,
+        message:"Not a recurring price."
+      });
+    }
+
+    const newPrice = await stripe.prices.create({
+
+      unit_amount:Number(amount)*100,
+
+      currency:oldPrice.currency,
+
+      recurring:{
+        interval:oldPrice.recurring.interval,
+      },
+
+      product:oldPrice.product.id
+
+    });
+
+    await stripe.prices.update(priceId,{
+      active:false
+    });
+
+    return res.json({
+
+      success:true,
+
+      message:"Subscription price updated successfully.",
+
+      data:{
+
+        oldPriceId:priceId,
+
+        newPriceId:newPrice.id,
+
+        amount:newPrice.unit_amount/100,
+
+        interval:newPrice.recurring.interval
+
+      }
+
+    });
+
+  } catch(err){
+
+    console.log(err);
+
+    return res.status(500).json({
+      success:false,
+      message:err.message
+    });
+
+  }
+
+};
 /* =====================================================
    GET FUNDS AVAILABLE FOR PLATFORM BANK TRANSFER
    - Stripe available/pending balance is the source of truth
