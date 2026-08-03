@@ -1,5 +1,6 @@
 const { apiResponse } = require("../../responses/api.response");
 const mongoose = require("mongoose");
+const axios = require("axios");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
@@ -29,6 +30,156 @@ const sanitizePdfPublicId = (value = "document") => {
 // ==========================================================
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
+const isAllowedDocumentUrl = (url = "") => {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      (parsed.hostname === "res.cloudinary.com" ||
+        parsed.hostname.endsWith(".cloudinary.com"))
+    );
+  } catch (error) {
+    return false;
+  }
+};
+
+const appendPdfExtension = (url = "") => {
+  if (!url || /\.pdf($|\?)/i.test(url)) return null;
+  const [baseUrl, query = ""] = String(url).split("?");
+  return `${baseUrl}.pdf${query ? `?${query}` : ""}`;
+};
+
+const sendDocumentError = (res, status, message) =>
+  res.status(status).type("html").send(`<!doctype html>
+<html>
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /><title>Document unavailable</title></head>
+  <body style="margin:0;font-family:Arial,sans-serif;background:#f8fafc;color:#1f2937;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px">
+    <div style="max-width:420px;border:1px solid #fecaca;background:#fff1f2;padding:18px;text-align:center">
+      <h1 style="font-size:18px;margin:0 0 8px;color:#991b1b">Document unavailable</h1>
+      <p style="font-size:14px;line-height:1.5;margin:0;color:#7f1d1d">${String(
+        message || "Unable to load this document. Please try again."
+      )
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")}</p>
+    </div>
+  </body>
+</html>`);
+
+const getQuoteDocument = (quote, documentType) => {
+  if (documentType === "generated") {
+    return {
+      url: quote.contract?.url,
+      publicId: quote.contract?.public_id,
+      filename: `Generated_Quote_Contract_${quote._id}.pdf`,
+      contentType: "application/pdf",
+    };
+  }
+
+  if (documentType === "shipper") {
+    return {
+      url: quote.shipperContract?.url,
+      publicId: quote.shipperContract?.public_id,
+      filename: quote.shipperContract?.originalName || "Shipper_Document.pdf",
+      contentType: quote.shipperContract?.mimeType || "application/pdf",
+    };
+  }
+
+  return null;
+};
+
+exports.streamQuoteDocument = async (req, res) => {
+  try {
+    const { quoteId, documentType } = req.params;
+    const shipperId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(quoteId)) {
+      return sendDocumentError(res, 400, "Invalid quote id");
+    }
+
+    const quote = await ShipmentQuote.findById(quoteId);
+
+    if (!quote) {
+      return sendDocumentError(res, 404, apiResponse.QUOTE_NOT_FOUND);
+    }
+
+    if (quote.shipper?.toString() !== shipperId.toString()) {
+      return sendDocumentError(res, 403, apiResponse.UNAUTHORIZED);
+    }
+
+    const document = getQuoteDocument(quote, documentType);
+
+    if (!document?.url) {
+      return sendDocumentError(res, 404, "Document not found");
+    }
+
+    const candidateUrls = [
+      document.url,
+      appendPdfExtension(document.url),
+      document.publicId &&
+        !String(document.publicId).toLowerCase().endsWith(".pdf") &&
+        cloudinary.url(`${document.publicId}.pdf`, {
+          resource_type: "raw",
+          secure: true,
+        }),
+      document.publicId &&
+        cloudinary.url(document.publicId, {
+          resource_type: "raw",
+          secure: true,
+        }),
+    ].filter(Boolean);
+
+    if (!candidateUrls.some(isAllowedDocumentUrl)) {
+      return sendDocumentError(res, 400, "Invalid document source");
+    }
+
+    let response = null;
+    let lastError = null;
+
+    for (const url of candidateUrls) {
+      if (!isAllowedDocumentUrl(url)) continue;
+
+      try {
+        response = await axios.get(url, {
+          responseType: "stream",
+          timeout: 30000,
+          validateStatus: (status) => status >= 200 && status < 300,
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+        console.warn("[SHIPPER QUOTE DOCUMENT STREAM RETRY]", {
+          quoteId: quote._id.toString(),
+          documentType,
+          status: error.response?.status,
+          message: error.message,
+        });
+      }
+    }
+
+    if (!response) throw lastError || new Error("Document source unavailable");
+
+    res.setHeader(
+      "Content-Type",
+      response.headers["content-type"] || document.contentType
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${String(document.filename).replace(/"/g, "")}"`
+    );
+    res.setHeader("Cache-Control", "private, max-age=300");
+
+    response.data.pipe(res);
+  } catch (error) {
+    console.error("[SHIPPER QUOTE DOCUMENT STREAM ERROR]", error.message);
+    return sendDocumentError(
+      res,
+      502,
+      "Unable to load this document. Please try again."
+    );
+  }
+};
 
 exports.shipperCancelQuote = async (req, res) => {
   try {
@@ -462,7 +613,16 @@ exports.addQuote = async (req, res) => {
         await sendQuoteEmail(
           shipperId,
           "Quote Sent Successfully",
-          `Your quote for shipment ${shipmentExists.shipmentCode} has been sent successfully.`
+          {
+            shipmentCode: shipmentExists.shipmentCode,
+            totalPrice,
+            currency,
+            pickupLocation: shipmentExists.pickupLocation,
+            deliveryLocation: shipmentExists.deliveryLocation,
+            paymentMethod,
+            paymentDue,
+            customerName: shipmentExists.customer?.name,
+          }
         );
       } catch (emailError) {
         console.error("[QUOTE MAIL ERROR]", emailError.message);

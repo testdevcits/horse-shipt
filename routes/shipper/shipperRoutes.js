@@ -51,6 +51,7 @@ const {
   shipperCancelQuote,
   deleteQuote,
   assignVehicleToQuote,
+  streamQuoteDocument,
 } = require("../../controllers/shipper/shipperQuoteController");
 
 // -------- Messages --------
@@ -224,6 +225,11 @@ router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 router.post("/quotes/add", shipperAuth, upload.single("contractFile"), addQuote);
 router.post("/assign-vehicle", shipperAuth, assignVehicleToQuote);
 router.get("/quotes/mq", shipperAuth, getMyQuotes);
+router.get(
+  "/quotes/:quoteId/documents/:documentType",
+  shipperAuth,
+  streamQuoteDocument
+);
 router.get("/quotes/shipment/:shipmentId", getQuotesByShipment);
 router.get(
   "/quotes/accepted/:shipmentId",

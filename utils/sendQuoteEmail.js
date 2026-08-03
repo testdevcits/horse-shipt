@@ -9,6 +9,11 @@ const { getFrontendUrl } = require("./frontendUrl");
 
 const sendQuoteEmail = async (shipperId, subject, data) => {
   try {
+    const payload =
+      data && typeof data === "object"
+        ? data
+        : { message: data };
+
     const shipper = await Shipper.findById(shipperId);
 
     if (!shipper || !shipper.email) {
@@ -28,18 +33,33 @@ const sendQuoteEmail = async (shipperId, subject, data) => {
 
     const html = baseTemplate({
       title: "Quote Sent Successfully",
-      preheader: `Shipment ${data?.shipmentCode || ""} quote was sent.`,
+      preheader: `Shipment ${payload?.shipmentCode || ""} quote was sent.`,
       buttonText: "View Dashboard",
       buttonUrl: getFrontendUrl(),
       body: `
         <p style="margin:0 0 10px;">Hello <strong>${escapeHtml(shipper.name || "Shipper")}</strong>,</p>
         <p style="margin:0;">Your quote has been sent to the customer. We will notify you when they respond.</p>
         ${detailTable([
-          { label: "Shipment Code", value: escapeHtml(data?.shipmentCode || "N/A") },
+          { label: "Shipment Code", value: escapeHtml(payload?.shipmentCode || "N/A") },
+          payload?.customerName
+            ? { label: "Customer", value: escapeHtml(payload.customerName) }
+            : null,
+          payload?.pickupLocation
+            ? { label: "Pickup", value: escapeHtml(payload.pickupLocation) }
+            : null,
+          payload?.deliveryLocation
+            ? { label: "Delivery", value: escapeHtml(payload.deliveryLocation) }
+            : null,
           {
             label: "Total Price",
-            value: `${escapeHtml(data?.currency || "USD")} ${escapeHtml(data?.totalPrice || 0)}`,
+            value: `${escapeHtml(payload?.currency || "USD")} ${escapeHtml(payload?.totalPrice || 0)}`,
           },
+          payload?.paymentMethod
+            ? { label: "Payment Method", value: escapeHtml(payload.paymentMethod) }
+            : null,
+          payload?.paymentDue
+            ? { label: "Payment Due", value: escapeHtml(payload.paymentDue) }
+            : null,
         ])}
       `,
     });
