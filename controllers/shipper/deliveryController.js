@@ -7,6 +7,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
 const Driver = require("../../models/shipper/Driver");
+const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 

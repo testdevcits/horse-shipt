@@ -4,6 +4,10 @@ const passport = require("passport");
 const router = express.Router();
 const authController = require("../controllers/authController");
 const { buildFrontendUrl } = require("../utils/frontendUrl");
+const {
+  signupValidation,
+  loginValidation,
+} = require("../validations/authValidation");
 
 // ------------------------
 // OAuth Error Redirect
@@ -19,10 +23,10 @@ const redirectOAuthError = (res, message) => {
 // ------------------------
 // Local auth
 // ------------------------
-router.post("/signup", authController.signup);
+router.post("/signup", signupValidation, authController.signup);
 router.post("/signup/verify-otp", authController.verifySignupOtp);
 router.post("/signup/resend-otp", authController.resendSignupOtp);
-router.post("/login", authController.login);
+router.post("/login", loginValidation, authController.login);
 router.post("/logout", authController.logout);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/verify-reset-otp", authController.verifyResetOtp);

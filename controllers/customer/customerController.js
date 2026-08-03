@@ -43,9 +43,9 @@ exports.updateCustomerDetails = async (req, res) => {
         ? `+${cleanedPhone.slice(1).replace(/\D/g, "")}`
         : cleanedPhone.replace(/\D/g, "");
 
-      // Backward compatibility for older Indian-only UI payloads.
+      // Default bare 10-digit customer numbers to USA, matching the UI.
       if (/^\d{10}$/.test(cleanedPhone)) {
-        cleanedPhone = `+91${cleanedPhone}`;
+        cleanedPhone = `+1${cleanedPhone}`;
       }
 
       // validate final format (E.164)

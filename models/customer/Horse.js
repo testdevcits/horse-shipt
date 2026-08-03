@@ -71,6 +71,28 @@ const horseSchema = new mongoose.Schema(
       default: "",
       trim: true,
     },
+
+    photo: {
+      url: { type: String, default: null },
+      public_id: { type: String, default: null },
+      width: { type: Number, default: null },
+      height: { type: Number, default: null },
+      bytes: { type: Number, default: null },
+      format: { type: String, default: null },
+    },
+
+    documents: {
+      coggins: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+        originalName: { type: String, default: null },
+      },
+      healthCertificate: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+        originalName: { type: String, default: null },
+      },
+    },
   },
   { timestamps: true }
 );

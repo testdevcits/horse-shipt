@@ -2,6 +2,7 @@ const { apiResponse } = require("../../responses/api.response");
 const cloudinary = require("cloudinary").v2;
 const Shipper = require("../../models/shipper/shipperModel");
 const Review = require("../../models/shipper/review.model");
+const SUPPORTED_IMAGE_FORMATS = ["jpg", "jpeg", "png", "webp", "svg"];
 
 // -----------------------------
 // Cloudinary Configuration
@@ -126,6 +127,8 @@ exports.updateProfileImage = async (req, res) => {
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "shipperProfileImages",
       overwrite: true,
+      resource_type: "image",
+      allowed_formats: SUPPORTED_IMAGE_FORMATS,
     });
 
     shipper.profileImage = {
@@ -178,6 +181,8 @@ exports.updateBannerImage = async (req, res) => {
     const result = await cloudinary.uploader.upload(req.file.path, {
       folder: "shipperBannerImages",
       overwrite: true,
+      resource_type: "image",
+      allowed_formats: SUPPORTED_IMAGE_FORMATS,
     });
 
     shipper.bannerImage = {

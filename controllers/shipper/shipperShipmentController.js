@@ -7,6 +7,7 @@ const cache = new NodeCache({ stdTTL: 30 }); // keep opportunity results fresh d
 const ShipperShipment = require("../../models/shipper/ShipperShipment");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
+const PreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
 const { sendShipperEmail } = require("../../utils/shipperMailSend");
 const { sendShipperSms } = require("../../utils/shipperSmsSend");
 const shipperModel = require("../../models/shipper/shipperModel");
@@ -152,6 +153,65 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
   return R * c;
 }
 
+const getShipmentPoint = (coords) => {
+  if (!coords) return null;
+  const lat = Number(coords.latitude ?? coords.lat);
+  const lng = Number(coords.longitude ?? coords.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+};
+
+const getPreferredAreaPoint = (area) => {
+  const coords = area?.coordinates?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  const lng = Number(coords[0]);
+  const lat = Number(coords[1]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+};
+
+const getPreferredAreaMatches = (shipment, preferredAreas = []) => {
+  const pickup = getShipmentPoint(shipment.pickupCoords);
+  const delivery = getShipmentPoint(shipment.deliveryCoords);
+
+  if ((!pickup && !delivery) || !preferredAreas.length) return [];
+
+  return preferredAreas
+    .map((area) => {
+      const center = getPreferredAreaPoint(area);
+      const radiusKm = Number(area.radiusKm || 0);
+      if (!center || radiusKm <= 0) return null;
+
+      const pickupDistanceKm = pickup
+        ? calculateDistance(center.lat, center.lng, pickup.lat, pickup.lng)
+        : null;
+      const deliveryDistanceKm = delivery
+        ? calculateDistance(center.lat, center.lng, delivery.lat, delivery.lng)
+        : null;
+      const pickupMatched =
+        pickupDistanceKm !== null && pickupDistanceKm <= radiusKm;
+      const deliveryMatched =
+        deliveryDistanceKm !== null && deliveryDistanceKm <= radiusKm;
+
+      if (!pickupMatched && !deliveryMatched) return null;
+
+      return {
+        id: area._id,
+        locationName: area.locationName || "Preferred area",
+        radiusKm,
+        pickupMatched,
+        deliveryMatched,
+        pickupDistanceKm:
+          pickupDistanceKm === null ? null : Number(pickupDistanceKm.toFixed(2)),
+        deliveryDistanceKm:
+          deliveryDistanceKm === null
+            ? null
+            : Number(deliveryDistanceKm.toFixed(2)),
+      };
+    })
+    .filter(Boolean);
+};
+
 exports.getAvailableShipments = async (req, res) => {
   try {
     const {
@@ -165,6 +225,7 @@ exports.getAvailableShipments = async (req, res) => {
       pickupEnd,
       deliveryStart,
       deliveryEnd,
+      preferredAreaOnly,
     } = req.query;
 
     /* ===============================
@@ -205,6 +266,7 @@ exports.getAvailableShipments = async (req, res) => {
         pickupEnd,
         deliveryStart,
         deliveryEnd,
+        preferredAreaOnly,
       });
 
     const cachedData = cache.get(cacheKey);
@@ -278,6 +340,11 @@ exports.getAvailableShipments = async (req, res) => {
       };
     });
 
+    const preferredAreas =
+      preferredAreaOnly === "true"
+        ? await PreferredArea.find({ shipper: req.user.id }).lean()
+        : [];
+
     /* ===============================
        APPLY FILTERS (UPDATED)
     =================================*/
@@ -287,7 +354,17 @@ exports.getAvailableShipments = async (req, res) => {
         stallOk = true,
         horsesOk = true,
         pickupDateOk = true,
-        deliveryDateOk = true;
+        deliveryDateOk = true,
+        preferredAreaOk = true;
+
+      const matchedPreferredAreas = getPreferredAreaMatches(
+        shipment,
+        preferredAreas
+      );
+
+      if (preferredAreaOnly === "true") {
+        preferredAreaOk = matchedPreferredAreas.length > 0;
+      }
 
       if (pickupDistance && shipperLocation) {
         const dist = calculateDistance(
@@ -343,9 +420,13 @@ exports.getAvailableShipments = async (req, res) => {
         stallOk &&
         horsesOk &&
         pickupDateOk &&
-        deliveryDateOk
+        deliveryDateOk &&
+        preferredAreaOk
       );
-    });
+    }).map((shipment) => ({
+      ...shipment,
+      matchedPreferredAreas: getPreferredAreaMatches(shipment, preferredAreas),
+    }));
 
     /* ===============================
        CACHE SAVE

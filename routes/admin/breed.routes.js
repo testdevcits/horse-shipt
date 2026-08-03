@@ -33,6 +33,13 @@ router.get("/", adminAuth, breedController.getBreeds);
 router.get("/all", breedController.getAllBreeds);
 
 /**
+ * @route   PUT /api/admin/breeds/:id
+ * @desc    Update breed name
+ * @access  Admin only
+ */
+router.put("/:id", adminAuth, breedController.updateBreed);
+
+/**
  * @route   DELETE /api/admin/breeds/:id
  * @desc    Soft delete breed (sets isActive = false)
  * @access  Admin only

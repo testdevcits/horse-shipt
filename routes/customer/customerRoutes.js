@@ -294,11 +294,11 @@ router.put(
 
 // ---------------- HORSE ----------------
 
-router.post("/horses", customerAuth, createHorse);
+router.post("/horses", customerAuth, upload.any(), createHorse);
 
 router.get("/horses", customerAuth, getMyHorses);
 
-router.put("/horses/:horseId", customerAuth, updateHorse);
+router.put("/horses/:horseId", customerAuth, upload.any(), updateHorse);
 
 router.delete("/horses/:horseId", customerAuth, deleteHorse);
 

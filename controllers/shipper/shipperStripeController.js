@@ -115,7 +115,7 @@ const getActiveSubscriptionPlansFromStripe = async () => {
         return product.id === subscriptionProductId;
       }
 
-      return !/^test product\b/i.test(product.name || "");
+      return true;
     })
     .map((price) => buildPlanFromPrice(price))
     .sort((a, b) => b.created - a.created);
@@ -269,6 +269,7 @@ exports.createStripeAccount = async (req, res) => {
 
     res.status(500).json({
       success: false,
+      message: error.message,
       error: error.message,
     });
   }
@@ -309,6 +310,7 @@ exports.createOnboardingLink = async (req, res) => {
 
     res.status(500).json({
       success: false,
+      message: error.message,
       error: error.message,
     });
   }

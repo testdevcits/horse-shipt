@@ -1,5 +1,138 @@
 const { apiResponse } = require("../../responses/api.response");
 const Horse = require("../../models/customer/Horse");
+const cloudinary = require("../../utils/cloudinary");
+const sharp = require("sharp");
+const fs = require("fs");
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024;
+
+const getFileByField = (files = [], fieldName) =>
+  files.find((file) => file.fieldname === fieldName);
+
+const getFileBuffer = (file) => {
+  if (!file) return null;
+  if (file.buffer) return file.buffer;
+  if (file.path) return fs.readFileSync(file.path);
+  return null;
+};
+
+const assertFileSize = (file) => {
+  if (file && Number(file.size || 0) > MAX_FILE_SIZE) {
+    throw new Error(`${file.originalname || file.fieldname} too large (Max 10MB)`);
+  }
+};
+
+const optimizeHorseImage = async (file) => {
+  const buffer = getFileBuffer(file);
+  if (!buffer) return null;
+
+  return sharp(buffer)
+    .resize({
+      width: 1024,
+      height: 768,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .jpeg({ quality: 75 })
+    .toBuffer();
+};
+
+const uploadHorsePhoto = async (file) => {
+  if (!file) return null;
+  assertFileSize(file);
+
+  const buffer = await optimizeHorseImage(file);
+  if (!buffer) return null;
+
+  const result = await new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        folder: "horses/profiles/photos",
+        resource_type: "image",
+      },
+      (error, uploadResult) => {
+        if (error) reject(error);
+        else resolve(uploadResult);
+      }
+    );
+
+    uploadStream.end(buffer);
+  });
+
+  return {
+    url: result.secure_url,
+    public_id: result.public_id,
+    width: result.width || null,
+    height: result.height || null,
+    bytes: result.bytes || null,
+    format: result.format || null,
+  };
+};
+
+const uploadHorseDocument = async (file) => {
+  if (!file) return null;
+  assertFileSize(file);
+
+  if (file.mimetype !== "application/pdf") {
+    throw new Error("Horse documents must be PDFs");
+  }
+
+  const result = await cloudinary.uploader.upload(file.path, {
+    folder: "horses/profiles/documents",
+    resource_type: "raw",
+  });
+
+  return {
+    url: result.secure_url,
+    public_id: result.public_id,
+    originalName: file.originalname || null,
+  };
+};
+
+const deleteCloudinaryAsset = async (asset, resourceType = "image") => {
+  if (!asset?.public_id) return;
+
+  try {
+    await cloudinary.uploader.destroy(asset.public_id, {
+      resource_type: resourceType,
+    });
+  } catch (error) {
+    console.error("[HORSE ASSET DELETE ERROR]", error.message);
+  }
+};
+
+const buildHorseMedia = async (files = [], existingHorse = null) => {
+  const media = {};
+  const photoFile = getFileByField(files, "photo");
+  const cogginsFile = getFileByField(files, "coggins");
+  const healthCertificateFile = getFileByField(files, "healthCertificate");
+
+  if (photoFile) {
+    const photo = await uploadHorsePhoto(photoFile);
+    if (photo) {
+      await deleteCloudinaryAsset(existingHorse?.photo, "image");
+      media.photo = photo;
+    }
+  }
+
+  if (cogginsFile || healthCertificateFile) {
+    media.documents = { ...(existingHorse?.documents?.toObject?.() || existingHorse?.documents || {}) };
+  }
+
+  if (cogginsFile) {
+    const coggins = await uploadHorseDocument(cogginsFile);
+    await deleteCloudinaryAsset(existingHorse?.documents?.coggins, "raw");
+    media.documents.coggins = coggins;
+  }
+
+  if (healthCertificateFile) {
+    const healthCertificate = await uploadHorseDocument(healthCertificateFile);
+    await deleteCloudinaryAsset(existingHorse?.documents?.healthCertificate, "raw");
+    media.documents.healthCertificate = healthCertificate;
+  }
+
+  return media;
+};
 
 /**
  * =====================================
@@ -72,6 +205,8 @@ exports.createHorse = async (req, res) => {
       });
     }
 
+    const media = await buildHorseMedia(req.files || []);
+
     // Prepare horse data to save
     const horseData = {
       owner: customerId,
@@ -84,6 +219,7 @@ exports.createHorse = async (req, res) => {
       sex,
       defaultStallSize: stallType || "Box",
       notes: notes?.trim() || generalInfo?.trim() || "",
+      ...media,
     };
 
     // Save horse
@@ -203,6 +339,8 @@ exports.updateHorse = async (req, res) => {
       }
     }
 
+    const media = await buildHorseMedia(req.files || [], horse);
+
     // Update fields
     horse.registeredName = registeredName?.trim() || horse.registeredName;
     horse.barnName = barnName?.trim() || horse.barnName;
@@ -213,6 +351,8 @@ exports.updateHorse = async (req, res) => {
     horse.sex = sex || horse.sex;
     horse.defaultStallSize = stallType || horse.defaultStallSize;
     horse.notes = notes?.trim() || generalInfo?.trim() || horse.notes;
+    if (media.photo) horse.photo = media.photo;
+    if (media.documents) horse.documents = media.documents;
 
     await horse.save();
 
@@ -252,6 +392,10 @@ exports.deleteHorse = async (req, res) => {
         .status(404)
         .json({ success: false, message: apiResponse.HORSE_NOT_FOUND });
     }
+
+    await deleteCloudinaryAsset(horse.photo, "image");
+    await deleteCloudinaryAsset(horse.documents?.coggins, "raw");
+    await deleteCloudinaryAsset(horse.documents?.healthCertificate, "raw");
 
     await horse.deleteOne();
 

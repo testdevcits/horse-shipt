@@ -247,6 +247,12 @@ exports.startTrip = async (req, res) => {
 
     await quote.save();
 
+    if (quote.shipment) {
+      await CustomerShipment.findByIdAndUpdate(quote.shipment, {
+        status: "picked",
+      });
+    }
+
     // VEHICLE UPDATE
     if (quote.vehicle) {
       await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
@@ -343,6 +349,13 @@ exports.updateDriverLocation = async (req, res) => {
       activeShipment.tripStatus = "inTransit";
 
       await activeShipment.save();
+
+      if (activeShipment.shipment) {
+        await CustomerShipment.findByIdAndUpdate(activeShipment.shipment, {
+          status: "in_transit",
+          currentLocation: locationPayload,
+        });
+      }
     }
 
     return res.json({
@@ -367,9 +380,16 @@ exports.updateDriverLocation = async (req, res) => {
 exports.completeShipment = async (req, res) => {
   try {
     const driverId = req.driver._id;
-    const { quoteId } = req.body;
+    const { quoteId, shipmentId } = req.body;
+    const targetId = quoteId || shipmentId;
 
-    const quote = await ShipmentQuote.findById(quoteId);
+    let quote = await ShipmentQuote.findById(targetId).populate("shipper");
+    if (!quote) {
+      quote = await ShipmentQuote.findOne({
+        shipment: targetId,
+        status: "accepted",
+      }).populate("shipper");
+    }
 
     if (!quote) {
       return res.status(404).json({
@@ -378,23 +398,92 @@ exports.completeShipment = async (req, res) => {
       });
     }
 
+    const shipment = await CustomerShipment.findById(quote.shipment);
+    if (!shipment) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.SHIPMENT_NOT_FOUND,
+      });
+    }
+
     // ================= UPDATE SHIPMENT =================
+    shipment.status = "delivered";
+    shipment.deliveredAt = shipment.deliveredAt || new Date();
+    shipment.deliveryOtpVerified = true;
+    shipment.deliveryOtp = null;
+    shipment.deliveryOtpExpires = null;
+    await shipment.save();
+
     quote.tripStatus = "completed";
-    quote.deliveredAt = new Date();
+    quote.deliveredAt = quote.deliveredAt || shipment.deliveredAt || new Date();
     quote.isTrackingActive = false;
 
-    await quote.save();
-
     // ================= FREE VEHICLE =================
-    await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
-      currentShipment: null,
-      driverStatus: "AVAILABLE",
-    });
+    if (quote.vehicle) {
+      await ShipperVehicle.findByIdAndUpdate(quote.vehicle, {
+        currentShipment: null,
+        driverStatus: "AVAILABLE",
+      });
+    }
 
     // ================= FREE DRIVER =================
     await Driver.findByIdAndUpdate(driverId, {
       driverStatus: "available",
+      isTrackingEnabled: false,
     });
+
+    if (
+      quote.paymentStatus === "paid" &&
+      quote.payoutStatus !== "transferred" &&
+      quote.stripePaymentIntentId
+    ) {
+      try {
+        const paymentIntent = await stripe.paymentIntents.retrieve(
+          quote.stripePaymentIntentId
+        );
+        const charge = await stripe.charges.retrieve(paymentIntent.latest_charge);
+        const balanceTx = await stripe.balanceTransactions.retrieve(
+          charge.balance_transaction
+        );
+        const settings = await platformSettings.findOne();
+        const grossCents = paymentIntent.amount;
+        const stripeFeeCents = balanceTx.fee;
+        const netAfterStripeCents = grossCents - stripeFeeCents;
+        const platformFee =
+          Math.round(
+            netAfterStripeCents * ((settings?.platformFeePercent || 0) / 100)
+          ) + Math.round((settings?.platformFeeFlat || 0) * 100);
+        const shipperCents = netAfterStripeCents - platformFee;
+
+        const transfer = await stripe.transfers.create({
+          amount: Math.max(shipperCents, 0),
+          currency: balanceTx.currency,
+          destination: quote.shipper.stripeAccountId,
+          source_transaction: charge.id,
+          transfer_group: `quote_${quote._id.toString()}`,
+          metadata: {
+            quoteId: quote._id.toString(),
+            shipmentId: quote.shipment.toString(),
+            shipperId: quote.shipper._id.toString(),
+          },
+        });
+
+        quote.stripeTransferId = transfer.id;
+        quote.payoutStatus = "transferred";
+        quote.paymentReleasedAt = new Date();
+        quote.stripeFee = stripeFeeCents / 100;
+        quote.platformFee = platformFee / 100;
+        quote.shipperPayoutAmount = Math.max(shipperCents, 0) / 100;
+        quote.payoutCurrency = balanceTx.currency?.toUpperCase?.() || "USD";
+        quote.balanceInWallet = 0;
+        quote.payoutError = "";
+      } catch (err) {
+        quote.payoutStatus = "pending";
+        quote.payoutError = err.message;
+      }
+    }
+
+    await quote.save();
 
     // ================= RESPONSE =================
     return res.json({

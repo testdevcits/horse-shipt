@@ -3,11 +3,40 @@ const mongoose = require("mongoose");
 
 const Review = require("../../models/shipper/review.model");
 const Shipper = require("../../models/shipper/shipperModel");
+const PreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 
 const { REVIEW_MESSAGES } = require("../../utils/response/reviewResponse");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const COMPLETED_SHIPMENT_STATUSES = ["delivered", "completed"];
+
+const formatPreferredArea = (area) => ({
+  id: area._id,
+  locationName: area.locationName || "",
+  radiusKm: area.radiusKm || 0,
+  coordinates: area.coordinates || null,
+});
+
+const buildAreaMap = async (shipperIds = []) => {
+  const uniqueIds = [
+    ...new Set(shipperIds.filter(Boolean).map((id) => id.toString())),
+  ];
+
+  if (!uniqueIds.length) return new Map();
+
+  const areas = await PreferredArea.find({ shipper: { $in: uniqueIds } })
+    .sort({ createdAt: -1 })
+    .lean();
+
+  return areas.reduce((map, area) => {
+    const key = area.shipper?.toString();
+    if (!key) return map;
+    const existing = map.get(key) || [];
+    existing.push(formatPreferredArea(area));
+    map.set(key, existing);
+    return map;
+  }, new Map());
+};
 
 /*
 =====================================================
@@ -474,11 +503,18 @@ exports.getTopRatedShippers = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(Math.max(0, 10 - topShippers.length));
 
+    const resultShipperIds = [
+      ...topShippers.map((s) => s._id),
+      ...fallbackShippers.map((shipper) => shipper._id),
+    ];
+    const areaMap = await buildAreaMap(resultShipperIds);
+
     // Map ratings with shipper info into ShipperReviewCard format
     const reviewedResults = topShippers.map((s) => {
       const shipperInfo = populatedShippers.find(
         (sh) => sh._id.toString() === s._id.toString()
       );
+      const preferredAreas = areaMap.get(s._id.toString()) || [];
 
       return {
         id: s._id,
@@ -490,23 +526,39 @@ exports.getTopRatedShippers = async (req, res) => {
         rating: Number(s.averageRating.toFixed(1)),
         reviewCount: s.totalReviews || 0,
         reviewText: s.latestReview || `${s.totalReviews} Reviews`,
-        region: shipperInfo?.locale?.address || "Available",
+        region:
+          shipperInfo?.locale?.address ||
+          preferredAreas[0]?.locationName ||
+          "Available",
+        preferredAreas,
         googleReviewLink: shipperInfo?.googleReviewLink || null,
       };
     });
 
     const fallbackResults = fallbackShippers
       .filter((shipper) => !reviewedShipperIds.has(shipper._id.toString()))
-      .map((shipper) => ({
-        id: shipper._id,
-        name: shipper.name || shipper.companyName || shipper.email || "Shipper",
-        profileImage: shipper.profileImage?.url || shipper.profilePicture || "/default-avatar.png",
-        rating: Number(shipper.averageRating || 0),
-        reviewCount: 0,
-        reviewText: "New shipper in the network",
-        region: shipper.locale?.address || "Available",
-        googleReviewLink: shipper.googleReviewLink || null,
-      }));
+      .map((shipper) => {
+        const preferredAreas = areaMap.get(shipper._id.toString()) || [];
+
+        return {
+          id: shipper._id,
+          name:
+            shipper.name || shipper.companyName || shipper.email || "Shipper",
+          profileImage:
+            shipper.profileImage?.url ||
+            shipper.profilePicture ||
+            "/default-avatar.png",
+          rating: Number(shipper.averageRating || 0),
+          reviewCount: 0,
+          reviewText: "New shipper in the network",
+          region:
+            shipper.locale?.address ||
+            preferredAreas[0]?.locationName ||
+            "Available",
+          preferredAreas,
+          googleReviewLink: shipper.googleReviewLink || null,
+        };
+      });
 
     const result = [...reviewedResults, ...fallbackResults].slice(0, 10);
 
@@ -591,6 +643,10 @@ exports.getShipperProfileDetail = async (req, res) => {
       totalAccepted: 0,
     };
 
+    const preferredAreas = await PreferredArea.find({ shipper: shipper._id })
+      .sort({ createdAt: -1 })
+      .lean();
+
     // -------------------------
     // 5. Final Response
     // -------------------------
@@ -609,6 +665,7 @@ exports.getShipperProfileDetail = async (req, res) => {
       email: shipper.email,
       googleReviewLink: shipper.googleReviewLink,
       completedShipments: stats.totalAccepted,
+      preferredAreas: preferredAreas.map(formatPreferredArea),
       isActive: shipper.isActive,
       createdAt: shipper.createdAt,
       reviews: reviews || [],
