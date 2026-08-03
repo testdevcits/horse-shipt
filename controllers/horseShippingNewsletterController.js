@@ -326,13 +326,11 @@ exports.sendNewsletter = async (req, res) => {
           to: email,
           subject: subject.trim(),
           text: message || "",
-          html:
-            htmlContent ||
-            baseTemplate({
-              title: subject.trim(),
-              preheader: message,
-              body: `<p>${escapeHtml(message).replace(/\n/g, "<br/>")}</p>`,
-            }),
+          html: baseTemplate({
+            title: subject.trim(),
+            preheader: message || subject.trim(),
+            body: htmlContent || `<p>${escapeHtml(message).replace(/\n/g, "<br/>")}</p>`,
+          }),
         })
       )
     );

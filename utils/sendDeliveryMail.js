@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 
 const sendDeliveryMail = async (to, subject, message) => {
   try {
@@ -15,6 +16,11 @@ const sendDeliveryMail = async (to, subject, message) => {
       to: to,
       subject: subject,
       text: message,
+      html: baseTemplate({
+        title: subject || "HorseShipt Delivery Update",
+        preheader: message,
+        body: `<p style="margin:0;">${escapeHtml(message || "").replace(/\n/g, "<br/>")}</p>`,
+      }),
     };
 
     await transporter.sendMail(mailOptions);

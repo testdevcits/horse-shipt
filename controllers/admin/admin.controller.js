@@ -3,6 +3,7 @@ const HorseAdmin = require("../../models/admin/Admin");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const nodemailer = require("nodemailer");
+const { baseTemplate, escapeHtml } = require("../../utils/mailTemplates/baseTemplate");
 
 // ===============================
 //  JWT GENERATOR
@@ -117,7 +118,16 @@ exports.forgotPassword = async (req, res, next) => {
       from: process.env.EMAIL_FROM,
       to: admin.email,
       subject: "Password Reset OTP",
-      html: `<h3>Password Reset OTP</h3><p>Your OTP is:</p><h2>${otp}</h2><p>Valid for 5 minutes.</p>`,
+      html: baseTemplate({
+        title: "Password Reset OTP",
+        preheader: "Use this one-time code to reset your admin password.",
+        body: `
+          <p style="margin:0 0 12px;">Use this one-time code to reset your admin password.</p>
+          <div style="display:inline-block;margin:16px 0 8px;padding:14px 20px;background:#fff8ea;border:1px dashed #BF9B53;color:#BF9B53;font-size:34px;line-height:1;font-weight:800;letter-spacing:8px;">${escapeHtml(otp)}</div>
+          <p style="margin:8px 0 0;font-size:13px;color:#6b7280;">This OTP is valid for 5 minutes.</p>
+        `,
+        note: "If you did not request this, you can safely ignore this email.",
+      }),
     });
 
     res

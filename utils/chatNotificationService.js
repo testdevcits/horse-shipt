@@ -6,6 +6,7 @@ const CustomerShipment = require("../models/customer/CustomerShipment");
 const { sendCustomerNotification } = require("./customerNotifications");
 const { sendShipperEmail } = require("./shipperMailSend");
 const { sendShipperSms } = require("./shipperSmsSend");
+const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 const {
   getShipperChannelSettings,
   isCustomerNotificationEnabled,
@@ -38,6 +39,11 @@ const sendCustomerEmail = async ({ to, subject, text }) => {
     to,
     subject,
     text,
+    html: baseTemplate({
+      title: subject || "HorseShipt Notification",
+      preheader: text,
+      body: `<p style="margin:0;">${escapeHtml(text || "").replace(/\n/g, "<br/>")}</p>`,
+    }),
   });
 
   return true;

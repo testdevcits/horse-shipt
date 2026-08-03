@@ -1,6 +1,11 @@
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 const { getFrontendUrl } = require("./frontendUrl");
+const {
+  baseTemplate,
+  detailTable,
+  escapeHtml,
+} = require("./mailTemplates/baseTemplate");
 
 const sendSubscriptionEmail = async ({
   shipperId,
@@ -26,62 +31,29 @@ const sendSubscriptionEmail = async ({
       },
     });
 
-    const html = `
-<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial, sans-serif;">
-  <div style="padding:20px;">
-    <div style="max-width:600px;margin:auto;background:#ffffff;border-radius:10px;border:1px solid #eee;overflow:hidden;">
-      
-      <!-- HEADER -->
-      <div style="background:#BF9B53;padding:18px;text-align:center;">
-        <h2 style="color:white;margin:0;">Horse Shipt</h2>
-      </div>
-
-      <!-- CONTENT -->
-      <div style="padding:24px;">
-
-        <p style="font-size:14px;color:#333;">
-          Hello <strong>${shipper.name || "Shipper"}</strong>,
-        </p>
-
-        <p style="font-size:14px;color:#555;">
-          Your subscription is now active on <strong>Horse Shipt</strong>.
-        </p>
-
-        <div style="margin:20px 0;padding:16px;background:#f8f8f8;border-radius:8px;">
-          <h4 style="margin:0 0 10px 0;">Subscription Summary</h4>
-          <p><strong>Plan:</strong> ${planName}</p>
-          <p><strong>Amount:</strong> $${amount}</p>
-          ${
-            trialEnd
-              ? `<p><strong>Trial Ends:</strong> ${new Date(
-                  trialEnd
-                ).toDateString()}</p>`
-              : ""
-          }
-        </div>
-
-        <div style="margin:20px 0;">
-          <a href="${getFrontendUrl()}"
-             style="background:#BF9B53;color:#fff;padding:10px 18px;text-decoration:none;border-radius:6px;">
-            Go to Dashboard
-          </a>
-        </div>
-
-        <p style="font-size:14px;color:#333;">
-          Thanks,<br/>
-          <strong>Horse Shipt Team</strong>
-        </p>
-
-      </div>
-
-      <div style="background:#f1f1f1;text-align:center;padding:10px;font-size:12px;">
-        © ${new Date().getFullYear()} Horse Shipt
-      </div>
-
-    </div>
-  </div>
-</body>
-    `;
+    const html = baseTemplate({
+      title: "Subscription Activated",
+      preheader: "Your HorseShipt subscription is now active.",
+      buttonText: "Go to Dashboard",
+      buttonUrl: getFrontendUrl(),
+      body: `
+        <p style="margin:0 0 10px;">Hello <strong>${escapeHtml(
+          shipper.name || "Shipper"
+        )}</strong>,</p>
+        <p style="margin:0;">Your subscription is now active on HorseShipt.</p>
+        ${detailTable([
+          { label: "Plan", value: escapeHtml(planName || "N/A") },
+          { label: "Amount", value: `$${escapeHtml(amount ?? "0")}` },
+          trialEnd
+            ? {
+                label: "Trial Ends",
+                value: escapeHtml(new Date(trialEnd).toDateString()),
+              }
+            : null,
+        ])}
+      `,
+      note: "Thanks for keeping your HorseShipt account active.",
+    });
 
     await transporter.sendMail({
       from: process.env.EMAIL_FROM,

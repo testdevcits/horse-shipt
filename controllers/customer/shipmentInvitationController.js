@@ -7,6 +7,10 @@ const sendEmail = require("../../utils/sendShipmentInviteEmail");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { buildFrontendUrl } = require("../../utils/frontendUrl");
 const {
+  baseTemplate,
+  detailTable,
+} = require("../../utils/mailTemplates/baseTemplate");
+const {
   getShipperChannelSettings,
 } = require("../../utils/notificationPreferences");
 
@@ -151,52 +155,29 @@ exports.sendInvitation = async (req, res) => {
       emailSent = await sendEmail({
         to: shipper.email,
         subject: `New quote request: ${shipment.shipmentCode}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;background:#f9fafb;padding:24px;">
-            <div style="max-width:620px;margin:auto;background:#fff;border:1px solid #eee;border-radius:10px;overflow:hidden;">
-              <div style="background:#BF9B53;color:#fff;padding:18px 22px;">
-                <h2 style="margin:0;">Horse Shipt</h2>
-              </div>
-              <div style="padding:22px;color:#333;">
-                <p>Hello <strong>${shipperName}</strong>,</p>
-                <p><strong>New Opportunity!</strong> Customer ${customerLabel} has requested a quote for this shipment.</p>
-                <h3 style="margin:20px 0 10px;color:#222;">Shipment Details</h3>
-                <table style="width:100%;border-collapse:collapse;background:#f8f8f8;border-left:4px solid #BF9B53;margin:18px 0;">
-                  <tr>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Shipment Code</strong></td>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${shipmentCode}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Pickup</strong></td>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${pickupLocation}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Delivery</strong></td>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${deliveryLocation}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;"><strong>Pickup Date</strong></td>
-                    <td style="padding:10px 12px;border-bottom:1px solid #eee;">${pickupDate}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding:10px 12px;"><strong>Delivery Date</strong></td>
-                    <td style="padding:10px 12px;">${deliveryDate}</td>
-                  </tr>
-                </table>
-                ${
-                  message
-                    ? `<p style="font-size:14px;color:#555;"><strong>Message:</strong> ${safeMessage}</p>`
-                    : ""
-                }
-                <p style="margin:22px 0;">
-                  <a href="${dashboardUrl}" style="background:#BF9B53;color:#fff;padding:11px 18px;text-decoration:none;border-radius:6px;display:inline-block;">View quote request</a>
-                </p>
-                <p>Please login to your HorseShipt account for details and to send a quote.</p>
-                <p>Thanks,<br/><strong>Horse Shipt Team</strong></p>
-              </div>
-            </div>
-          </div>
-        `,
+        html: baseTemplate({
+          title: "New Quote Request",
+          preheader: `Customer ${customerLabel} requested a quote for shipment ${shipmentCode}.`,
+          buttonText: "View Quote Request",
+          buttonUrl: dashboardUrl,
+          body: `
+            <p style="margin:0 0 10px;">Hello <strong>${shipperName}</strong>,</p>
+            <p style="margin:0;">Customer ${customerLabel} has requested a quote for this shipment.</p>
+            ${detailTable([
+              { label: "Shipment Code", value: shipmentCode },
+              { label: "Pickup", value: pickupLocation },
+              { label: "Delivery", value: deliveryLocation },
+              { label: "Pickup Date", value: pickupDate },
+              { label: "Delivery Date", value: deliveryDate },
+            ])}
+            ${
+              message
+                ? `<p style="margin:0;font-size:14px;color:#555;"><strong>Message:</strong> ${safeMessage}</p>`
+                : ""
+            }
+          `,
+          note: "Please login to your HorseShipt account for details and to send a quote.",
+        }),
       });
     }
 

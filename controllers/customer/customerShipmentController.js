@@ -12,6 +12,11 @@ const crypto = require("crypto");
 const sharp = require("sharp");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
 const { buildFrontendUrl, getFrontendUrl } = require("../../utils/frontendUrl");
+const {
+  baseTemplate,
+  detailTable,
+  escapeHtml,
+} = require("../../utils/mailTemplates/baseTemplate");
 
 // ---------------- Helper: Upload to Cloudinary ----------------
 const uploadToCloudinary = async (file, type = "photo") => {
@@ -1102,60 +1107,42 @@ const sendRecipientInviteEmail = async ({
       throw new Error("Invite link is missing");
     }
 
-    const html = `
-    <div style="font-family: Arial, sans-serif; padding:20px;">
-      <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px; overflow:hidden;">
-        <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
-          <h2>Shipment Invitation</h2>
-        </div>
-        <div style="padding:20px;">
-          <p><strong>${customerName}</strong> has invited you to track a shipment.</p>
-
-          <h3>Shipment Details</h3>
-          <table style="width:100%; border-collapse:collapse;">
-            <tr><td><strong>Shipment Code</strong></td><td>${
-              shipment.shipmentCode || "N/A"
-            }</td></tr>
-            <tr><td><strong>Pickup</strong></td><td>${
-              shipment.pickupLocation || "N/A"
-            }</td></tr>
-            <tr><td><strong>Delivery</strong></td><td>${
-              shipment.deliveryLocation || "N/A"
-            }</td></tr>
-            <tr><td><strong>Pickup Date</strong></td><td>${
+    const signupUrl = buildFrontendUrl("/signup");
+    const html = baseTemplate({
+      title: "Shipment Invitation",
+      preheader: `${customerName} has invited you to track a shipment.`,
+      buttonText: "View Shipment",
+      buttonUrl: link,
+      body: `
+        <p style="margin:0;"><strong>${escapeHtml(
+          customerName
+        )}</strong> has invited you to track a shipment.</p>
+        ${detailTable([
+          { label: "Shipment Code", value: escapeHtml(shipment.shipmentCode || "N/A") },
+          { label: "Pickup", value: escapeHtml(shipment.pickupLocation || "N/A") },
+          { label: "Delivery", value: escapeHtml(shipment.deliveryLocation || "N/A") },
+          {
+            label: "Pickup Date",
+            value: escapeHtml(
               formatShipmentEmailDateRange(
                 shipment.pickupDateRange,
                 shipment.pickupDate
               )
-            }</td></tr>
-            <tr><td><strong>Delivery Date</strong></td><td>${
+            ),
+          },
+          {
+            label: "Delivery Date",
+            value: escapeHtml(
               formatShipmentEmailDateRange(
                 shipment.deliveryDateRange,
                 shipment.deliveryDate
               )
-            }</td></tr>
-          </table>
-
-          <div style="text-align:center; margin:25px 0;">
-            <a href="${link}" 
-              style="background:#BF9B53; color:#fff; padding:12px 25px; text-decoration:none; border-radius:5px;">
-              View Shipment
-            </a>
-          </div>
-
-          <p style="font-size:12px; color:#777;">
-            Link expires in 24 hours. To track more shipments, please sign up.
-            <br/>
-            <a href="${buildFrontendUrl("/signup")}">Sign Up</a>
-          </p>
-        </div>
-
-        <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
-          © ${new Date().getFullYear()} Horsehipt
-        </div>
-      </div>
-    </div>
-    `;
+            ),
+          },
+        ])}
+      `,
+      note: `Link expires in 24 hours. To track more shipments, please <a href="${signupUrl}" style="color:#0057c2;text-decoration:underline;">sign up</a>.`,
+    });
 
     await sendEmail({
       to: email,

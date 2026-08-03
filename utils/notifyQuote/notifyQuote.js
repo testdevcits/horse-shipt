@@ -2,6 +2,11 @@
 const { sendEmail } = require("./sendEmail");
 const { sendSMS } = require("./sendSMS");
 const { buildFrontendUrl } = require("../frontendUrl");
+const {
+  baseTemplate,
+  detailTable,
+  escapeHtml,
+} = require("../mailTemplates/baseTemplate");
 
 /**
  * Format phone to E.164 (+91XXXXXXXXXX)
@@ -33,33 +38,31 @@ const notifyQuote = async ({
     // ---------------- EMAIL ----------------
     if (shipperEmail) {
       try {
-        const html = `
-        <div style="font-family: Arial, sans-serif; padding:20px;">
-          <div style="max-width:600px; margin:auto; background:#fff; border-radius:10px;">
-            <div style="background:#BF9B53; color:#fff; padding:20px; text-align:center;">
-              <h2>Quote Accepted</h2>
-            </div>
-
-            <div style="padding:20px;">
-              <p>Hello, <strong>${
-                shipment.shipper?.name || "Shipper"
-              }</strong></p>
-              <p>${customerName} accepted your quote for <strong>${
-          shipment.shipmentCode
-        }</strong>.</p>
-
-              <p><strong>Amount:</strong> ${quote.totalPrice} ${
-          quote.currency
-        }</p>
-              <p>Please check your dashboard.</p>
-            </div>
-
-            <div style="background:#f1f1f1; text-align:center; padding:10px; font-size:12px;">
-              © ${new Date().getFullYear()} Horsehipt
-            </div>
-          </div>
-        </div>
-        `;
+        const html = baseTemplate({
+          title: "Quote Accepted",
+          preheader: `${customerName} accepted your quote for ${shipment.shipmentCode}.`,
+          buttonText: "View Dashboard",
+          buttonUrl: buildFrontendUrl("/shipper/shipments"),
+          body: `
+            <p style="margin:0 0 10px;">Hello <strong>${escapeHtml(
+              shipment.shipper?.name || "Shipper"
+            )}</strong>,</p>
+            <p style="margin:0;">${escapeHtml(customerName)} accepted your quote.</p>
+            ${detailTable([
+              {
+                label: "Shipment Code",
+                value: escapeHtml(shipment.shipmentCode || "N/A"),
+              },
+              {
+                label: "Amount",
+                value: `${escapeHtml(quote.totalPrice || 0)} ${escapeHtml(
+                  quote.currency || "USD"
+                )}`,
+              },
+            ])}
+          `,
+          note: "Please check your dashboard for next steps.",
+        });
 
         await sendEmail({
           to: shipperEmail,

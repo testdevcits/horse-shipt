@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 
 const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST,
@@ -16,7 +17,13 @@ const sendEmail = async ({ to, subject, html }) => {
       from: process.env.EMAIL_FROM,
       to,
       subject,
-      html,
+      html:
+        html ||
+        baseTemplate({
+          title: subject || "HorseShipt Notification",
+          preheader: subject,
+          body: `<p style="margin:0;">${escapeHtml(subject || "You have a new HorseShipt notification.")}</p>`,
+        }),
     });
     return true;
   } catch (err) {

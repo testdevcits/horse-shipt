@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 
 // -------------------- TRANSPORTER (USE WORKING SMTP CONFIG) --------------------
 const transporter = nodemailer.createTransport({
@@ -29,23 +30,16 @@ exports.sendOtpMail = async (email, otp) => {
         process.env.EMAIL_FROM || `"HorseShipt" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "Verify your HorseShipt email",
-      html: `
-<div style="font-family: Arial, sans-serif; background:#f6f7fb; padding:28px;">
-  <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:14px;border:1px solid #eadfca;overflow:hidden;">
-    <div style="background:#BF9B53;color:#fff;padding:22px 24px;text-align:center;">
-      <h2 style="margin:0;font-size:22px;">HorseShipt Email Verification</h2>
-    </div>
-    <div style="padding:28px 24px;text-align:center;color:#1f2937;">
-      <p style="font-size:15px;margin:0 0 10px;">Use this one-time code to finish creating your account.</p>
-      <div style="display:inline-block;font-size:34px;letter-spacing:8px;font-weight:800;color:#BF9B53;background:#fff8ea;border:1px dashed #BF9B53;border-radius:12px;padding:14px 18px;margin:18px 0;">
-        ${otp}
-      </div>
-      <p style="font-size:13px;color:#6b7280;margin:8px 0 0;">This OTP is valid for 5 minutes.</p>
-      <p style="font-size:12px;color:#9ca3af;margin:18px 0 0;">If you did not request this, you can safely ignore this email.</p>
-    </div>
-  </div>
-</div>
-      `,
+      html: baseTemplate({
+        title: "HorseShipt Email Verification",
+        preheader: "Use this one-time code to finish creating your account.",
+        body: `
+          <p style="margin:0 0 12px;">Use this one-time code to finish creating your account.</p>
+          <div style="display:inline-block;margin:16px 0 8px;padding:14px 20px;background:#fff8ea;border:1px dashed #BF9B53;color:#BF9B53;font-size:34px;line-height:1;font-weight:800;letter-spacing:8px;">${escapeHtml(otp)}</div>
+          <p style="margin:8px 0 0;font-size:13px;color:#6b7280;">This OTP is valid for 5 minutes.</p>
+        `,
+        note: "If you did not request this, you can safely ignore this email.",
+      }),
     });
   } catch (error) {
     console.error("OTP MAIL ERROR:", error.message);
@@ -61,23 +55,16 @@ exports.sendPasswordResetOtpMail = async (email, otp) => {
         process.env.EMAIL_FROM || `"HorseShipt" <${process.env.EMAIL_USER}>`,
       to: email,
       subject: "HorseShipt password reset OTP",
-      html: `
-<div style="font-family: Arial, sans-serif; background:#f6f7fb; padding:28px;">
-  <div style="max-width:560px;margin:auto;background:#ffffff;border-radius:14px;border:1px solid #eadfca;overflow:hidden;">
-    <div style="background:#BF9B53;color:#fff;padding:22px 24px;text-align:center;">
-      <h2 style="margin:0;font-size:22px;">HorseShipt Password Reset</h2>
-    </div>
-    <div style="padding:28px 24px;text-align:center;color:#1f2937;">
-      <p style="font-size:15px;margin:0 0 10px;">Use this one-time code to reset your password.</p>
-      <div style="display:inline-block;font-size:34px;letter-spacing:8px;font-weight:800;color:#BF9B53;background:#fff8ea;border:1px dashed #BF9B53;border-radius:12px;padding:14px 18px;margin:18px 0;">
-        ${otp}
-      </div>
-      <p style="font-size:13px;color:#6b7280;margin:8px 0 0;">This OTP is valid for 5 minutes.</p>
-      <p style="font-size:12px;color:#9ca3af;margin:18px 0 0;">If you did not request this, you can safely ignore this email.</p>
-    </div>
-  </div>
-</div>
-      `,
+      html: baseTemplate({
+        title: "HorseShipt Password Reset",
+        preheader: "Use this one-time code to reset your password.",
+        body: `
+          <p style="margin:0 0 12px;">Use this one-time code to reset your password.</p>
+          <div style="display:inline-block;margin:16px 0 8px;padding:14px 20px;background:#fff8ea;border:1px dashed #BF9B53;color:#BF9B53;font-size:34px;line-height:1;font-weight:800;letter-spacing:8px;">${escapeHtml(otp)}</div>
+          <p style="margin:8px 0 0;font-size:13px;color:#6b7280;">This OTP is valid for 5 minutes.</p>
+        `,
+        note: "If you did not request this, you can safely ignore this email.",
+      }),
     });
   } catch (error) {
     console.error("PASSWORD RESET OTP MAIL ERROR:", error.message);
