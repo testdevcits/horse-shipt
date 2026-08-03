@@ -40,6 +40,38 @@ const isAllowedDocumentUrl = (url = "") => {
   }
 };
 
+const appendPdfExtension = (url = "") => {
+  if (!url || /\.pdf($|\?)/i.test(url)) return null;
+
+  const [baseUrl, query = ""] = String(url).split("?");
+  return `${baseUrl}.pdf${query ? `?${query}` : ""}`;
+};
+
+const sendDocumentError = (res, status, message) =>
+  res.status(status).type("html").send(`<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Document unavailable</title>
+    <style>
+      body{margin:0;font-family:Arial,sans-serif;background:#f8fafc;color:#1f2937;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
+      .box{max-width:420px;border:1px solid #fecaca;background:#fff1f2;padding:18px;text-align:center}
+      h1{font-size:18px;margin:0 0 8px;color:#991b1b}
+      p{font-size:14px;line-height:1.5;margin:0;color:#7f1d1d}
+    </style>
+  </head>
+  <body>
+    <div class="box">
+      <h1>Document unavailable</h1>
+      <p>${String(message || "Unable to load this document. Please try again.")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")}</p>
+    </div>
+  </body>
+</html>`);
+
 const getQuoteDocument = (quote, documentType) => {
   if (documentType === "generated") {
     return {
@@ -68,39 +100,32 @@ exports.streamQuoteDocument = async (req, res) => {
     const customerId = req.user._id;
 
     if (!mongoose.Types.ObjectId.isValid(quoteId)) {
-      return res.status(400).json({
-        success: false,
-        message: apiResponse.INVALID_QUOTE_ID || "Invalid quote id",
-      });
+      return sendDocumentError(
+        res,
+        400,
+        apiResponse.INVALID_QUOTE_ID || "Invalid quote id"
+      );
     }
 
     const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
 
     if (!quote) {
-      return res.status(404).json({
-        success: false,
-        message: apiResponse.QUOTE_NOT_FOUND,
-      });
+      return sendDocumentError(res, 404, apiResponse.QUOTE_NOT_FOUND);
     }
 
     if (quote.shipment?.customer?.toString() !== customerId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: apiResponse.UNAUTHORIZED,
-      });
+      return sendDocumentError(res, 403, apiResponse.UNAUTHORIZED);
     }
 
     const document = getQuoteDocument(quote, documentType);
 
     if (!document?.url) {
-      return res.status(404).json({
-        success: false,
-        message: "Document not found",
-      });
+      return sendDocumentError(res, 404, "Document not found");
     }
 
     const candidateUrls = [
       document.url,
+      appendPdfExtension(document.url),
       document.publicId &&
         !String(document.publicId).toLowerCase().endsWith(".pdf") &&
         cloudinary.url(`${document.publicId}.pdf`, {
@@ -115,10 +140,7 @@ exports.streamQuoteDocument = async (req, res) => {
     ].filter(Boolean);
 
     if (!candidateUrls.some(isAllowedDocumentUrl)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid document source",
-      });
+      return sendDocumentError(res, 400, "Invalid document source");
     }
 
     let response = null;
@@ -160,10 +182,11 @@ exports.streamQuoteDocument = async (req, res) => {
     response.data.pipe(res);
   } catch (error) {
     console.error("[QUOTE DOCUMENT STREAM ERROR]", error.message);
-    return res.status(502).json({
-      success: false,
-      message: "Unable to load this document. Please try again.",
-    });
+    return sendDocumentError(
+      res,
+      502,
+      "Unable to load this document. Please try again."
+    );
   }
 };
 
