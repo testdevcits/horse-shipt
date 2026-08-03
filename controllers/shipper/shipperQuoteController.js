@@ -7,6 +7,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const Shipper = require("../../models/shipper/shipperModel");
+const Subscription = require("../../models/shipper/subscriptionModel");
 const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
@@ -171,6 +172,26 @@ const isInvoiceReadyQuote = (quote) =>
   quote?.taxInvoices?.shipper?.url ||
   quote?.shipment?.status === "delivered" ||
   quote?.shipment?.status === "completed";
+
+const hasQuoteSubmissionAccess = async (shipper) => {
+  if (["active", "trialing", "past_due"].includes(shipper?.subscriptionStatus)) {
+    return true;
+  }
+
+  const now = new Date();
+  const subscription = await Subscription.findOne({
+    shipperId: shipper._id,
+    status: { $in: ["active", "trialing", "past_due"] },
+    $or: [
+      { currentPeriodEnd: { $exists: false } },
+      { currentPeriodEnd: null },
+      { currentPeriodEnd: { $gte: now } },
+      { trialEnd: { $gte: now } },
+    ],
+  }).lean();
+
+  return Boolean(subscription);
+};
 
 const streamPdfBuffer = ({ res, buffer, filename }) => {
   res.setHeader("Content-Type", "application/pdf");
@@ -550,6 +571,17 @@ exports.addQuote = async (req, res) => {
         success: false,
         message:
           apiResponse.YOUR_ACCOUNT_IS_RESTRICTED_DUE_TO_PAYMENT_FAILURE_PLEASE_UPDATE_YOUR_CAR,
+      });
+    }
+
+    const hasSubscriptionAccess = await hasQuoteSubmissionAccess(shipper);
+    if (!hasSubscriptionAccess) {
+      return res.status(403).json({
+        success: false,
+        message:
+          apiResponse.SUBSCRIPTION_REQUIRED ||
+          "Subscription required to submit shipping offers.",
+        needsSubscription: true,
       });
     }
 
