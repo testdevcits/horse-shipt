@@ -108,7 +108,7 @@ async function generateTaxInvoicePDF({
 
       box(
         "PLATFORM DETAILS",
-        ["HorseShipt", "Marketplace / Platform Operator", "United States"],
+        ["HorseShipt"],
         46,
         96,
         210
