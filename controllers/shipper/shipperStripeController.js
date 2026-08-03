@@ -289,12 +289,22 @@ exports.createOnboardingLink = async (req, res) => {
       });
     }
 
+    const refreshUrl = buildFrontendUrl("/shipper/dashboard?stripe=refresh");
+    const returnUrl = buildFrontendUrl("/shipper/dashboard?stripe=success");
+
+    console.log("[STRIPE ONBOARDING LINK]", {
+      shipperId: shipper._id.toString(),
+      stripeAccountId: shipper.stripeAccountId,
+      refreshUrl,
+      returnUrl,
+    });
+
     const accountLink = await stripe.accountLinks.create({
       account: shipper.stripeAccountId,
 
-      refresh_url: buildFrontendUrl("/shipper/dashboard?stripe=refresh"),
+      refresh_url: refreshUrl,
 
-      return_url: buildFrontendUrl("/shipper/dashboard?stripe=success"),
+      return_url: returnUrl,
 
       type: "account_onboarding",
 

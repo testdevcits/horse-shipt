@@ -5,9 +5,15 @@ const normalizePublicFrontendUrl = (value = "") => {
 
   try {
     const url = new URL(trimmedUrl);
+    if (url.protocol !== "https:" && url.hostname !== "localhost") {
+      url.protocol = "https:";
+    }
     if (url.hostname === "52.14.251.189" && url.port === "4000") {
       url.port = "";
       return trimTrailingSlash(url.toString());
+    }
+    if (url.hostname === "52.14.251.189") {
+      return "https://frontend.horseshipt.com";
     }
   } catch {
     return trimmedUrl;
@@ -30,7 +36,7 @@ const getFrontendUrl = () => {
     (isDevelopment
       ? process.env.DEVELOPMENT_FRONTEND_URL ||
         "https://horse-shipt-frontend.vercel.app"
-      : "http://52.14.251.189");
+      : "https://frontend.horseshipt.com");
 
   return normalizePublicFrontendUrl(selectedUrl);
 };
