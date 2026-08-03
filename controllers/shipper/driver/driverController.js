@@ -13,6 +13,34 @@ const ensureDeliveryInvoices = require("../../../utils/invoice/ensureDeliveryInv
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
+const hasValidShipmentLocation = (location) =>
+  location &&
+  Number.isFinite(Number(location.latitude)) &&
+  Number.isFinite(Number(location.longitude));
+
+const clearInvalidShipmentLocation = (shipment) => {
+  if (
+    shipment?.currentLocation &&
+    !hasValidShipmentLocation(shipment.currentLocation)
+  ) {
+    shipment.currentLocation = null;
+  }
+};
+
+const sendDriverDeliveryError = (res, error) => {
+  const isLocationValidation =
+    error?.name === "ValidationError" &&
+    (error?.errors?.["currentLocation.longitude"] ||
+      error?.errors?.["currentLocation.latitude"]);
+
+  return res.status(500).json({
+    success: false,
+    message: isLocationValidation
+      ? "Shipment location data was incomplete. Please try again."
+      : error.message,
+  });
+};
+
 const publicDriver = (driver) => {
   const doc = driver?.toObject ? driver.toObject() : driver;
   if (!doc) return null;
@@ -336,6 +364,11 @@ exports.updateDriverLocation = async (req, res) => {
       heading,
       updatedAt: new Date(),
     };
+    const shipmentLocationPayload = {
+      latitude: lat,
+      longitude: lng,
+      updatedAt: new Date(),
+    };
 
     // ================= UPDATE DRIVER =================
     await Driver.findByIdAndUpdate(driverId, {
@@ -354,7 +387,7 @@ exports.updateDriverLocation = async (req, res) => {
       if (activeShipment.shipment) {
         await CustomerShipment.findByIdAndUpdate(activeShipment.shipment, {
           status: "in_transit",
-          currentLocation: locationPayload,
+          currentLocation: shipmentLocationPayload,
         });
       }
     }
@@ -413,6 +446,7 @@ exports.completeShipment = async (req, res) => {
     shipment.deliveryOtpVerified = true;
     shipment.deliveryOtp = null;
     shipment.deliveryOtpExpires = null;
+    clearInvalidShipmentLocation(shipment);
     await shipment.save();
 
     quote.tripStatus = "completed";
@@ -503,10 +537,7 @@ exports.completeShipment = async (req, res) => {
     });
   } catch (error) {
     console.error("[COMPLETE SHIPMENT]", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return sendDriverDeliveryError(res, error);
   }
 };
 
@@ -895,6 +926,7 @@ exports.driverSendDeliveryOtp = async (req, res) => {
     // ---------------- GENERATE OTP ----------------
     const otp = Math.floor(100000 + Math.random() * 900000);
 
+    clearInvalidShipmentLocation(shipment);
     shipment.deliveryOtp = otp.toString();
     shipment.deliveryOtpExpires = new Date(Date.now() + 10 * 60 * 1000);
 
@@ -923,10 +955,7 @@ HorseShipt Team
     });
   } catch (error) {
     console.error("DRIVER OTP ERROR:", error);
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return sendDriverDeliveryError(res, error);
   }
 };
 
@@ -1007,6 +1036,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     shipment.deliveryOtpVerified = true;
     shipment.deliveryOtp = null;
     shipment.deliveryOtpExpires = null;
+    clearInvalidShipmentLocation(shipment);
 
     await shipment.save();
 
@@ -1112,9 +1142,6 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
   } catch (error) {
     console.error("[DRIVER VERIFY ERROR]:", error);
 
-    return res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    return sendDriverDeliveryError(res, error);
   }
 };
