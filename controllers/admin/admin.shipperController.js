@@ -6,6 +6,7 @@ const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const ShipperPreferredArea = require("../../models/shipper/shipperPreferredAreaModel");
 const ShipperContract = require("../../models/shipper/shipperContractModel");
+const Subscription = require("../../models/shipper/subscriptionModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const {
   buildNamedPagination,
@@ -17,6 +18,66 @@ const {
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
   : null;
+
+const buildSubscriptionSnapshot = (subscription) => {
+  if (!subscription) {
+    return {
+      hasSubscription: false,
+      status: "none",
+      planName: null,
+      planType: null,
+      amount: null,
+      currency: null,
+      interval: null,
+      currentPeriodStart: null,
+      currentPeriodEnd: null,
+      trialStart: null,
+      trialEnd: null,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+      nextBillingDate: null,
+      stripeSubscriptionId: null,
+    };
+  }
+
+  return {
+    hasSubscription: true,
+    status: subscription.status || "unknown",
+    planName: subscription.planName || "Subscription",
+    planType: subscription.planType || null,
+    amount: subscription.amount ?? null,
+    currency: subscription.currency || null,
+    interval: subscription.interval || null,
+    currentPeriodStart: subscription.currentPeriodStart || null,
+    currentPeriodEnd: subscription.currentPeriodEnd || null,
+    trialStart: subscription.trialStart || null,
+    trialEnd: subscription.trialEnd || null,
+    cancelAtPeriodEnd: subscription.cancelAtPeriodEnd || false,
+    canceledAt: subscription.canceledAt || null,
+    nextBillingDate: subscription.nextBillingDate || null,
+    stripeSubscriptionId: subscription.stripeSubscriptionId || null,
+  };
+};
+
+const mapLatestSubscriptionsByShipper = async (shipperIds = []) => {
+  if (!shipperIds.length) return new Map();
+
+  const subscriptions = await Subscription.find({
+    shipperId: { $in: shipperIds },
+  })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
+
+  const latestByShipper = new Map();
+  subscriptions.forEach((subscription) => {
+    const shipperId = subscription.shipperId?.toString();
+    if (shipperId && !latestByShipper.has(shipperId)) {
+      latestByShipper.set(shipperId, buildSubscriptionSnapshot(subscription));
+    }
+  });
+
+  return latestByShipper;
+};
 
 const getQuotePayoutAmount = (quote = {}) => {
   const storedPayout = Number(quote.shipperPayoutAmount || 0);
@@ -87,11 +148,22 @@ exports.getAllShippers = async (req, res) => {
       .select("-password") // hide password
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(limit),
+        .limit(limit)
+        .lean(),
       Shipper.countDocuments(filter),
     ]);
 
-    return sendPaginated(res, { data: shippers, total, page, limit });
+    const subscriptionsByShipper = await mapLatestSubscriptionsByShipper(
+      shippers.map((shipper) => shipper._id)
+    );
+
+    const shippersWithSubscriptions = shippers.map((shipper) => ({
+      ...shipper,
+      subscription: subscriptionsByShipper.get(shipper._id.toString()) ||
+        buildSubscriptionSnapshot(null),
+    }));
+
+    return sendPaginated(res, { data: shippersWithSubscriptions, total, page, limit });
   } catch (error) {
     res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
   }
@@ -111,7 +183,7 @@ exports.getShipperById = async (req, res) => {
     const contractPaging = buildNamedPagination(req.query, "contract", 5);
     const payoutPaging = buildNamedPagination(req.query, "payout", 5);
 
-    const shipper = await Shipper.findById(id).select("-password");
+    const shipper = await Shipper.findById(id).select("-password").lean();
 
     if (!shipper) {
       return res
@@ -135,6 +207,7 @@ exports.getShipperById = async (req, res) => {
       payoutHistory,
       payoutHistoryTotal,
       payoutSummary,
+      latestSubscription,
     ] =
       await Promise.all([
         CustomerShipment.find({ shipper: id })
@@ -261,13 +334,21 @@ exports.getShipperById = async (req, res) => {
             },
           },
         ]),
+        Subscription.findOne({ shipperId: id })
+          .sort({ updatedAt: -1, createdAt: -1 })
+          .lean(),
       ]);
     const enrichedPayoutHistory = await enrichPayoutHistory(payoutHistory);
+    const subscription = buildSubscriptionSnapshot(latestSubscription);
 
     res.status(200).json({
       success: true,
       data: {
-        shipper,
+        shipper: {
+          ...shipper,
+          subscription,
+        },
+        subscription,
         shipments,
         quotes,
         vehicles,
