@@ -13,6 +13,7 @@ const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoices");
+const generateTaxInvoicePDF = require("../../utils/pdf/generateTaxInvoicePDF");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
 
@@ -110,11 +111,11 @@ const buildContractPublicId = (quote) => {
   );
 };
 
-const refreshGeneratedContract = async (quote) => {
+const generateContractBufferForQuote = async (quote) => {
   const shipment = quote.shipment;
-  if (!shipment) return quote;
+  if (!shipment) return null;
 
-  const pdfBuffer = await generateContractPDF({
+  return generateContractPDF({
     shipment,
     shipmentCode: shipment.shipmentCode,
     customer: shipment.customer,
@@ -134,6 +135,10 @@ const refreshGeneratedContract = async (quote) => {
     shipperSignature: quote.shipperSignature,
     customerSignature: quote.customerSignature,
   });
+};
+
+const refreshGeneratedContract = async (quote, pdfBuffer) => {
+  if (!pdfBuffer) return quote;
 
   const uploadResult = await new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
@@ -167,6 +172,37 @@ const isInvoiceReadyQuote = (quote) =>
   quote?.shipment?.status === "delivered" ||
   quote?.shipment?.status === "completed";
 
+const streamPdfBuffer = ({ res, buffer, filename }) => {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${String(filename || "document.pdf").replace(/"/g, "")}"`
+  );
+  res.setHeader("Cache-Control", "private, max-age=300");
+  return res.send(buffer);
+};
+
+const streamGeneratedInvoice = async ({ res, quote, role }) => {
+  const shipment = quote.shipment;
+  const shipmentCode = shipment?.shipmentCode || quote._id.toString();
+  const customer = shipment?.customer || {};
+  const shipper = quote.shipper || shipment?.shipper || {};
+
+  const buffer = await generateTaxInvoicePDF({
+    quote,
+    shipment,
+    customer,
+    shipper,
+    role,
+  });
+
+  return streamPdfBuffer({
+    res,
+    buffer,
+    filename: `${shipmentCode}-${role}-invoice.pdf`,
+  });
+};
+
 exports.streamQuoteDocument = async (req, res) => {
   try {
     const { quoteId, documentType } = req.params;
@@ -194,16 +230,44 @@ exports.streamQuoteDocument = async (req, res) => {
     }
 
     if (documentType === "generated") {
-      quote = await refreshGeneratedContract(quote);
+      const shipmentCode = quote.shipment?.shipmentCode || quote._id.toString();
+      const pdfBuffer = await generateContractBufferForQuote(quote);
+      if (!pdfBuffer) return sendDocumentError(res, 404, "Contract not found");
+
+      try {
+        quote = await refreshGeneratedContract(quote, pdfBuffer);
+      } catch (contractError) {
+        console.warn("[SHIPPER CONTRACT SAVE FALLBACK]", {
+          quoteId: quote._id.toString(),
+          message: contractError.message,
+        });
+      }
+
+      return streamPdfBuffer({
+        res,
+        buffer: pdfBuffer,
+        filename: `${shipmentCode}.pdf`,
+      });
     }
 
-    if (
-      documentType === "shipper-invoice" &&
-      !quote.taxInvoices?.shipper?.url &&
-      isInvoiceReadyQuote(quote)
-    ) {
-      quote = await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
-      await quote.save();
+    if (documentType === "shipper-invoice") {
+      if (!isInvoiceReadyQuote(quote)) {
+        return sendDocumentError(res, 404, "Invoice is not available yet");
+      }
+
+      if (!quote.taxInvoices?.shipper?.url) {
+        try {
+          quote = await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
+          await quote.save();
+        } catch (invoiceError) {
+          console.warn("[SHIPPER INVOICE SAVE FALLBACK]", {
+            quoteId: quote._id.toString(),
+            message: invoiceError.message,
+          });
+        }
+      }
+
+      return streamGeneratedInvoice({ res, quote, role: "shipper" });
     }
 
     const document = getQuoteDocument(quote, documentType);

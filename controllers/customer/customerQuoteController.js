@@ -12,6 +12,7 @@ const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoices");
+const generateTaxInvoicePDF = require("../../utils/pdf/generateTaxInvoicePDF");
 
 const Stripe = require("stripe");
 const { notifyQuote } = require("../../utils/notifyQuote/notifyQuote");
@@ -111,11 +112,11 @@ const buildContractPublicId = (quote) =>
   quote.contract?.public_id ||
   `contracts/${quote.shipment?.shipmentCode || quote._id}-${quote._id}.pdf`;
 
-const refreshGeneratedContract = async (quote) => {
+const generateContractBufferForQuote = async (quote) => {
   const shipment = quote.shipment;
-  if (!shipment) return quote;
+  if (!shipment) return null;
 
-  const pdfBuffer = await generateContractPDF({
+  return generateContractPDF({
     shipment,
     shipmentCode: shipment.shipmentCode,
     customer: shipment.customer,
@@ -135,6 +136,10 @@ const refreshGeneratedContract = async (quote) => {
     shipperSignature: quote.shipperSignature,
     customerSignature: quote.customerSignature,
   });
+};
+
+const refreshGeneratedContract = async (quote, pdfBuffer) => {
+  if (!pdfBuffer) return quote;
 
   const uploadResult = await new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
@@ -168,6 +173,37 @@ const isInvoiceReadyQuote = (quote) =>
   quote?.shipment?.status === "delivered" ||
   quote?.shipment?.status === "completed";
 
+const streamPdfBuffer = ({ res, buffer, filename }) => {
+  res.setHeader("Content-Type", "application/pdf");
+  res.setHeader(
+    "Content-Disposition",
+    `inline; filename="${String(filename || "document.pdf").replace(/"/g, "")}"`
+  );
+  res.setHeader("Cache-Control", "private, max-age=300");
+  return res.send(buffer);
+};
+
+const streamGeneratedInvoice = async ({ res, quote, role }) => {
+  const shipment = quote.shipment;
+  const shipmentCode = shipment?.shipmentCode || quote._id.toString();
+  const customer = shipment?.customer || {};
+  const shipper = quote.shipper || shipment?.shipper || {};
+
+  const buffer = await generateTaxInvoicePDF({
+    quote,
+    shipment,
+    customer,
+    shipper,
+    role,
+  });
+
+  return streamPdfBuffer({
+    res,
+    buffer,
+    filename: `${shipmentCode}-${role}-invoice.pdf`,
+  });
+};
+
 exports.streamQuoteDocument = async (req, res) => {
   try {
     const { quoteId, documentType } = req.params;
@@ -199,16 +235,44 @@ exports.streamQuoteDocument = async (req, res) => {
     }
 
     if (documentType === "generated") {
-      quote = await refreshGeneratedContract(quote);
+      const shipmentCode = quote.shipment?.shipmentCode || quote._id.toString();
+      const pdfBuffer = await generateContractBufferForQuote(quote);
+      if (!pdfBuffer) return sendDocumentError(res, 404, "Contract not found");
+
+      try {
+        quote = await refreshGeneratedContract(quote, pdfBuffer);
+      } catch (contractError) {
+        console.warn("[CUSTOMER CONTRACT SAVE FALLBACK]", {
+          quoteId: quote._id.toString(),
+          message: contractError.message,
+        });
+      }
+
+      return streamPdfBuffer({
+        res,
+        buffer: pdfBuffer,
+        filename: `${shipmentCode}.pdf`,
+      });
     }
 
-    if (
-      documentType === "customer-invoice" &&
-      !quote.taxInvoices?.customer?.url &&
-      isInvoiceReadyQuote(quote)
-    ) {
-      quote = await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
-      await quote.save();
+    if (documentType === "customer-invoice") {
+      if (!isInvoiceReadyQuote(quote)) {
+        return sendDocumentError(res, 404, "Invoice is not available yet");
+      }
+
+      if (!quote.taxInvoices?.customer?.url) {
+        try {
+          quote = await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
+          await quote.save();
+        } catch (invoiceError) {
+          console.warn("[CUSTOMER INVOICE SAVE FALLBACK]", {
+            quoteId: quote._id.toString(),
+            message: invoiceError.message,
+          });
+        }
+      }
+
+      return streamGeneratedInvoice({ res, quote, role: "customer" });
     }
 
     const document = getQuoteDocument(quote, documentType);
