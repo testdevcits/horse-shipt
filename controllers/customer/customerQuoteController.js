@@ -136,6 +136,12 @@ exports.streamQuoteDocument = async (req, res) => {
         break;
       } catch (error) {
         lastError = error;
+        console.warn("[QUOTE DOCUMENT STREAM RETRY]", {
+          quoteId: quote._id.toString(),
+          documentType,
+          status: error.response?.status,
+          message: error.message,
+        });
       }
     }
 
