@@ -79,6 +79,7 @@ const {
   getRoomMessages,
   sendRoomMessage,
   editRoomMessage,
+  deleteRoomMessage,
 } = require("../../controllers/chat/chatApiController");
 const {
   createHorse,
@@ -289,6 +290,11 @@ router.patch(
   "/chat/rooms/:roomId/messages/:messageId",
   customerAuth,
   editRoomMessage
+);
+router.delete(
+  "/chat/rooms/:roomId/messages/:messageId",
+  customerAuth,
+  deleteRoomMessage
 );
 
 // ===================================================

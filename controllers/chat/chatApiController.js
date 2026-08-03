@@ -17,7 +17,7 @@ const CHAT_ALLOWED_STATUSES = [
   "delivered",
   "completed",
 ];
-const MESSAGE_EDIT_WINDOW_MS = 60 * 1000;
+const MESSAGE_MUTATION_WINDOW_MS = 60 * 1000;
 
 const inferRole = (req) => {
   if (req.user?.role) return req.user.role;
@@ -390,6 +390,13 @@ exports.editRoomMessage = async (req, res) => {
       });
     }
 
+    if (message.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Deleted messages cannot be edited.",
+      });
+    }
+
     if (
       message.senderId.toString() !== req.user._id.toString() ||
       message.senderRole !== requestRole
@@ -401,7 +408,7 @@ exports.editRoomMessage = async (req, res) => {
     }
 
     const createdAt = new Date(message.createdAt).getTime();
-    if (Date.now() - createdAt > MESSAGE_EDIT_WINDOW_MS) {
+    if (Date.now() - createdAt > MESSAGE_MUTATION_WINDOW_MS) {
       return res.status(400).json({
         success: false,
         message: "Message can be edited only within 1 minute.",
@@ -428,6 +435,102 @@ exports.editRoomMessage = async (req, res) => {
     return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || "Failed to edit message.",
+    });
+  }
+};
+
+exports.deleteRoomMessage = async (req, res) => {
+  try {
+    const { roomId, messageId } = req.params;
+    const requestRole = inferRole(req);
+
+    const room = await ensureRoomParticipant({
+      roomId,
+      userId: req.user._id,
+      role: requestRole,
+    });
+
+    if (!room) {
+      return res.status(403).json({
+        success: false,
+        message: apiResponse.YOU_ARE_NOT_AUTHORIZED_TO_SEND_MESSAGES_IN_THIS_CHAT,
+      });
+    }
+
+    if (room.shipment) {
+      const shipment = await getChatShipment({
+        shipmentId: room.shipment,
+        userId: req.user._id,
+        role: requestRole,
+      });
+
+      if (shipment.isChatLocked) {
+        return res.status(403).json({
+          success: false,
+          message: apiResponse.CHAT_IS_LOCKED_AFTER_SHIPMENT_COMPLETION,
+        });
+      }
+    }
+
+    const message = await Message.findOne({
+      _id: messageId,
+      chatRoom: roomId,
+    });
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Message not found.",
+      });
+    }
+
+    if (
+      message.senderId.toString() !== req.user._id.toString() ||
+      message.senderRole !== requestRole
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You can delete only your own message.",
+      });
+    }
+
+    if (message.isDeleted) {
+      return res.status(400).json({
+        success: false,
+        message: "Message is already deleted.",
+      });
+    }
+
+    const createdAt = new Date(message.createdAt).getTime();
+    if (Date.now() - createdAt > MESSAGE_MUTATION_WINDOW_MS) {
+      return res.status(400).json({
+        success: false,
+        message: "Message can be deleted only within 1 minute.",
+      });
+    }
+
+    message.message = "";
+    message.media = [];
+    message.isDeleted = true;
+    message.deletedAt = new Date();
+    message.deletedBy = req.user._id;
+    await message.save();
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(roomId).emit("messageDeleted", message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Message deleted successfully.",
+      data: message,
+    });
+  } catch (error) {
+    console.error("deleteRoomMessage error:", error);
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to delete message.",
     });
   }
 };

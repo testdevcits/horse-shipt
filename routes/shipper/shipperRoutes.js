@@ -131,6 +131,7 @@ const {
   getRoomMessages,
   sendRoomMessage,
   editRoomMessage,
+  deleteRoomMessage,
 } = require("../../controllers/chat/chatApiController");
 
 // -------- Reviews --------
@@ -416,6 +417,11 @@ router.patch(
   "/chat/rooms/:roomId/messages/:messageId",
   shipperAuth,
   editRoomMessage
+);
+router.delete(
+  "/chat/rooms/:roomId/messages/:messageId",
+  shipperAuth,
+  deleteRoomMessage
 );
 
 // ====================================================
