@@ -22,6 +22,11 @@ async function generateContractPDF({
       const doc = new PDFDocument({
         size: "A4",
         margin: PAGE_MARGIN,
+        info: {
+          Title: shipmentCode || "HorseShipt Shipment Contract",
+          Author: "HorseShipt",
+          Subject: `Shipment Contract ${shipmentCode || ""}`,
+        },
       });
 
       const buffers = [];

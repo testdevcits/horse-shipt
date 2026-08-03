@@ -9,6 +9,7 @@ const cloudinary = require("../../../utils/cloudinary");
 const CustomerShipment = require("../../../models/customer/CustomerShipment");
 const sendDeliveryMail = require("../../../utils/sendDeliveryMail");
 const platformSettings = require("../../../models/admin/payment/platformSettings");
+const ensureDeliveryInvoices = require("../../../utils/invoice/ensureDeliveryInvoices");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -481,6 +482,12 @@ exports.completeShipment = async (req, res) => {
         quote.payoutStatus = "pending";
         quote.payoutError = err.message;
       }
+    }
+
+    try {
+      await ensureDeliveryInvoices({ quote, shipment });
+    } catch (invoiceError) {
+      console.error("[DRIVER COMPLETE INVOICE ERROR]", invoiceError.message);
     }
 
     await quote.save();
@@ -1088,6 +1095,14 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
 
     // ================= FINAL QUOTE =================
     quote.tripStatus = "completed";
+    quote.deliveredAt = quote.deliveredAt || shipment.deliveredAt;
+
+    try {
+      await ensureDeliveryInvoices({ quote, shipment });
+    } catch (invoiceError) {
+      console.error("[DRIVER VERIFY INVOICE ERROR]", invoiceError.message);
+    }
+
     await quote.save();
 
     return res.json({

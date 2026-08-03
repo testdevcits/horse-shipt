@@ -480,12 +480,12 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
     const quotes = await ShipmentQuote.find({
       shipment: { $in: shipmentIds },
       status: "accepted", // only accepted quote
-    }).select("_id shipment");
+    }).select("_id shipment taxInvoices totalPrice paymentStatus payoutStatus");
 
     // Map shipmentId -> quoteId
     const quoteMap = {};
     quotes.forEach((q) => {
-      quoteMap[q.shipment.toString()] = q._id;
+      quoteMap[q.shipment.toString()] = q.toObject ? q.toObject() : q;
     });
 
     // ================= FINAL RESPONSE =================
@@ -496,7 +496,8 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
         ...s,
 
         // IMPORTANT (ADD THIS)
-        quoteId: quoteMap[s._id.toString()] || null,
+        quoteId: quoteMap[s._id.toString()]?._id || null,
+        taxInvoices: quoteMap[s._id.toString()]?.taxInvoices || null,
 
         // FLAGS
         isCompleted: s.status === "delivered",
@@ -504,9 +505,11 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
         isInProgress: ["assigned", "picked", "in_transit"].includes(s.status),
 
         // OPTIONAL
-        totalPrice: s.totalPrice || null,
-        paymentStatus: s.paymentStatus || "pending",
-        payoutStatus: s.payoutStatus || "pending",
+        totalPrice: quoteMap[s._id.toString()]?.totalPrice || s.totalPrice || null,
+        paymentStatus:
+          quoteMap[s._id.toString()]?.paymentStatus || s.paymentStatus || "pending",
+        payoutStatus:
+          quoteMap[s._id.toString()]?.payoutStatus || s.payoutStatus || "pending",
         transportType: s.transportType || null,
         pickupTime: s.pickupTime || null,
         estimatedArrivalTime: s.estimatedArrivalTime || null,

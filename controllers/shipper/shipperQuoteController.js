@@ -12,6 +12,7 @@ const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
+const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoices");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
 
@@ -68,11 +69,13 @@ const sendDocumentError = (res, status, message) =>
 </html>`);
 
 const getQuoteDocument = (quote, documentType) => {
+  const shipmentCode = quote.shipment?.shipmentCode || quote._id;
+
   if (documentType === "generated") {
     return {
       url: quote.contract?.url,
       publicId: quote.contract?.public_id,
-      filename: `Generated_Quote_Contract_${quote._id}.pdf`,
+      filename: `${shipmentCode}.pdf`,
       contentType: "application/pdf",
     };
   }
@@ -81,8 +84,18 @@ const getQuoteDocument = (quote, documentType) => {
     return {
       url: quote.shipperContract?.url,
       publicId: quote.shipperContract?.public_id,
-      filename: quote.shipperContract?.originalName || "Shipper_Document.pdf",
+      filename:
+        quote.shipperContract?.originalName || `${shipmentCode}-shipper.pdf`,
       contentType: quote.shipperContract?.mimeType || "application/pdf",
+    };
+  }
+
+  if (documentType === "shipper-invoice") {
+    return {
+      url: quote.taxInvoices?.shipper?.url,
+      publicId: quote.taxInvoices?.shipper?.public_id,
+      filename: `${shipmentCode}-shipper-invoice.pdf`,
+      contentType: "application/pdf",
     };
   }
 
@@ -98,7 +111,10 @@ exports.streamQuoteDocument = async (req, res) => {
       return sendDocumentError(res, 400, "Invalid quote id");
     }
 
-    const quote = await ShipmentQuote.findById(quoteId);
+    const quote = await ShipmentQuote.findById(quoteId).populate(
+      "shipment",
+      "shipmentCode"
+    );
 
     if (!quote) {
       return sendDocumentError(res, 404, apiResponse.QUOTE_NOT_FOUND);
@@ -106,6 +122,14 @@ exports.streamQuoteDocument = async (req, res) => {
 
     if (quote.shipper?.toString() !== shipperId.toString()) {
       return sendDocumentError(res, 403, apiResponse.UNAUTHORIZED);
+    }
+
+    if (
+      documentType === "shipper-invoice" &&
+      !quote.taxInvoices?.shipper?.url &&
+      (quote.tripStatus === "completed" || quote.shipment?.status === "delivered")
+    ) {
+      await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
     }
 
     const document = getQuoteDocument(quote, documentType);

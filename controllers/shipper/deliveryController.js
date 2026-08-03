@@ -8,6 +8,7 @@ const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
 const Driver = require("../../models/shipper/Driver");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
+const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoices");
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 
@@ -236,6 +237,14 @@ exports.verifyDeliveryOtp = async (req, res) => {
 
     // ================= FINAL QUOTE =================
     quote.tripStatus = "completed";
+    quote.deliveredAt = quote.deliveredAt || shipment.deliveredAt;
+
+    try {
+      await ensureDeliveryInvoices({ quote, shipment });
+    } catch (invoiceError) {
+      console.error("[DELIVERY INVOICE ERROR]", invoiceError.message);
+    }
+
     await quote.save();
 
     return res.json({
@@ -389,6 +398,8 @@ exports.getShipperStripePayoutHistory = async (req, res) => {
           status: "paid",
           method: "platform_transfer",
           shipmentCode: quote.shipment?.shipmentCode,
+          quoteId: quote._id,
+          taxInvoice: quote.taxInvoices?.shipper || null,
           arrivalDate: quote.paymentReleasedAt || quote.updatedAt,
           createdAt: quote.paymentReleasedAt || quote.updatedAt,
         };

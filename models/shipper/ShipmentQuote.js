@@ -242,6 +242,21 @@ const quoteSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    taxInvoices: {
+      customer: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+        invoiceNumber: { type: String, default: "" },
+        generatedAt: { type: Date, default: null },
+      },
+      shipper: {
+        url: { type: String, default: null },
+        public_id: { type: String, default: null },
+        invoiceNumber: { type: String, default: "" },
+        generatedAt: { type: Date, default: null },
+      },
+    },
     // ================= CANCELLATION =================
     cancellationWindowDays: {
       type: Number,

@@ -11,6 +11,7 @@ const Shipper = require("../../models/shipper/shipperModel");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
+const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoices");
 
 const Stripe = require("stripe");
 const { notifyQuote } = require("../../utils/notifyQuote/notifyQuote");
@@ -73,11 +74,13 @@ const sendDocumentError = (res, status, message) =>
 </html>`);
 
 const getQuoteDocument = (quote, documentType) => {
+  const shipmentCode = quote.shipment?.shipmentCode || quote._id;
+
   if (documentType === "generated") {
     return {
       url: quote.contract?.url,
       publicId: quote.contract?.public_id,
-      filename: `Generated_Quote_Contract_${quote._id}.pdf`,
+      filename: `${shipmentCode}.pdf`,
       contentType: "application/pdf",
     };
   }
@@ -86,8 +89,18 @@ const getQuoteDocument = (quote, documentType) => {
     return {
       url: quote.shipperContract?.url,
       publicId: quote.shipperContract?.public_id,
-      filename: quote.shipperContract?.originalName || "Shipper_Document.pdf",
+      filename:
+        quote.shipperContract?.originalName || `${shipmentCode}-shipper.pdf`,
       contentType: quote.shipperContract?.mimeType || "application/pdf",
+    };
+  }
+
+  if (documentType === "customer-invoice") {
+    return {
+      url: quote.taxInvoices?.customer?.url,
+      publicId: quote.taxInvoices?.customer?.public_id,
+      filename: `${shipmentCode}-customer-invoice.pdf`,
+      contentType: "application/pdf",
     };
   }
 
@@ -115,6 +128,14 @@ exports.streamQuoteDocument = async (req, res) => {
 
     if (quote.shipment?.customer?.toString() !== customerId.toString()) {
       return sendDocumentError(res, 403, apiResponse.UNAUTHORIZED);
+    }
+
+    if (
+      documentType === "customer-invoice" &&
+      !quote.taxInvoices?.customer?.url &&
+      (quote.tripStatus === "completed" || quote.shipment?.status === "delivered")
+    ) {
+      await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
     }
 
     const document = getQuoteDocument(quote, documentType);
