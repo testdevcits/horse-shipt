@@ -169,10 +169,7 @@ exports.streamQuoteDocument = async (req, res) => {
 
     if (!response) throw lastError || new Error("Document source unavailable");
 
-    res.setHeader(
-      "Content-Type",
-      response.headers["content-type"] || document.contentType
-    );
+    res.setHeader("Content-Type", document.contentType || "application/pdf");
     res.setHeader(
       "Content-Disposition",
       `inline; filename="${String(document.filename).replace(/"/g, "")}"`
