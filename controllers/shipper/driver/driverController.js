@@ -1126,6 +1126,7 @@ exports.driverVerifyDeliveryOtp = async (req, res) => {
     // ================= FINAL QUOTE =================
     quote.tripStatus = "completed";
     quote.deliveredAt = quote.deliveredAt || shipment.deliveredAt;
+    quote.isTrackingActive = false;
 
     try {
       await ensureDeliveryInvoices({ quote, shipment });

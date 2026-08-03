@@ -84,6 +84,7 @@ const ensureDeliveryInvoices = async ({ quote, shipment }) => {
       generatedAt: new Date(),
     },
   };
+  populatedQuote.markModified?.("taxInvoices");
 
   return populatedQuote;
 };

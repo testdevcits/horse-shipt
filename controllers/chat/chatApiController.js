@@ -4,12 +4,20 @@ const streamifier = require("streamifier");
 const ChatRoom = require("../../models/chat/chatRoomModel");
 const Message = require("../../models/chat/messageModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const cloudinary = require("../../utils/cloudinary");
 const { getOrCreateChatRoom } = require("./chatController");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { notifyChatReceiver } = require("../../utils/chatNotificationService");
 
-const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit"];
+const CHAT_ALLOWED_STATUSES = [
+  "assigned",
+  "picked",
+  "in_transit",
+  "delivered",
+  "completed",
+];
+const MESSAGE_EDIT_WINDOW_MS = 60 * 1000;
 
 const inferRole = (req) => {
   if (req.user?.role) return req.user.role;
@@ -50,6 +58,25 @@ const canChatOnShipment = (shipment) =>
       CHAT_ALLOWED_STATUSES.includes(shipment.status)
   );
 
+const isShipmentChatLocked = async (shipment) => {
+  if (["delivered", "completed"].includes(shipment?.status)) return true;
+
+  const quote = await ShipmentQuote.findOne({
+    shipment: shipment?._id,
+    status: "accepted",
+  })
+    .select("tripStatus deliveredAt taxInvoices payoutStatus")
+    .lean();
+
+  return Boolean(
+    quote?.tripStatus === "completed" ||
+      quote?.deliveredAt ||
+      quote?.taxInvoices?.shipper?.url ||
+      quote?.taxInvoices?.customer?.url ||
+      quote?.payoutStatus === "transferred"
+  );
+};
+
 const getChatShipment = async ({ shipmentId, userId, role }) => {
   if (!shipmentId) {
     const error = new Error("shipmentId is required to open chat.");
@@ -76,6 +103,7 @@ const getChatShipment = async ({ shipmentId, userId, role }) => {
     error.statusCode = 403;
     throw error;
   }
+  const isChatLocked = await isShipmentChatLocked(shipment);
 
   const customerId = shipment.customer?._id || shipment.customer;
   const shipperId = shipment.shipper?._id || shipment.shipper;
@@ -89,7 +117,7 @@ const getChatShipment = async ({ shipmentId, userId, role }) => {
     throw error;
   }
 
-  return { shipment, customerId, shipperId };
+  return { shipment, customerId, shipperId, isChatLocked };
 };
 
 const uploadChatImage = async (file) => {
@@ -123,7 +151,7 @@ const uploadChatImage = async (file) => {
 exports.getOrCreateRoom = async (req, res) => {
   try {
     const { role, userId, shipmentId } = getParticipantIds(req);
-    const { shipment, customerId, shipperId } = await getChatShipment({
+    const { shipment, customerId, shipperId, isChatLocked } = await getChatShipment({
       shipmentId,
       userId,
       role,
@@ -150,6 +178,7 @@ exports.getOrCreateRoom = async (req, res) => {
         _id: shipment._id,
         shipmentCode: shipment.shipmentCode,
         status: shipment.status,
+        isChatLocked,
         pickupLocation: shipment.pickupLocation,
         deliveryLocation: shipment.deliveryLocation,
       },
@@ -221,7 +250,7 @@ exports.sendRoomMessage = async (req, res) => {
         role: requestRole,
       });
 
-      if (shipment.shipment?.status === "delivered") {
+      if (shipment.isChatLocked) {
         return res.status(403).json({
           success: false,
           message: apiResponse.CHAT_IS_LOCKED_AFTER_SHIPMENT_COMPLETION,
@@ -304,6 +333,101 @@ exports.sendRoomMessage = async (req, res) => {
     return res.status(error.statusCode || 500).json({
       success: false,
       message: error.message || "Failed to send message.",
+    });
+  }
+};
+
+exports.editRoomMessage = async (req, res) => {
+  try {
+    const { roomId, messageId } = req.params;
+    const requestRole = inferRole(req);
+    const messageText = (req.body.message || "").trim();
+
+    if (!messageText) {
+      return res.status(400).json({
+        success: false,
+        message: apiResponse.MESSAGE_OR_IMAGE_IS_REQUIRED,
+      });
+    }
+
+    const room = await ensureRoomParticipant({
+      roomId,
+      userId: req.user._id,
+      role: requestRole,
+    });
+
+    if (!room) {
+      return res.status(403).json({
+        success: false,
+        message: apiResponse.YOU_ARE_NOT_AUTHORIZED_TO_SEND_MESSAGES_IN_THIS_CHAT,
+      });
+    }
+
+    if (room.shipment) {
+      const shipment = await getChatShipment({
+        shipmentId: room.shipment,
+        userId: req.user._id,
+        role: requestRole,
+      });
+
+      if (shipment.isChatLocked) {
+        return res.status(403).json({
+          success: false,
+          message: apiResponse.CHAT_IS_LOCKED_AFTER_SHIPMENT_COMPLETION,
+        });
+      }
+    }
+
+    const message = await Message.findOne({
+      _id: messageId,
+      chatRoom: roomId,
+    });
+
+    if (!message) {
+      return res.status(404).json({
+        success: false,
+        message: "Message not found.",
+      });
+    }
+
+    if (
+      message.senderId.toString() !== req.user._id.toString() ||
+      message.senderRole !== requestRole
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "You can edit only your own message.",
+      });
+    }
+
+    const createdAt = new Date(message.createdAt).getTime();
+    if (Date.now() - createdAt > MESSAGE_EDIT_WINDOW_MS) {
+      return res.status(400).json({
+        success: false,
+        message: "Message can be edited only within 1 minute.",
+      });
+    }
+
+    message.message = messageText;
+    message.isEdited = true;
+    message.editedAt = new Date();
+    await message.save();
+
+    const io = req.app.get("io");
+    if (io) {
+      io.to(roomId).emit("messageEdited", message);
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: "Message updated successfully.",
+      data: message,
+    });
+  } catch (error) {
+    console.error("editRoomMessage error:", error);
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.message || "Failed to edit message.",
     });
   }
 };

@@ -78,6 +78,7 @@ const {
   getOrCreateRoom,
   getRoomMessages,
   sendRoomMessage,
+  editRoomMessage,
 } = require("../../controllers/chat/chatApiController");
 const {
   createHorse,
@@ -283,6 +284,11 @@ router.post(
   customerAuth,
   chatUpload.single("image"),
   sendRoomMessage
+);
+router.patch(
+  "/chat/rooms/:roomId/messages/:messageId",
+  customerAuth,
+  editRoomMessage
 );
 
 // ===================================================

@@ -102,6 +102,71 @@ const getQuoteDocument = (quote, documentType) => {
   return null;
 };
 
+const buildContractPublicId = (quote) => {
+  const shipmentCode = quote.shipment?.shipmentCode || quote._id;
+  return (
+    quote.contract?.public_id ||
+    `shipment_contracts/${sanitizePdfPublicId(`${shipmentCode}-${quote._id}`)}`
+  );
+};
+
+const refreshGeneratedContract = async (quote) => {
+  const shipment = quote.shipment;
+  if (!shipment) return quote;
+
+  const pdfBuffer = await generateContractPDF({
+    shipment,
+    shipmentCode: shipment.shipmentCode,
+    customer: shipment.customer,
+    shipper: quote.shipper || shipment.shipper,
+    vehicle: quote.vehicle || null,
+    quote: {
+      totalPrice: quote.totalPrice,
+      currency: quote.currency,
+      paymentMethod: quote.paymentMethod,
+      paymentDue: quote.paymentDue,
+      estimatedDeliveryDays: quote.estimatedDeliveryDays,
+      transportType: quote.transportType,
+      stallsRequired: quote.stallsRequired,
+      notes: quote.notes,
+      cancellationWindowDays: quote.cancellationWindowDays,
+    },
+    shipperSignature: quote.shipperSignature,
+    customerSignature: quote.customerSignature,
+  });
+
+  const uploadResult = await new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      {
+        resource_type: "raw",
+        public_id: buildContractPublicId(quote),
+        overwrite: true,
+      },
+      (err, result) => (err ? reject(err) : resolve(result))
+    );
+
+    streamifier.createReadStream(pdfBuffer).pipe(uploadStream);
+  });
+
+  quote.contract = {
+    url: uploadResult.secure_url,
+    public_id: uploadResult.public_id,
+  };
+  quote.markModified?.("contract");
+  await quote.save();
+
+  return quote;
+};
+
+const isInvoiceReadyQuote = (quote) =>
+  quote?.tripStatus === "completed" ||
+  quote?.deliveredAt ||
+  quote?.payoutStatus === "transferred" ||
+  quote?.taxInvoices?.customer?.url ||
+  quote?.taxInvoices?.shipper?.url ||
+  quote?.shipment?.status === "delivered" ||
+  quote?.shipment?.status === "completed";
+
 exports.streamQuoteDocument = async (req, res) => {
   try {
     const { quoteId, documentType } = req.params;
@@ -111,25 +176,34 @@ exports.streamQuoteDocument = async (req, res) => {
       return sendDocumentError(res, 400, "Invalid quote id");
     }
 
-    const quote = await ShipmentQuote.findById(quoteId).populate(
-      "shipment",
-      "shipmentCode"
-    );
+    let quote = await ShipmentQuote.findById(quoteId)
+      .populate({
+        path: "shipment",
+        populate: { path: "customer shipper" },
+      })
+      .populate("shipper")
+      .populate("vehicle");
 
     if (!quote) {
       return sendDocumentError(res, 404, apiResponse.QUOTE_NOT_FOUND);
     }
 
-    if (quote.shipper?.toString() !== shipperId.toString()) {
+    const quoteShipperId = quote.shipper?._id || quote.shipper;
+    if (quoteShipperId?.toString() !== shipperId.toString()) {
       return sendDocumentError(res, 403, apiResponse.UNAUTHORIZED);
+    }
+
+    if (documentType === "generated") {
+      quote = await refreshGeneratedContract(quote);
     }
 
     if (
       documentType === "shipper-invoice" &&
       !quote.taxInvoices?.shipper?.url &&
-      (quote.tripStatus === "completed" || quote.shipment?.status === "delivered")
+      isInvoiceReadyQuote(quote)
     ) {
-      await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
+      quote = await ensureDeliveryInvoices({ quote, shipment: quote.shipment });
+      await quote.save();
     }
 
     const document = getQuoteDocument(quote, documentType);

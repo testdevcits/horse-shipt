@@ -1,8 +1,34 @@
 const { apiResponse } = require("../../responses/api.response");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const formatChatUser = require("../../utils/formatChatUser");
 
-const CHAT_ALLOWED_STATUSES = ["assigned", "picked", "in_transit"];
+const CHAT_ALLOWED_STATUSES = [
+  "assigned",
+  "picked",
+  "in_transit",
+  "delivered",
+  "completed",
+];
+
+const getChatLockState = async (shipment) => {
+  if (["delivered", "completed"].includes(shipment.status)) return true;
+
+  const quote = await ShipmentQuote.findOne({
+    shipment: shipment._id,
+    status: "accepted",
+  })
+    .select("tripStatus deliveredAt taxInvoices payoutStatus")
+    .lean();
+
+  return Boolean(
+    quote?.tripStatus === "completed" ||
+      quote?.deliveredAt ||
+      quote?.taxInvoices?.shipper?.url ||
+      quote?.taxInvoices?.customer?.url ||
+      quote?.payoutStatus === "transferred"
+  );
+};
 
 /**
  * Shipper → accepted shipment chats
@@ -20,25 +46,29 @@ exports.getCustomersForChat = async (req, res) => {
       .populate("customer", "_id name email profileImage profilePicture isLogin")
       .sort({ updatedAt: -1 });
 
-    const formattedCustomers = shipments
-      .filter((shipment) => shipment.customer)
-      .map((shipment) => {
-        const customer = shipment.customer;
-        const formatted = formatChatUser(customer, "customer");
+    const formattedCustomers = await Promise.all(
+      shipments
+        .filter((shipment) => shipment.customer)
+        .map(async (shipment) => {
+          const customer = shipment.customer;
+          const formatted = formatChatUser(customer, "customer");
+          const isChatLocked = await getChatLockState(shipment);
 
-        return {
-          ...formatted,
-          isOnline: Boolean(customer.isLogin),
-          shipmentId: shipment._id,
-          shipmentCode: shipment.shipmentCode,
-          shipmentStatus: shipment.status,
-          pickupLocation: shipment.pickupLocation,
-          deliveryLocation: shipment.deliveryLocation,
-          chatTitle: `${shipment.shipmentCode || "Shipment"} - ${
-            customer.name || "Customer"
-          }`,
-        };
-      });
+          return {
+            ...formatted,
+            isOnline: Boolean(customer.isLogin),
+            shipmentId: shipment._id,
+            shipmentCode: shipment.shipmentCode,
+            shipmentStatus: shipment.status,
+            isChatLocked,
+            pickupLocation: shipment.pickupLocation,
+            deliveryLocation: shipment.deliveryLocation,
+            chatTitle: `${shipment.shipmentCode || "Shipment"} - ${
+              customer.name || "Customer"
+            }`,
+          };
+        })
+    );
 
     res.status(200).json({
       success: true,

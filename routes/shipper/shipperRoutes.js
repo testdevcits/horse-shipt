@@ -130,6 +130,7 @@ const {
   getOrCreateRoom,
   getRoomMessages,
   sendRoomMessage,
+  editRoomMessage,
 } = require("../../controllers/chat/chatApiController");
 
 // -------- Reviews --------
@@ -410,6 +411,11 @@ router.post(
   shipperAuth,
   chatUpload.single("image"),
   sendRoomMessage
+);
+router.patch(
+  "/chat/rooms/:roomId/messages/:messageId",
+  shipperAuth,
+  editRoomMessage
 );
 
 // ====================================================
