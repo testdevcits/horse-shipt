@@ -1,6 +1,7 @@
 const { apiResponse } = require("../../responses/api.response");
 // controllers/customer/customerQuoteController.js
 const mongoose = require("mongoose");
+const axios = require("axios");
 const CustomerQuote = require("../../models/customer/CustomerQuoteModel");
 const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
@@ -25,6 +26,140 @@ const {
 } = require("../../responses");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+const isAllowedDocumentUrl = (url = "") => {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.protocol === "https:" &&
+      (parsed.hostname === "res.cloudinary.com" ||
+        parsed.hostname.endsWith(".cloudinary.com"))
+    );
+  } catch (error) {
+    return false;
+  }
+};
+
+const getQuoteDocument = (quote, documentType) => {
+  if (documentType === "generated") {
+    return {
+      url: quote.contract?.url,
+      publicId: quote.contract?.public_id,
+      filename: `Generated_Quote_Contract_${quote._id}.pdf`,
+      contentType: "application/pdf",
+    };
+  }
+
+  if (documentType === "shipper") {
+    return {
+      url: quote.shipperContract?.url,
+      publicId: quote.shipperContract?.public_id,
+      filename: quote.shipperContract?.originalName || "Shipper_Document.pdf",
+      contentType: quote.shipperContract?.mimeType || "application/pdf",
+    };
+  }
+
+  return null;
+};
+
+exports.streamQuoteDocument = async (req, res) => {
+  try {
+    const { quoteId, documentType } = req.params;
+    const customerId = req.user._id;
+
+    if (!mongoose.Types.ObjectId.isValid(quoteId)) {
+      return res.status(400).json({
+        success: false,
+        message: apiResponse.INVALID_QUOTE_ID || "Invalid quote id",
+      });
+    }
+
+    const quote = await ShipmentQuote.findById(quoteId).populate("shipment");
+
+    if (!quote) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.QUOTE_NOT_FOUND,
+      });
+    }
+
+    if (quote.shipment?.customer?.toString() !== customerId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: apiResponse.UNAUTHORIZED,
+      });
+    }
+
+    const document = getQuoteDocument(quote, documentType);
+
+    if (!document?.url) {
+      return res.status(404).json({
+        success: false,
+        message: "Document not found",
+      });
+    }
+
+    const candidateUrls = [
+      document.url,
+      document.publicId &&
+        !String(document.publicId).toLowerCase().endsWith(".pdf") &&
+        cloudinary.url(`${document.publicId}.pdf`, {
+          resource_type: "raw",
+          secure: true,
+        }),
+      document.publicId &&
+        cloudinary.url(document.publicId, {
+          resource_type: "raw",
+          secure: true,
+        }),
+    ].filter(Boolean);
+
+    if (!candidateUrls.some(isAllowedDocumentUrl)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid document source",
+      });
+    }
+
+    let response = null;
+    let lastError = null;
+
+    for (const url of candidateUrls) {
+      if (!isAllowedDocumentUrl(url)) continue;
+
+      try {
+        response = await axios.get(url, {
+          responseType: "stream",
+          timeout: 30000,
+          validateStatus: (status) => status >= 200 && status < 300,
+        });
+        break;
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    if (!response) throw lastError || new Error("Document source unavailable");
+
+    res.setHeader(
+      "Content-Type",
+      response.headers["content-type"] || document.contentType
+    );
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${String(document.filename).replace(/"/g, "")}"`
+    );
+    res.setHeader("Cache-Control", "private, max-age=300");
+
+    response.data.pipe(res);
+  } catch (error) {
+    console.error("[QUOTE DOCUMENT STREAM ERROR]", error.message);
+    return res.status(502).json({
+      success: false,
+      message: "Unable to load this document. Please try again.",
+    });
+  }
+};
 
 const destroyQuoteAsset = async (asset) => {
   if (!asset?.public_id) return;

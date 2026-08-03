@@ -68,6 +68,7 @@ const {
   createPaymentIntent,
   cancelQuote,
   getCustomerStripePayments,
+  streamQuoteDocument,
 } = require("../../controllers/customer/customerQuoteController");
 
 const {
@@ -247,6 +248,11 @@ router.get("/messages/:shipmentId", customerAuth, getMessages);
 
 router.get("/quotes/:shipmentId", customerAuth, getQuotesByShipment);
 router.get("/quotes/single/:quoteId", customerAuth, getQuoteById);
+router.get(
+  "/quotes/:quoteId/documents/:documentType",
+  customerAuth,
+  streamQuoteDocument
+);
 router.put("/quotes/:quoteId/accept", customerAuth, acceptQuoteWithSignature);
 router.put("/quotes/:quoteId/reject", customerAuth, rejectQuote);
 router.get("/payments", customerAuth, getCustomerStripePayments);

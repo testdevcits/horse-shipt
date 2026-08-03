@@ -14,6 +14,16 @@ const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
 
+const sanitizePdfPublicId = (value = "document") => {
+  const baseName = String(value)
+    .replace(/\.pdf$/i, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+
+  return `${baseName || "document"}.pdf`;
+};
+
 // ==========================================================
 // SHIPPER CANCEL QUOTE / ASSIGNED SHIPMENT
 // ==========================================================
@@ -354,7 +364,9 @@ exports.addQuote = async (req, res) => {
     });
 
     // ----------------- UPLOAD PDF -----------------
-    const publicId = `shipment_contracts/${shipmentExists.shipmentCode}-${shipperId}`;
+    const publicId = sanitizePdfPublicId(
+      `${shipmentExists.shipmentCode}-${shipperId}`
+    );
 
     const uploadResult = await new Promise((resolve, reject) => {
       const uploadStream = cloudinary.uploader.upload_stream(
@@ -362,6 +374,7 @@ exports.addQuote = async (req, res) => {
           resource_type: "raw",
           folder: "shipment_contracts",
           public_id: publicId,
+          overwrite: true,
         },
         (err, result) => (err ? reject(err) : resolve(result))
       );
@@ -375,6 +388,10 @@ exports.addQuote = async (req, res) => {
       const contractUpload = await cloudinary.uploader.upload(req.file.path, {
         folder: "shipper_quote_contracts",
         resource_type: "raw",
+        public_id: sanitizePdfPublicId(
+          `${Date.now()}-${req.file.originalname || "shipper-document"}`
+        ),
+        overwrite: true,
       });
 
       shipperContract = {
