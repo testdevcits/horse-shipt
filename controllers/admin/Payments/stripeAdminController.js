@@ -8,6 +8,8 @@ const { buildPaginationMeta } = require("../../../utils/adminQuery");
 
 const centsToMoney = (amount = 0) => Math.round(amount) / 100;
 
+const normalizeAmountToCents = (amount) => Math.round(Number(amount) * 100);
+
 const sumStripeBalance = (items = []) =>
   items.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
 
@@ -222,7 +224,6 @@ exports.getSubscriptionProduct = async (req, res) => {
     for (const product of products) {
       const prices = await stripe.prices.list({
         product: product.id,
-        active: true,
         limit: 100,
       });
 
@@ -241,7 +242,10 @@ exports.getSubscriptionProduct = async (req, res) => {
 
           created: new Date(price.created * 1000),
         }))
-        .sort((a, b) => a.amount - b.amount);
+        .sort((a, b) => {
+          if (a.active !== b.active) return a.active ? -1 : 1;
+          return b.created - a.created;
+        });
 
       result.push({
         productId: product.id,
@@ -274,6 +278,7 @@ exports.createSubscriptionPrice = async (req, res) => {
       amount,
       currency = "usd",
       interval,
+      intervalCount = 1,
       type = "recurring",
     } = req.body;
 
@@ -309,6 +314,7 @@ exports.createSubscriptionPrice = async (req, res) => {
 
       payload.recurring = {
         interval,
+        interval_count: Math.max(Number(intervalCount) || 1, 1),
       };
     }
 
@@ -332,12 +338,12 @@ exports.createSubscriptionPrice = async (req, res) => {
 exports.updateSubscriptionPrice = async (req, res) => {
   try {
     const { priceId } = req.params;
-    const { amount } = req.body;
+    const { amount, active } = req.body;
 
-    if (!priceId || !amount) {
+    if (!priceId) {
       return res.status(400).json({
         success: false,
-        message: "Price ID and Amount required.",
+        message: "Price ID is required.",
       });
     }
 
@@ -345,8 +351,29 @@ exports.updateSubscriptionPrice = async (req, res) => {
       expand: ["product"],
     });
 
+    const hasAmountChange =
+      amount !== undefined &&
+      amount !== null &&
+      amount !== "" &&
+      normalizeAmountToCents(amount) !== oldPrice.unit_amount;
+
+    if (!hasAmountChange) {
+      const updatedPrice = await stripe.prices.update(priceId, {
+        active: active === undefined ? oldPrice.active : Boolean(active),
+      });
+
+      return res.json({
+        success: true,
+        message: "Price status updated successfully.",
+        data: {
+          priceId: updatedPrice.id,
+          active: updatedPrice.active,
+        },
+      });
+    }
+
     let payload = {
-      unit_amount: Number(amount) * 100,
+      unit_amount: normalizeAmountToCents(amount),
       currency: oldPrice.currency,
       product: oldPrice.product.id,
     };
@@ -354,6 +381,7 @@ exports.updateSubscriptionPrice = async (req, res) => {
     if (oldPrice.type === "recurring") {
       payload.recurring = {
         interval: oldPrice.recurring.interval,
+        interval_count: oldPrice.recurring.interval_count || 1,
       };
     }
 
@@ -373,6 +401,41 @@ exports.updateSubscriptionPrice = async (req, res) => {
         currency: newPrice.currency,
         type: newPrice.type,
         interval: newPrice.recurring?.interval || null,
+        intervalCount: newPrice.recurring?.interval_count || null,
+        active: newPrice.active,
+      },
+    });
+  } catch (err) {
+    console.log(err);
+
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+exports.deactivateSubscriptionPrice = async (req, res) => {
+  try {
+    const { priceId } = req.params;
+
+    if (!priceId) {
+      return res.status(400).json({
+        success: false,
+        message: "Price ID is required.",
+      });
+    }
+
+    const price = await stripe.prices.update(priceId, {
+      active: false,
+    });
+
+    return res.json({
+      success: true,
+      message: "Price deactivated successfully.",
+      data: {
+        priceId: price.id,
+        active: price.active,
       },
     });
   } catch (err) {

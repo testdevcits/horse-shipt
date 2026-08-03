@@ -14,6 +14,9 @@ const http = require("http");
 const { Server } = require("socket.io");
 
 const connectDB = require("./config/db");
+const {
+  scheduleStripeAdminAuditLogCleanup,
+} = require("./utils/stripeAdminAuditLogger");
 
 // -------------------------
 // Load Environment Variables
@@ -24,6 +27,7 @@ dotenv.config({ path: ".env" });
 // Connect MongoDB
 // -------------------------
 connectDB();
+scheduleStripeAdminAuditLogCleanup();
 
 // -------------------------
 // Initialize App

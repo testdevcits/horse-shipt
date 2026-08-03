@@ -59,6 +59,135 @@ const getSubscriptionPlanConfig = (planType = "daily") => {
   };
 };
 
+const normalizePlanType = (planType = "daily") => {
+  const value = String(planType || "daily").toLowerCase();
+  if (["year", "yearly", "annual"].includes(value)) return "yearly";
+  if (["month", "monthly"].includes(value)) return "monthly";
+  return "daily";
+};
+
+const getPlanTypeFromPrice = (price = {}) => {
+  const interval = price.recurring?.interval;
+  const intervalCount = price.recurring?.interval_count || 1;
+
+  if (interval === "year" && intervalCount === 1) return "yearly";
+  if (interval === "month" && intervalCount === 1) return "monthly";
+  if (interval === "day" && intervalCount === 1) return "daily";
+
+  return null;
+};
+
+const buildPlanFromPrice = (price, planType = getPlanTypeFromPrice(price)) => ({
+  priceId: price.id,
+  amount: price.unit_amount / 100,
+  currency: price.currency,
+  interval: price.recurring?.interval || "month",
+  intervalCount: price.recurring?.interval_count || 1,
+  productName: price.product?.name || "Subscription",
+  label:
+    planType === "yearly"
+      ? "Yearly Plan"
+      : planType === "monthly"
+      ? "Monthly Plan"
+      : "Daily Plan",
+  planType,
+  created: price.created,
+});
+
+const getActiveSubscriptionPlansFromStripe = async () => {
+  const subscriptionProductId = process.env.STRIPE_SUBSCRIPTION_PRODUCT_ID;
+  const prices = await stripe.prices.list({
+    active: true,
+    type: "recurring",
+    limit: 100,
+    expand: ["data.product"],
+  });
+
+  const plans = {};
+  const allPlans = prices.data
+    .filter((price) => {
+      const product = price.product;
+      if (!product || product.active === false || !getPlanTypeFromPrice(price)) {
+        return false;
+      }
+
+      if (subscriptionProductId) {
+        return product.id === subscriptionProductId;
+      }
+
+      return !/^test product\b/i.test(product.name || "");
+    })
+    .map((price) => buildPlanFromPrice(price))
+    .sort((a, b) => b.created - a.created);
+
+  allPlans.forEach((plan) => {
+    if (!plans[plan.planType]) plans[plan.planType] = plan;
+  });
+
+  const envPriceIds = {
+    daily: process.env.STRIPE_DAILY_PRICE_ID,
+    monthly: process.env.STRIPE_MONTHLY_PRICE_ID,
+    yearly: process.env.STRIPE_YEARLY_PRICE_ID,
+  };
+
+  await Promise.all(
+    Object.entries(envPriceIds).map(async ([planType, priceId]) => {
+      if (!priceId) return;
+      try {
+        const price = await stripe.prices.retrieve(priceId, {
+          expand: ["product"],
+        });
+        if (price.active && price.type === "recurring") {
+          plans[planType] = buildPlanFromPrice(price, planType);
+        }
+      } catch (error) {
+        // Ignore stale env price IDs; active Stripe prices still drive plans.
+      }
+    })
+  );
+
+  return {
+    daily: plans.daily || null,
+    monthly: plans.monthly || null,
+    yearly: plans.yearly || null,
+    plans: ["daily", "monthly", "yearly"]
+      .map((key) => plans[key])
+      .filter(Boolean),
+  };
+};
+
+const getSelectedSubscriptionPlan = async ({ planType = "daily", priceId }) => {
+  if (priceId) {
+    const price = await stripe.prices.retrieve(priceId, { expand: ["product"] });
+    const resolvedPlanType = getPlanTypeFromPrice(price);
+
+    if (!price.active || price.type !== "recurring" || !resolvedPlanType) {
+      return null;
+    }
+
+    return buildPlanFromPrice(price, resolvedPlanType);
+  }
+
+  const activePlans = await getActiveSubscriptionPlansFromStripe();
+  const normalizedPlanType = normalizePlanType(planType);
+
+  if (activePlans[normalizedPlanType]) {
+    return activePlans[normalizedPlanType];
+  }
+
+  const legacyPlan = getSubscriptionPlanConfig(
+    normalizedPlanType === "monthly" ? "monthly" : "daily"
+  );
+
+  if (!legacyPlan.priceId) return null;
+
+  const price = await stripe.prices.retrieve(legacyPlan.priceId, {
+    expand: ["product"],
+  });
+
+  return buildPlanFromPrice(price, normalizedPlanType);
+};
+
 // ==========================================================
 // GET PLATFORM COUNTRY
 // ==========================================================
@@ -691,14 +820,14 @@ exports.getPaymentStatus = async (req, res) => {
 
 exports.createSubscription = async (req, res) => {
   try {
-    const { withTrial = true, planType = "daily" } = req.body;
+    const { withTrial = true, planType = "daily", priceId } = req.body;
 
-    const selectedPlan = getSubscriptionPlanConfig(planType);
+    const selectedPlan = await getSelectedSubscriptionPlan({ planType, priceId });
 
-    if (!selectedPlan.priceId) {
+    if (!selectedPlan?.priceId) {
       return res.status(400).json({
         success: false,
-        message: `${selectedPlan.planType} price ID is not configured.`,
+        message: `${normalizePlanType(planType)} price is not configured or active.`,
       });
     }
 
@@ -835,6 +964,7 @@ exports.createSubscription = async (req, res) => {
         shipperId: shipper._id.toString(),
         email: shipper.email,
         plan: selectedPlan.planType,
+        priceId: selectedPlan.priceId,
       },
     };
 
@@ -875,7 +1005,8 @@ exports.createSubscription = async (req, res) => {
       stripeCustomerId: shipper.stripeCustomerId,
       stripeSubscriptionId: subscription.id,
       stripePriceId: price.id,
-      planName: selectedPlan.planName,
+      planName: selectedPlan.productName,
+      planType: selectedPlan.planType,
       amount: price.unit_amount / 100,
       currency: price.currency,
       interval: price.recurring?.interval || selectedPlan.planType,
@@ -900,7 +1031,7 @@ exports.createSubscription = async (req, res) => {
     // ============================
     await sendSubscriptionEmail({
       shipperId: shipper._id,
-      planName: selectedPlan.planName,
+      planName: selectedPlan.productName,
       amount: price.unit_amount / 100,
       trialEnd,
     });
@@ -916,6 +1047,7 @@ exports.createSubscription = async (req, res) => {
         stripeSubscriptionId: subscription.id,
         status: subscription.status,
         plan: selectedPlan.planType,
+        priceId: selectedPlan.priceId,
         trialStart,
         trialEnd,
         currentPeriodStart,
@@ -1072,52 +1204,19 @@ const toISO = (timestamp) => {
 // ============================
 exports.getSubscriptionPlan = async (req, res) => {
   try {
-    const DAILY_PRICE_ID = process.env.STRIPE_DAILY_PRICE_ID;
-    const MONTHLY_PRICE_ID = process.env.STRIPE_MONTHLY_PRICE_ID;
-
-    if (!DAILY_PRICE_ID && !MONTHLY_PRICE_ID) {
-      return res.status(500).json({
-        success: false,
-        message: "Daily or monthly price ID is not configured.",
-      });
-    }
-
     // ============================
     // GET USER
     // ============================
     const shipper = await Shipper.findById(req.user.id);
 
-    if (!shipper || !shipper.stripeCustomerId) {
+    if (!shipper) {
       return res.status(400).json({
         success: false,
-        message: apiResponse.SHIPPER_OR_STRIPE_CUSTOMER_NOT_FOUND,
+        message: apiResponse.SHIPPER_NOT_FOUND,
       });
     }
 
-    // ============================
-    // FETCH PRICE
-    // ============================
-    const buildPlan = (price, planType) => ({
-      priceId: price.id,
-      amount: price.unit_amount / 100,
-      currency: price.currency,
-      interval: price.recurring?.interval || "month",
-      productName: price.product?.name || "Subscription",
-      label: planType === "daily" ? "Daily Plan" : "Monthly Plan",
-      planType,
-    });
-
-    const [dailyPrice, monthlyPrice] = await Promise.all([
-      DAILY_PRICE_ID
-        ? stripe.prices.retrieve(DAILY_PRICE_ID, { expand: ["product"] })
-        : null,
-      MONTHLY_PRICE_ID
-        ? stripe.prices.retrieve(MONTHLY_PRICE_ID, { expand: ["product"] })
-        : null,
-    ]);
-
-    const daily = dailyPrice ? buildPlan(dailyPrice, "daily") : null;
-    const monthly = monthlyPrice ? buildPlan(monthlyPrice, "monthly") : null;
+    const activePlans = await getActiveSubscriptionPlansFromStripe();
 
     // ============================
     // TRIAL CHECK (FIXED)
@@ -1257,15 +1356,21 @@ exports.getSubscriptionPlan = async (req, res) => {
     return res.json({
       success: true,
       data: {
-        monthly,
+        monthly: activePlans.monthly,
         trialDays,
         hasUsedTrial,
         trialEligible: trialActive || !hasUsedTrial,
         trialActive,
         remainingTrialDays,
         trialEndDate,
-        currency: daily?.currency || monthly?.currency || "usd",
-        daily,
+        currency:
+          activePlans.daily?.currency ||
+          activePlans.monthly?.currency ||
+          activePlans.yearly?.currency ||
+          "usd",
+        daily: activePlans.daily,
+        yearly: activePlans.yearly,
+        plans: activePlans.plans,
 
         subscriptionStatus,
         nextBillingDate,

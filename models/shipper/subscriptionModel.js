@@ -29,7 +29,7 @@ const subscriptionSchema = new mongoose.Schema(
     },
     planType: {
       type: String,
-      enum: ["monthly", "annual"],
+      enum: ["daily", "monthly", "yearly", "annual"],
       default: "monthly",
     },
     amount: Number,
