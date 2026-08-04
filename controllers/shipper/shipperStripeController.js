@@ -66,6 +66,21 @@ const normalizePlanType = (planType = "daily") => {
   return "daily";
 };
 
+const getTrialDaysForPlan = (planType = "daily") => {
+  const normalizedPlanType = normalizePlanType(planType);
+  const envKey =
+    normalizedPlanType === "yearly"
+      ? "STRIPE_YEARLY_TRIAL_DAYS"
+      : `STRIPE_${normalizedPlanType.toUpperCase()}_TRIAL_DAYS`;
+  const configuredDays = Number(process.env[envKey]);
+
+  if (Number.isInteger(configuredDays) && configuredDays >= 0) {
+    return configuredDays;
+  }
+
+  return normalizedPlanType === "daily" ? 1 : 30;
+};
+
 const getPlanTypeFromPrice = (price = {}) => {
   const interval = price.recurring?.interval;
   const intervalCount = price.recurring?.interval_count || 1;
@@ -84,6 +99,41 @@ const getPlanTypeFromSubscriptionPrice = (price = {}) =>
 const getStoredSubscriptionPlanType = (subscription = {}) =>
   subscription.planType ||
   (subscription.interval ? normalizePlanType(subscription.interval) : "subscription");
+
+const syncTrialEndForPlan = async (subscription, planType) => {
+  const trialDays = getTrialDaysForPlan(planType);
+  const nowTs = Math.floor(Date.now() / 1000);
+
+  if (
+    !subscription?.id ||
+    subscription.status !== "trialing" ||
+    !subscription.trial_start ||
+    !subscription.trial_end ||
+    trialDays <= 0
+  ) {
+    return subscription;
+  }
+
+  const expectedTrialEnd = subscription.trial_start + trialDays * 24 * 60 * 60;
+
+  if (
+    expectedTrialEnd > nowTs + 60 &&
+    subscription.trial_end > expectedTrialEnd + 60
+  ) {
+    return stripe.subscriptions.update(subscription.id, {
+      trial_end: expectedTrialEnd,
+      proration_behavior: "none",
+      metadata: {
+        ...(subscription.metadata || {}),
+        trialDays: String(trialDays),
+        plan: normalizePlanType(planType),
+      },
+      expand: ["items.data.price"],
+    });
+  }
+
+  return subscription;
+};
 
 const buildPlanFromPrice = (price, planType = getPlanTypeFromPrice(price)) => ({
   priceId: price.id,
@@ -135,7 +185,8 @@ const getActiveSubscriptionPlansFromStripe = async () => {
   const envPriceIds = {
     daily: process.env.STRIPE_DAILY_PRICE_ID,
     monthly: process.env.STRIPE_MONTHLY_PRICE_ID,
-    yearly: process.env.STRIPE_YEARLY_PRICE_ID,
+    yearly:
+      process.env.STRIPE_YEARLY_PRICE_ID || process.env.STRIPE_ANNUAL_PRICE_ID,
   };
 
   await Promise.all(
@@ -990,10 +1041,10 @@ exports.createSubscription = async (req, res) => {
       },
     };
 
-    const TRIAL_DAYS = 30;
+    const trialDays = getTrialDaysForPlan(selectedPlan.planType);
 
-    if (withTrial && !hasUsedTrialBefore) {
-      subscriptionData.trial_period_days = TRIAL_DAYS;
+    if (withTrial && !hasUsedTrialBefore && trialDays > 0) {
+      subscriptionData.trial_period_days = trialDays;
     }
 
     const subscription = await stripe.subscriptions.create(subscriptionData);
@@ -1253,8 +1304,8 @@ exports.getSubscriptionPlan = async (req, res) => {
     const hasUsedTrial =
       shipper.hasUsedTrial === true || Boolean(priorTrialSubscription);
 
-    const TRIAL_DAYS = 30;
-    let trialDays = hasUsedTrial ? 0 : TRIAL_DAYS;
+    let currentPlanType = null;
+    let trialDays = hasUsedTrial ? 0 : getTrialDaysForPlan("daily");
 
     // ============================
     // DEFAULT VALUES
@@ -1266,7 +1317,6 @@ exports.getSubscriptionPlan = async (req, res) => {
     let trialActive = false;
     let remainingTrialDays = 0;
     let trialEndDate = null;
-    let currentPlanType = null;
 
     // ============================
     // GET ACTIVE SUBSCRIPTION
@@ -1277,12 +1327,20 @@ exports.getSubscriptionPlan = async (req, res) => {
     });
 
     if (dbSub?.stripeSubscriptionId) {
-      const sub = await stripe.subscriptions.retrieve(
+      let sub = await stripe.subscriptions.retrieve(
         dbSub.stripeSubscriptionId,
         { expand: ["items.data.price"] }
       );
-      const price = sub.items?.data?.[0]?.price || {};
+      let price = sub.items?.data?.[0]?.price || {};
       currentPlanType = getPlanTypeFromSubscriptionPrice(price);
+      sub = await syncTrialEndForPlan(sub, currentPlanType);
+      price = sub.items?.data?.[0]?.price || price;
+      currentPlanType = getPlanTypeFromSubscriptionPrice(price);
+      const configuredTrialDays = getTrialDaysForPlan(currentPlanType);
+
+      if (!hasUsedTrial) {
+        trialDays = configuredTrialDays;
+      }
 
       subscriptionStatus = sub.status;
       cancelAtPeriodEnd = sub.cancel_at_period_end || false;
@@ -1294,7 +1352,7 @@ exports.getSubscriptionPlan = async (req, res) => {
           0
         );
         trialActive = remainingTrialDays > 0;
-        trialDays = remainingTrialDays || TRIAL_DAYS;
+        trialDays = remainingTrialDays || configuredTrialDays;
 
         const trialDateObj = new Date(sub.trial_end * 1000);
         trialEndDate = {
@@ -1460,7 +1518,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     // =======================
     // PICK CURRENT SUB (FIXED LOGIC)
     // =======================
-    const currentSub =
+    let currentSub =
       subscriptions.data.find((sub) => {
         const isValidStatus = ["active", "trialing", "past_due"].includes(
           sub.status
@@ -1483,8 +1541,11 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
       });
     }
 
-    const price = currentSub.items?.data?.[0]?.price || {};
-    const currentPlanType = getPlanTypeFromSubscriptionPrice(price);
+    let price = currentSub.items?.data?.[0]?.price || {};
+    let currentPlanType = getPlanTypeFromSubscriptionPrice(price);
+    currentSub = await syncTrialEndForPlan(currentSub, currentPlanType);
+    price = currentSub.items?.data?.[0]?.price || price;
+    currentPlanType = getPlanTypeFromSubscriptionPrice(price);
 
     // =======================
     // DATES
@@ -1646,7 +1707,7 @@ exports.getBillingHistory = async (req, res) => {
     }
 
     // ============================
-    // FORMAT INVOICES (SUBSCRIPTION - MONTHLY)
+    // FORMAT INVOICES (SUBSCRIPTION)
     // ============================
     const invoiceById = new Map(invoices.data.map((inv) => [inv.id, inv]));
 

@@ -178,7 +178,7 @@ const apiResponse = {
   MESSAGE_SENT_SUCCESSFULLY: "Message sent successfully.",
   MOBILE_MUST_INCLUDE_COUNTRY_CODE_E_G_1_91: "Mobile must include country code (e.g. +1, +91)",
   MONTHLY_PRICE_ID_NOT_CONFIGURED: "Monthly price ID not configured",
-  MONTHLY_SUBSCRIPTION_CREATED_SUCCESSFULLY: "Monthly subscription created successfully",
+  MONTHLY_SUBSCRIPTION_CREATED_SUCCESSFULLY: "Subscription created successfully",
   MY_REVIEWS_FETCHED_SUCCESSFULLY: "My reviews fetched successfully",
   NAME_AND_EMAIL_ARE_REQUIRED: "Name and email are required",
   NO_ACCEPTED_QUOTE_FOUND_FOR_THIS_SHIPMENT: "No accepted quote found for this shipment",
