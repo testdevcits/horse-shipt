@@ -199,6 +199,8 @@ const shipmentTrackingRoutes = require("./routes/common/shipmentTracking.routes"
 const adminRoutes = require("./routes/admin/admin.routes");
 const adminDashboardRoutes = require("./routes/admin/adminDashboard.routes");
 const adminBreedRoutes = require("./routes/admin/breed.routes");
+const adminColorRoutes = require("./routes/admin/color.routes");
+const adminSexRoutes = require("./routes/admin/sex.routes");
 const adminShipperRoutes = require("./routes/admin/adminShipper.routes");
 const adminCustomerRoutes = require("./routes/admin/adminCustomer.routes");
 const adminShipmentRoutes = require("./routes/admin/adminShipment.routes");
@@ -230,6 +232,8 @@ app.use("/api/platform-stats", platformStatsRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/admin/dashboard", adminDashboardRoutes);
 app.use("/api/admin/breeds", adminBreedRoutes);
+app.use("/api/admin/colors", adminColorRoutes);
+app.use("/api/admin/sexes", adminSexRoutes);
 app.use("/api/admin/shippers", adminShipperRoutes);
 app.use("/api/admin/customers", adminCustomerRoutes);
 app.use("/api/admin/shipments", adminShipmentRoutes);
