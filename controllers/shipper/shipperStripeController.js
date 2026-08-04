@@ -77,6 +77,14 @@ const getPlanTypeFromPrice = (price = {}) => {
   return null;
 };
 
+const getPlanTypeFromSubscriptionPrice = (price = {}) =>
+  getPlanTypeFromPrice(price) ||
+  (price.recurring?.interval ? normalizePlanType(price.recurring.interval) : null);
+
+const getStoredSubscriptionPlanType = (subscription = {}) =>
+  subscription.planType ||
+  (subscription.interval ? normalizePlanType(subscription.interval) : "subscription");
+
 const buildPlanFromPrice = (price, planType = getPlanTypeFromPrice(price)) => ({
   priceId: price.id,
   amount: price.unit_amount / 100,
@@ -889,6 +897,7 @@ exports.createSubscription = async (req, res) => {
 
     if (existingLiveSub) {
       const price = existingLiveSub.items?.data?.[0]?.price || {};
+      const existingPlanType = getPlanTypeFromSubscriptionPrice(price);
       await subscriptionModel.findOneAndUpdate(
         { stripeSubscriptionId: existingLiveSub.id },
         {
@@ -897,6 +906,7 @@ exports.createSubscription = async (req, res) => {
           stripeSubscriptionId: existingLiveSub.id,
           stripePriceId: price.id || null,
           planName: price.product?.name || "Subscription",
+          planType: existingPlanType,
           amount: price?.unit_amount ? price.unit_amount / 100 : 0,
           currency: price?.currency || "usd",
           interval: price.recurring?.interval || "month",
@@ -1127,7 +1137,7 @@ exports.cancelSubscription = async (req, res) => {
         message:
           apiResponse.YOU_ARE_CURRENTLY_IN_THE_FREE_TRIAL_PERIOD_CANCELLATION_IS_NOT_AVAILABLE,
         data: {
-          plan: subscription.interval || "subscription",
+          plan: getStoredSubscriptionPlanType(subscription),
           status: "trialing",
           trialEnd: stripeSub.trial_end
             ? new Date(stripeSub.trial_end * 1000).toISOString()
@@ -1172,7 +1182,7 @@ exports.cancelSubscription = async (req, res) => {
       message: apiResponse.SUBSCRIPTION_WILL_BE_CANCELED_AT_THE_END_OF_BILLING_CYCLE,
 
       data: {
-        plan: "monthly",
+        plan: getStoredSubscriptionPlanType(subscription),
         status: subscription.status,
         cancelAtPeriodEnd: true,
         accessValidTill: subscription.currentPeriodEnd,
@@ -1256,6 +1266,7 @@ exports.getSubscriptionPlan = async (req, res) => {
     let trialActive = false;
     let remainingTrialDays = 0;
     let trialEndDate = null;
+    let currentPlanType = null;
 
     // ============================
     // GET ACTIVE SUBSCRIPTION
@@ -1270,6 +1281,8 @@ exports.getSubscriptionPlan = async (req, res) => {
         dbSub.stripeSubscriptionId,
         { expand: ["items.data.price"] }
       );
+      const price = sub.items?.data?.[0]?.price || {};
+      currentPlanType = getPlanTypeFromSubscriptionPrice(price);
 
       subscriptionStatus = sub.status;
       cancelAtPeriodEnd = sub.cancel_at_period_end || false;
@@ -1360,6 +1373,26 @@ exports.getSubscriptionPlan = async (req, res) => {
           };
         }
       }
+
+      await subscriptionModel.findOneAndUpdate(
+        { stripeSubscriptionId: sub.id },
+        {
+          planName: price.product?.name || dbSub.planName || "Subscription",
+          planType: currentPlanType,
+          amount: price?.unit_amount ? price.unit_amount / 100 : dbSub.amount,
+          currency: price?.currency || dbSub.currency || "usd",
+          interval: price.recurring?.interval || dbSub.interval || "month",
+          status: sub.status,
+          cancelAtPeriodEnd,
+          trialEnd: sub.trial_end
+            ? new Date(sub.trial_end * 1000).toISOString()
+            : dbSub.trialEnd,
+          currentPeriodEnd: sub.current_period_end
+            ? new Date(sub.current_period_end * 1000).toISOString()
+            : dbSub.currentPeriodEnd,
+        },
+        { new: true }
+      );
     }
 
     // ============================
@@ -1385,6 +1418,7 @@ exports.getSubscriptionPlan = async (req, res) => {
         plans: activePlans.plans,
 
         subscriptionStatus,
+        planType: currentPlanType,
         nextBillingDate,
 
         cancelAtPeriodEnd,
@@ -1450,6 +1484,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
     }
 
     const price = currentSub.items?.data?.[0]?.price || {};
+    const currentPlanType = getPlanTypeFromSubscriptionPrice(price);
 
     // =======================
     // DATES
@@ -1515,6 +1550,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
         stripePriceId: price.id,
 
         planName: price.product?.name || "Subscription",
+        planType: currentPlanType,
         amount: price?.unit_amount / 100 || 0,
         currency: price?.currency || "usd",
         interval: price.recurring?.interval || "month",
@@ -1544,7 +1580,7 @@ exports.getShipperSubscriptionStatus = async (req, res) => {
 
       hasSubscription: true,
       status: currentSub.status,
-      planType: price.recurring?.interval || "subscription",
+      planType: currentPlanType,
 
       hasAccess,
 
@@ -1615,8 +1651,8 @@ exports.getBillingHistory = async (req, res) => {
     const invoiceById = new Map(invoices.data.map((inv) => [inv.id, inv]));
 
     const subscriptionData = invoices.data.map((inv) => {
-      const planType =
-        inv.lines?.data?.[0]?.price?.recurring?.interval || "subscription";
+      const linePrice = inv.lines?.data?.[0]?.price || {};
+      const planType = getPlanTypeFromSubscriptionPrice(linePrice);
       const linePeriod = inv.lines?.data?.[0]?.period || {};
       const periodStart = linePeriod.start || inv.period_start;
       const periodEnd = linePeriod.end || inv.period_end;
@@ -1671,9 +1707,9 @@ exports.getBillingHistory = async (req, res) => {
         invoiceById.get(normalizeStripeId(ch.invoice))
       ),
 
-      planType:
+      planType: getPlanTypeFromSubscriptionPrice(
         invoiceById.get(normalizeStripeId(ch.invoice))?.lines?.data?.[0]?.price
-          ?.recurring?.interval || "subscription",
+      ),
 
       amount: ch.amount / 100,
       currency: ch.currency,
