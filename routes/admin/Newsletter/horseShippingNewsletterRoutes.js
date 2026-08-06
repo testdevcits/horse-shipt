@@ -7,7 +7,6 @@ const {
 } = require("../../../controllers/horseShippingNewsletterController");
 const adminAuth = require("../middleware/admin/adminAuth");
 
-// ------------------- Admin Routes ------------------- //
 // Get all subscribers (Admin only)
 router.get("/subscribers", adminAuth, getAllSubscribers);
 
