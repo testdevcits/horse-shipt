@@ -17,6 +17,32 @@ const formatPreferredArea = (area) => ({
   coordinates: area.coordinates || null,
 });
 
+const getPositiveInt = (value, fallback, max) => {
+  const parsed = parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return max ? Math.min(parsed, max) : parsed;
+};
+
+const shipperMatchesSearch = (shipper, preferredAreas, searchText) => {
+  if (!searchText) return true;
+
+  const haystack = [
+    shipper?.name,
+    shipper?.companyName,
+    shipper?.email,
+    shipper?.locale?.address,
+    shipper?.description,
+    ...(preferredAreas || []).map(
+      (area) => `${area.locationName || ""} ${area.radiusKm || ""}`
+    ),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+  return haystack.includes(searchText);
+};
+
 const buildAreaMap = async (shipperIds = []) => {
   const uniqueIds = [
     ...new Set(shipperIds.filter(Boolean).map((id) => id.toString())),
@@ -475,70 +501,94 @@ exports.getMyReviews = async (req, res) => {
 // GET /shippers/top-rated
 exports.getTopRatedShippers = async (req, res) => {
   try {
-    // Aggregate reviews by shipperId and calculate average rating
-    const topShippers = await Review.aggregate([
+    const page = getPositiveInt(req.query.page, 1);
+    const limit = getPositiveInt(req.query.limit, 10, 50);
+    const minRating = Math.max(0, Math.min(5, Number(req.query.minRating) || 0));
+    const searchText = (req.query.search || "").trim().toLowerCase();
+
+    const reviewStats = await Review.aggregate([
       { $match: { reviewStatus: "approved", isHidden: false } },
+      { $sort: { createdAt: -1 } },
       {
         $group: {
           _id: "$shipperId",
           averageRating: { $avg: "$rating" },
           totalReviews: { $sum: 1 },
-          latestReview: { $last: "$reviewText" }, // get latest review text
+          latestReview: { $first: "$reviewText" },
         },
       },
+      { $match: { averageRating: { $gte: minRating } } },
       { $sort: { averageRating: -1, totalReviews: -1 } },
-      { $limit: 10 },
     ]);
 
-    // Populate shipper info
-    const populatedShippers = await Shipper.find({
-      _id: { $in: topShippers.map((s) => s._id) },
-    });
-
-    const reviewedShipperIds = new Set(topShippers.map((s) => s._id.toString()));
-    const fallbackShippers = await Shipper.find({
+    const reviewedIds = reviewStats.map((stat) => stat._id).filter(Boolean);
+    const reviewedShippers = await Shipper.find({
+      _id: { $in: reviewedIds },
       isActive: true,
-      _id: { $nin: topShippers.map((s) => s._id) },
-    })
-      .sort({ createdAt: -1 })
-      .limit(Math.max(0, 10 - topShippers.length));
+    }).lean();
+
+    const reviewedShipperMap = new Map(
+      reviewedShippers.map((shipper) => [shipper._id.toString(), shipper])
+    );
+
+    const fallbackQuery = {
+      isActive: true,
+      _id: { $nin: reviewedIds },
+    };
+
+    const fallbackShippers =
+      minRating > 0
+        ? []
+        : await Shipper.find(fallbackQuery)
+            .sort({ createdAt: -1 })
+            .lean();
 
     const resultShipperIds = [
-      ...topShippers.map((s) => s._id),
+      ...reviewStats.map((s) => s._id),
       ...fallbackShippers.map((shipper) => shipper._id),
     ];
     const areaMap = await buildAreaMap(resultShipperIds);
 
-    // Map ratings with shipper info into ShipperReviewCard format
-    const reviewedResults = topShippers.map((s) => {
-      const shipperInfo = populatedShippers.find(
-        (sh) => sh._id.toString() === s._id.toString()
-      );
-      const preferredAreas = areaMap.get(s._id.toString()) || [];
+    const reviewedResults = reviewStats
+      .map((s) => {
+        const shipperInfo = reviewedShipperMap.get(s._id.toString());
+        if (!shipperInfo) return null;
 
-      return {
-        id: s._id,
-        name: shipperInfo?.name || "Unknown",
-        profileImage:
-          shipperInfo?.profileImage?.url ||
-          shipperInfo?.profilePicture ||
-          "/default-avatar.png",
-        rating: Number(s.averageRating.toFixed(1)),
-        reviewCount: s.totalReviews || 0,
-        reviewText: s.latestReview || `${s.totalReviews} Reviews`,
-        region:
-          shipperInfo?.locale?.address ||
-          preferredAreas[0]?.locationName ||
-          "Available",
-        preferredAreas,
-        googleReviewLink: shipperInfo?.googleReviewLink || null,
-      };
-    });
+        const preferredAreas = areaMap.get(s._id.toString()) || [];
+        if (!shipperMatchesSearch(shipperInfo, preferredAreas, searchText)) {
+          return null;
+        }
+
+        return {
+          id: s._id,
+          name:
+            shipperInfo?.name ||
+            shipperInfo?.companyName ||
+            shipperInfo?.email ||
+            "Shipper",
+          profileImage:
+            shipperInfo?.profileImage?.url ||
+            shipperInfo?.profilePicture ||
+            "/default-avatar.png",
+          rating: Number(s.averageRating.toFixed(1)),
+          reviewCount: s.totalReviews || 0,
+          reviewText: s.latestReview || `${s.totalReviews} Reviews`,
+          region:
+            shipperInfo?.locale?.address ||
+            preferredAreas[0]?.locationName ||
+            "Available",
+          preferredAreas,
+          googleReviewLink: shipperInfo?.googleReviewLink || null,
+        };
+      })
+      .filter(Boolean);
 
     const fallbackResults = fallbackShippers
-      .filter((shipper) => !reviewedShipperIds.has(shipper._id.toString()))
       .map((shipper) => {
         const preferredAreas = areaMap.get(shipper._id.toString()) || [];
+        if (!shipperMatchesSearch(shipper, preferredAreas, searchText)) {
+          return null;
+        }
 
         return {
           id: shipper._id,
@@ -558,11 +608,25 @@ exports.getTopRatedShippers = async (req, res) => {
           preferredAreas,
           googleReviewLink: shipper.googleReviewLink || null,
         };
-      });
+      })
+      .filter(Boolean);
 
-    const result = [...reviewedResults, ...fallbackResults].slice(0, 10);
+    const combinedResults = [...reviewedResults, ...fallbackResults];
+    const totalRecords = combinedResults.length;
+    const totalPages = Math.ceil(totalRecords / limit) || 1;
+    const skip = (page - 1) * limit;
+    const result = combinedResults.slice(skip, skip + limit);
 
-    res.status(200).json({ success: true, data: result });
+    res.status(200).json({
+      success: true,
+      data: result,
+      pagination: {
+        currentPage: page,
+        limit,
+        totalRecords,
+        totalPages,
+      },
+    });
   } catch (error) {
     console.error("Error fetching top rated shippers:", error);
     res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR });

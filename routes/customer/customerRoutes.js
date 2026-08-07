@@ -87,6 +87,11 @@ const {
   updateHorse,
   deleteHorse,
 } = require("../../controllers/customer/customerHorseController");
+const {
+  getMyWishlist,
+  toggleWishlistShipper,
+  removeWishlistShipper,
+} = require("../../controllers/customer/customerWishlistController");
 
 // ====================================================
 // CUSTOMER PROFILE
@@ -325,6 +330,17 @@ router.delete("/horses/:horseId", customerAuth, deleteHorse);
 // ====================================================
 
 router.get("/happy-consumers", getPublicHappyConsumers);
+
+// ====================================================
+// CUSTOMER WISHLIST ROUTES
+// ====================================================
+router.get("/wishlist", customerAuth, getMyWishlist);
+router.post(
+  "/wishlist/:shipperId/toggle",
+  customerAuth,
+  toggleWishlistShipper
+);
+router.delete("/wishlist/:shipperId", customerAuth, removeWishlistShipper);
 
 // Add Review (Manual Rating)
 router.post("/reviews", customerAuth, addReview);
