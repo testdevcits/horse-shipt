@@ -37,12 +37,12 @@ const presentLines = (lines = []) =>
     .map((line) => String(line || "").trim())
     .filter((line) => line && line.toUpperCase() !== "N/A");
 
-const buildPlatformFeeReference = ({ platformSettings, currency }) => {
+const buildPlatformFeeReference = ({ platformSettings, currency, baseAmount }) => {
   const percent = formatPercent(platformSettings?.platformFeePercent);
   const flat = Number(platformSettings?.platformFeeFlat || 0);
   const parts = [];
 
-  if (percent) parts.push(`Rate: ${percent}`);
+  if (percent) parts.push(`Rate: ${percent} of ${money(baseAmount, currency)}`);
   if (flat > 0) parts.push(`Flat: ${money(flat, currency)}`);
 
   return parts.length ? parts.join(" | ") : "HorseShipt service fee";
@@ -56,6 +56,7 @@ const buildRows = ({ quote, shipment, role, platformSettings }) => {
   const gross = toAmount(quote.totalPrice);
   const platformFee = toAmount(quote.platformFee);
   const stripeFee = toAmount(quote.stripeFee);
+  const platformFeeBase = Math.max(gross - stripeFee, 0);
   const shipperNet =
     toAmount(quote.shipperPayoutAmount) ||
     Math.max(gross - platformFee - stripeFee, 0);
@@ -69,7 +70,11 @@ const buildRows = ({ quote, shipment, role, platformSettings }) => {
       rows.push(
       [
         "Platform fee",
-        buildPlatformFeeReference({ platformSettings, currency }),
+        buildPlatformFeeReference({
+          platformSettings,
+          currency,
+          baseAmount: platformFeeBase,
+        }),
         deductionMoney(platformFee, currency),
       ],
       );
