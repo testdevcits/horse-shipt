@@ -17,6 +17,7 @@ const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoic
 const generateTaxInvoicePDF = require("../../utils/pdf/generateTaxInvoicePDF");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
+const { isValidSignatureDataUrl } = require("../../utils/signatureValidation");
 
 const sanitizePdfPublicId = (value = "document") => {
   const baseName = String(value)
@@ -606,7 +607,6 @@ exports.addQuote = async (req, res) => {
       !totalPrice ||
       !paymentMethod ||
       !paymentDue ||
-      !shipperSignature ||
       cancellationWindowDays === undefined ||
       cancellationWindowDays === null ||
       isNaN(Number(cancellationWindowDays))
@@ -615,6 +615,13 @@ exports.addQuote = async (req, res) => {
         success: false,
         message:
           apiResponse.ALL_REQUIRED_FIELDS_INCLUDING_CANCELLATION_WINDOW_MUST_BE_PROVIDED,
+      });
+    }
+
+    if (!(await isValidSignatureDataUrl(shipperSignature))) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid shipper signature is required.",
       });
     }
 

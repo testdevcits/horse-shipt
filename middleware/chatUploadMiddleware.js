@@ -1,10 +1,10 @@
 const multer = require("multer");
 
 const fileFilter = (req, file, cb) => {
-  if (file.mimetype?.startsWith("image/")) {
+  if (file.mimetype?.startsWith("image/") || file.mimetype === "application/pdf") {
     cb(null, true);
   } else {
-    cb(new Error("Only image files are allowed."), false);
+    cb(new Error("Only image or PDF files are allowed."), false);
   }
 };
 

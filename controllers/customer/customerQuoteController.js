@@ -13,6 +13,7 @@ const streamifier = require("streamifier");
 const generateContractPDF = require("../../utils/pdf/generateContractPDF");
 const ensureDeliveryInvoices = require("../../utils/invoice/ensureDeliveryInvoices");
 const generateTaxInvoicePDF = require("../../utils/pdf/generateTaxInvoicePDF");
+const { isValidSignatureDataUrl } = require("../../utils/signatureValidation");
 
 const Stripe = require("stripe");
 const { notifyQuote } = require("../../utils/notifyQuote/notifyQuote");
@@ -206,6 +207,12 @@ const streamGeneratedInvoice = async ({ res, quote, role }) => {
   });
 };
 
+const abortQuoteSession = async (session) => {
+  if (!session) return;
+  await session.abortTransaction();
+  session.endSession();
+};
+
 exports.streamQuoteDocument = async (req, res) => {
   try {
     const { quoteId, documentType } = req.params;
@@ -368,8 +375,7 @@ const destroyQuoteAsset = async (asset) => {
    ACCEPT QUOTE (WITH PAYMENT + RECEIPT)
 ========================================================= */
 exports.acceptQuoteWithSignature = async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
+  let session = null;
 
   try {
     const { quoteId } = req.params;
@@ -377,13 +383,12 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     const customerId = req.user._id;
 
     // ---------------- VALIDATION ----------------
-    if (
-      !customerSignature ||
-      typeof customerSignature !== "string" ||
-      !customerSignature.startsWith("data:image/")
-    ) {
+    if (!(await isValidSignatureDataUrl(customerSignature))) {
       return errorResponse(res, 400, customerQuoteResponse.SIGNATURE_REQUIRED);
     }
+
+    session = await mongoose.startSession();
+    session.startTransaction();
 
     // ---------------- FETCH QUOTE ----------------
     const quote = await ShipmentQuote.findById(quoteId)
@@ -393,23 +398,27 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       .session(session);
 
     if (!quote) {
-      await session.abortTransaction();
+      await abortQuoteSession(session);
+      session = null;
       return errorResponse(res, 404, customerQuoteResponse.NOT_FOUND);
     }
 
     if (quote.contractAccepted) {
-      await session.abortTransaction();
+      await abortQuoteSession(session);
+      session = null;
       return errorResponse(res, 400, customerQuoteResponse.ALREADY_ACCEPTED);
     }
 
     // ---------------- AUTH ----------------
     if (quote.shipment.customer._id.toString() !== customerId.toString()) {
-      await session.abortTransaction();
+      await abortQuoteSession(session);
+      session = null;
       return errorResponse(res, 403, authResponse.UNAUTHORIZED);
     }
 
     if (!quote.shipperSignature) {
-      await session.abortTransaction();
+      await abortQuoteSession(session);
+      session = null;
       return errorResponse(
         res,
         400,
@@ -420,7 +429,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     // ---------------- PAYMENT VALIDATION ----------------
     if (quote.paymentMethod === "card" && quote.paymentStatus !== "paid") {
       if (!quote.stripePaymentIntentId) {
-        await session.abortTransaction();
+        await abortQuoteSession(session);
+        session = null;
         return errorResponse(res, 400, customerQuoteResponse.PAYMENT_REQUIRED);
       }
 
@@ -431,7 +441,8 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       if (paymentIntent.status === "succeeded") {
         quote.paymentStatus = "paid";
       } else {
-        await session.abortTransaction();
+        await abortQuoteSession(session);
+        session = null;
         return errorResponse(
           res,
           400,
@@ -536,6 +547,7 @@ exports.acceptQuoteWithSignature = async (req, res) => {
     // COMMIT TRANSACTION
     await session.commitTransaction();
     session.endSession();
+    session = null;
 
     // ---------------- NOTIFICATIONS ----------------
     const shipperEmail = quote.shipper?.email;
@@ -629,8 +641,9 @@ exports.acceptQuoteWithSignature = async (req, res) => {
       { receipt, quote }
     );
   } catch (error) {
-    await session.abortTransaction();
-    session.endSession();
+    if (session) {
+      await abortQuoteSession(session);
+    }
 
     console.error("acceptQuoteWithSignature error:", error);
 

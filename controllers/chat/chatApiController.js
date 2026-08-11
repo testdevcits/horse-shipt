@@ -120,8 +120,35 @@ const getChatShipment = async ({ shipmentId, userId, role }) => {
   return { shipment, customerId, shipperId, isChatLocked };
 };
 
-const uploadChatImage = async (file) => {
+const uploadChatMedia = async (file) => {
   if (!file) return null;
+
+  if (file.mimetype === "application/pdf") {
+    const uploaded = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: "chat_media",
+          resource_type: "raw",
+          public_id: `${Date.now()}-${String(file.originalname || "chat-document")
+            .replace(/\.pdf$/i, "")
+            .replace(/[^a-zA-Z0-9_-]+/g, "-")
+            .replace(/^-+|-+$/g, "")}.pdf`,
+        },
+        (err, result) => (err ? reject(err) : resolve(result))
+      );
+
+      streamifier.createReadStream(file.buffer).pipe(uploadStream);
+    });
+
+    return {
+      type: "pdf",
+      url: uploaded.secure_url,
+      public_id: uploaded.public_id,
+      mimeType: "application/pdf",
+      originalName: file.originalname || "Document.pdf",
+      size: file.size || file.buffer.length,
+    };
+  }
 
   const compressedBuffer = await sharp(file.buffer)
     .rotate()
@@ -265,7 +292,7 @@ exports.sendRoomMessage = async (req, res) => {
       });
     }
 
-    const mediaItem = req.file ? await uploadChatImage(req.file) : null;
+    const mediaItem = req.file ? await uploadChatMedia(req.file) : null;
 
     const chatMessage = await Message.create({
       chatRoom: roomId,
@@ -276,7 +303,7 @@ exports.sendRoomMessage = async (req, res) => {
     });
 
     await ChatRoom.findByIdAndUpdate(roomId, {
-      lastMessage: messageText || "Image",
+      lastMessage: messageText || (mediaItem?.type === "pdf" ? "PDF" : "Image"),
       lastMessageAt: new Date(),
     });
 
@@ -318,7 +345,7 @@ exports.sendRoomMessage = async (req, res) => {
         receiverRole: receiver.role,
         receiverId: receiver.userId,
         senderRole: requestRole,
-        messageText: messageText || "Image",
+        messageText: messageText || (mediaItem?.type === "pdf" ? "PDF" : "Image"),
         shipmentId: room.shipment,
       });
     }
