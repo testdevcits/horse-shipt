@@ -4,8 +4,13 @@ const path = require("path");
 const money = (amount = 0, currency = "USD") =>
   `${currency || "USD"} ${Number(amount || 0).toFixed(2)}`;
 
+const toAmount = (value = 0) => {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+};
+
 const deductionMoney = (amount = 0, currency = "USD") => {
-  const value = Number(amount || 0);
+  const value = toAmount(amount);
   return value > 0 ? `-${money(value, currency)}` : money(0, currency);
 };
 
@@ -27,6 +32,11 @@ const getInvoiceNumber = ({ shipmentCode, role }) => {
   return `INV-${suffix}-${shipmentCode || Date.now()}`;
 };
 
+const presentLines = (lines = []) =>
+  lines
+    .map((line) => String(line || "").trim())
+    .filter((line) => line && line.toUpperCase() !== "N/A");
+
 const buildPlatformFeeReference = ({ platformSettings, currency }) => {
   const percent = formatPercent(platformSettings?.platformFeePercent);
   const flat = Number(platformSettings?.platformFeeFlat || 0);
@@ -43,28 +53,40 @@ const buildStripeFeeReference = ({ currency }) =>
 
 const buildRows = ({ quote, shipment, role, platformSettings }) => {
   const currency = quote.currency || "USD";
-  const gross = Number(quote.totalPrice || 0);
-  const platformFee = Number(quote.platformFee || 0);
-  const stripeFee = Number(quote.stripeFee || 0);
+  const gross = toAmount(quote.totalPrice);
+  const platformFee = toAmount(quote.platformFee);
+  const stripeFee = toAmount(quote.stripeFee);
   const shipperNet =
-    Number(quote.shipperPayoutAmount || 0) ||
+    toAmount(quote.shipperPayoutAmount) ||
     Math.max(gross - platformFee - stripeFee, 0);
 
   if (role === "shipper") {
-    return [
+    const rows = [
       ["Shipment transport payout", shipment.shipmentCode || "N/A", money(gross, currency)],
+    ];
+
+    if (platformFee > 0) {
+      rows.push(
       [
         "Platform fee",
         buildPlatformFeeReference({ platformSettings, currency }),
         deductionMoney(platformFee, currency),
       ],
+      );
+    }
+
+    if (stripeFee > 0) {
+      rows.push(
       [
         "Stripe processing fee",
         buildStripeFeeReference({ currency }),
         deductionMoney(stripeFee, currency),
       ],
-      ["Net amount payable to shipper", "Final payout", money(shipperNet, currency)],
-    ];
+      );
+    }
+
+    rows.push(["Net amount payable to shipper", "Final payout", money(shipperNet, currency)]);
+    return rows;
   }
 
   return [
@@ -112,14 +134,14 @@ async function generateTaxInvoicePDF({
       const currency = quote.currency || "USD";
       const total =
         role === "shipper"
-          ? Number(quote.shipperPayoutAmount || 0) ||
+          ? toAmount(quote.shipperPayoutAmount) ||
             Math.max(
-              Number(quote.totalPrice || 0) -
-                Number(quote.platformFee || 0) -
-                Number(quote.stripeFee || 0),
+              toAmount(quote.totalPrice) -
+                toAmount(quote.platformFee) -
+                toAmount(quote.stripeFee),
               0
             )
-          : Number(quote.totalPrice || 0);
+          : toAmount(quote.totalPrice);
 
       doc.fillColor("#111827").font("Bold").fontSize(16).text("HorseShipt", 46, 32);
       doc.font("Bold").fontSize(20).text("TAX INVOICE", 350, 30, {
@@ -137,7 +159,12 @@ async function generateTaxInvoicePDF({
       const box = (title, lines, x, y, w) => {
         doc.font("Bold").fontSize(8).fillColor("#111827").text(title, x, y);
         doc.font("Regular").fontSize(8).fillColor("#374151");
-        lines.forEach((line, idx) => doc.text(line || "N/A", x, y + 14 + idx * 12, { width: w }));
+        let currentY = y + 14;
+        presentLines(lines).forEach((line) => {
+          doc.text(line, x, currentY, { width: w, lineGap: 1 });
+          currentY += doc.heightOfString(line, { width: w, lineGap: 1 }) + 4;
+        });
+        return currentY;
       };
 
       box(
@@ -165,8 +192,12 @@ async function generateTaxInvoicePDF({
       box(
         role === "shipper" ? "BILL TO / SHIPPER" : "BILL TO / CUSTOMER",
         role === "shipper"
-          ? [shipper.name || shipper.companyName || "Shipper", shipper.email || "", shipper.phone || ""]
-          : [customer.name || "Customer", customer.email || "", customer.phone || ""],
+          ? [
+              shipper.name || shipper.companyName || "Shipper",
+              shipper.email,
+              shipper.phone,
+            ]
+          : [customer.name || "Customer", customer.email, customer.phone],
         46,
         196,
         220
@@ -174,9 +205,9 @@ async function generateTaxInvoicePDF({
       box(
         "SHIPMENT",
         [
-          `Pickup: ${shipment.pickupLocation || "N/A"}`,
-          `Delivery: ${shipment.deliveryLocation || "N/A"}`,
-          `Horses: ${shipment.numberOfHorses || 1}`,
+          shipment.pickupLocation && `Pickup: ${shipment.pickupLocation}`,
+          shipment.deliveryLocation && `Delivery: ${shipment.deliveryLocation}`,
+          shipment.numberOfHorses && `Horses: ${shipment.numberOfHorses}`,
         ],
         320,
         196,
