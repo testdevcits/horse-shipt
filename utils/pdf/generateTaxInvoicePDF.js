@@ -4,6 +4,17 @@ const path = require("path");
 const money = (amount = 0, currency = "USD") =>
   `${currency || "USD"} ${Number(amount || 0).toFixed(2)}`;
 
+const deductionMoney = (amount = 0, currency = "USD") => {
+  const value = Number(amount || 0);
+  return value > 0 ? `-${money(value, currency)}` : money(0, currency);
+};
+
+const formatPercent = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return null;
+  return `${Number.isInteger(number) ? number : number.toFixed(2)}%`;
+};
+
 const formatDate = (value = new Date()) =>
   new Date(value).toLocaleDateString("en-US", {
     year: "numeric",
@@ -16,7 +27,21 @@ const getInvoiceNumber = ({ shipmentCode, role }) => {
   return `INV-${suffix}-${shipmentCode || Date.now()}`;
 };
 
-const buildRows = ({ quote, shipment, role }) => {
+const buildPlatformFeeReference = ({ platformSettings, currency }) => {
+  const percent = formatPercent(platformSettings?.platformFeePercent);
+  const flat = Number(platformSettings?.platformFeeFlat || 0);
+  const parts = [];
+
+  if (percent) parts.push(`Rate: ${percent}`);
+  if (flat > 0) parts.push(`Flat: ${money(flat, currency)}`);
+
+  return parts.length ? parts.join(" | ") : "HorseShipt service fee";
+};
+
+const buildStripeFeeReference = ({ currency }) =>
+  `Rate: 2.9% + ${money(0.3, currency)}`;
+
+const buildRows = ({ quote, shipment, role, platformSettings }) => {
   const currency = quote.currency || "USD";
   const gross = Number(quote.totalPrice || 0);
   const platformFee = Number(quote.platformFee || 0);
@@ -28,8 +53,16 @@ const buildRows = ({ quote, shipment, role }) => {
   if (role === "shipper") {
     return [
       ["Shipment transport payout", shipment.shipmentCode || "N/A", money(gross, currency)],
-      ["Platform fee", "HorseShipt service fee", `-${money(platformFee, currency)}`],
-      ["Stripe processing fee", "Payment processing", `-${money(stripeFee, currency)}`],
+      [
+        "Platform fee",
+        buildPlatformFeeReference({ platformSettings, currency }),
+        deductionMoney(platformFee, currency),
+      ],
+      [
+        "Stripe processing fee",
+        buildStripeFeeReference({ currency }),
+        deductionMoney(stripeFee, currency),
+      ],
       ["Net amount payable to shipper", "Final payout", money(shipperNet, currency)],
     ];
   }
@@ -46,6 +79,7 @@ async function generateTaxInvoicePDF({
   shipment,
   customer,
   shipper,
+  platformSettings,
   role = "customer",
 }) {
   return new Promise((resolve, reject) => {
@@ -153,18 +187,18 @@ async function generateTaxInvoicePDF({
       doc.rect(46, tableY, width, 24).fill("#F8F4EA");
       doc.font("Bold").fontSize(8).fillColor("#111827");
       doc.text("#", 56, tableY + 8, { width: 20 });
-      doc.text("Description", 82, tableY + 8, { width: 210 });
-      doc.text("Reference", 300, tableY + 8, { width: 110 });
-      doc.text("Amount", 430, tableY + 8, { width: 105, align: "right" });
+      doc.text("Description", 82, tableY + 8, { width: 190 });
+      doc.text("Reference / Fee detail", 285, tableY + 8, { width: 145 });
+      doc.text("Amount", 450, tableY + 8, { width: 85, align: "right" });
 
       let y = tableY + 34;
-      const rows = buildRows({ quote, shipment, role });
+      const rows = buildRows({ quote, shipment, role, platformSettings });
       rows.forEach((row, idx) => {
         doc.font("Regular").fontSize(8).fillColor("#111827");
         doc.text(String(idx + 1), 56, y, { width: 20 });
-        doc.text(row[0], 82, y, { width: 210 });
-        doc.text(row[1], 300, y, { width: 110 });
-        doc.font("Bold").text(row[2], 430, y, { width: 105, align: "right" });
+        doc.text(row[0], 82, y, { width: 190 });
+        doc.text(row[1], 285, y, { width: 145 });
+        doc.font("Bold").text(row[2], 450, y, { width: 85, align: "right" });
         y += 28;
       });
 

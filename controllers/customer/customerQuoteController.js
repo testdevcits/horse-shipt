@@ -188,12 +188,14 @@ const streamGeneratedInvoice = async ({ res, quote, role }) => {
   const shipmentCode = shipment?.shipmentCode || quote._id.toString();
   const customer = shipment?.customer || {};
   const shipper = quote.shipper || shipment?.shipper || {};
+  const platformSettings = await PlatformSettings.findOne().lean();
 
   const buffer = await generateTaxInvoicePDF({
     quote,
     shipment,
     customer,
     shipper,
+    platformSettings,
     role,
   });
 

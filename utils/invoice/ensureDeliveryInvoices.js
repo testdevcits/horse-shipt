@@ -1,6 +1,7 @@
 const streamifier = require("streamifier");
 const cloudinary = require("../cloudinary");
 const generateTaxInvoicePDF = require("../pdf/generateTaxInvoicePDF");
+const PlatformSettings = require("../../models/admin/payment/platformSettings");
 
 const sanitizePublicId = (value = "invoice") =>
   String(value)
@@ -41,12 +42,14 @@ const ensureDeliveryInvoices = async ({ quote, shipment }) => {
   const customer = invoiceShipment.customer || shipment.customer || {};
   const shipper = populatedQuote.shipper || invoiceShipment.shipper || {};
   const shipmentCode = invoiceShipment.shipmentCode || quote._id.toString();
+  const platformSettings = await PlatformSettings.findOne().lean();
 
   const customerBuffer = await generateTaxInvoicePDF({
     quote: populatedQuote,
     shipment: invoiceShipment,
     customer,
     shipper,
+    platformSettings,
     role: "customer",
   });
   const shipperBuffer = await generateTaxInvoicePDF({
@@ -54,6 +57,7 @@ const ensureDeliveryInvoices = async ({ quote, shipment }) => {
     shipment: invoiceShipment,
     customer,
     shipper,
+    platformSettings,
     role: "shipper",
   });
 
