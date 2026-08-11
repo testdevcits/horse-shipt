@@ -66,6 +66,16 @@ const buildRows = ({ quote, shipment, role, platformSettings }) => {
       ["Shipment transport payout", shipment.shipmentCode || "N/A", money(gross, currency)],
     ];
 
+    if (stripeFee > 0) {
+      rows.push(
+      [
+        "Stripe processing fee",
+        buildStripeFeeReference({ currency }),
+        deductionMoney(stripeFee, currency),
+      ],
+      );
+    }
+
     if (platformFee > 0) {
       rows.push(
       [
@@ -76,16 +86,6 @@ const buildRows = ({ quote, shipment, role, platformSettings }) => {
           baseAmount: platformFeeBase,
         }),
         deductionMoney(platformFee, currency),
-      ],
-      );
-    }
-
-    if (stripeFee > 0) {
-      rows.push(
-      [
-        "Stripe processing fee",
-        buildStripeFeeReference({ currency }),
-        deductionMoney(stripeFee, currency),
       ],
       );
     }
