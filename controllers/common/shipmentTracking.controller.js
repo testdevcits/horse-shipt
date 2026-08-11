@@ -1,6 +1,5 @@
 const { apiResponse } = require("../../responses/api.response");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
-const Driver = require("../../models/shipper/Driver");
 
 // ================= DISTANCE FUNCTION =================
 const calculateDistance = (lat1, lon1, lat2, lon2) => {
@@ -17,6 +16,27 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 };
 
+const getId = (value) => value?._id || value;
+
+const buildDriverDetails = (driver, location = null) => {
+  if (!driver) return null;
+
+  return {
+    _id: driver._id,
+    name: driver.name || "",
+    email: driver.email || "",
+    mobile: driver.phone || "",
+    phone: driver.phone || "",
+    profileImage: driver.profileImage || { url: null, public_id: null },
+    image: driver.profileImage?.url || null,
+    driverStatus: driver.driverStatus || "",
+    lat: location?.lat ?? null,
+    lng: location?.lng ?? null,
+    heading: location?.heading || 0,
+    updatedAt: location?.updatedAt || null,
+  };
+};
+
 // ========================================================
 // TRACK SHIPMENT (UPDATED)
 // ========================================================
@@ -31,6 +51,10 @@ exports.trackShipment = async (req, res) => {
         path: "shipment",
         select: "pickupLocation deliveryLocation pickupCoords deliveryCoords",
       })
+      .populate(
+        "assignedDriver",
+        "name email phone profileImage driverStatus currentLocation"
+      )
       .lean();
 
     if (!quote) {
@@ -55,7 +79,7 @@ exports.trackShipment = async (req, res) => {
     // ================= DRIVER SECURITY ONLY =================
     if (
       req.user.role === "driver" &&
-      quote.assignedDriver?.toString() !== req.user._id.toString()
+      getId(quote.assignedDriver)?.toString() !== req.user._id.toString()
     ) {
       return res.status(403).json({
         success: false,
@@ -64,6 +88,8 @@ exports.trackShipment = async (req, res) => {
     }
 
     const shipment = quote.shipment;
+    const assignedDriver = quote.assignedDriver;
+    const driverDetails = buildDriverDetails(assignedDriver);
     const pickup = shipment?.pickupCoords;
     const delivery = shipment?.deliveryCoords;
 
@@ -79,7 +105,8 @@ exports.trackShipment = async (req, res) => {
         success: true,
         tripStatus: "completed",
         message: "Shipment has been completed.",
-        driver: null,
+        driver: driverDetails,
+        driverDetails,
         pickup: {
           location: shipment.pickupLocation,
           lat: pickup.latitude,
@@ -102,7 +129,8 @@ exports.trackShipment = async (req, res) => {
         success: true,
         tripStatus: quote.tripStatus || "notStarted",
         message: "Live tracking will be available once the driver starts the shipment.",
-        driver: null,
+        driver: driverDetails,
+        driverDetails,
         pickup: {
           location: shipment.pickupLocation,
           lat: pickup.latitude,
@@ -121,16 +149,15 @@ exports.trackShipment = async (req, res) => {
     }
 
     // ================= DRIVER LOCATION =================
-    const driver = await Driver.findById(quote.assignedDriver)
-      .select("currentLocation")
-      .lean();
+    const driver = assignedDriver;
 
     if (!driver?.currentLocation?.lat) {
       return res.status(200).json({
         success: true,
         tripStatus: quote.tripStatus,
         message: "Live tracking is not available yet.",
-        driver: null,
+        driver: driverDetails,
+        driverDetails,
         pickup: {
           location: shipment.pickupLocation,
           lat: pickup.latitude,
@@ -150,6 +177,7 @@ exports.trackShipment = async (req, res) => {
 
     // ================= CALCULATIONS =================
     const driverLoc = driver.currentLocation;
+    const liveDriverDetails = buildDriverDetails(driver, driverLoc);
 
     const toPickupKm = calculateDistance(
       driverLoc.lat,
@@ -172,12 +200,8 @@ exports.trackShipment = async (req, res) => {
       success: true,
       tripStatus: quote.tripStatus,
 
-      driver: {
-        lat: driverLoc.lat,
-        lng: driverLoc.lng,
-        heading: driverLoc.heading || 0,
-        updatedAt: driverLoc.updatedAt,
-      },
+      driver: liveDriverDetails,
+      driverDetails: liveDriverDetails,
 
       pickup: {
         location: shipment.pickupLocation,
