@@ -6,8 +6,13 @@ const stripeAdminController = require("../../../controllers/admin/Payments/strip
 const {
   stripeAdminAuditMiddleware,
 } = require("../../../utils/stripeAdminAuditLogger");
+const { requireAdminPermission } = require("../../../middleware/admin/permissionMiddleware");
 
-router.use(adminAuth, stripeAdminAuditMiddleware);
+router.use(
+  adminAuth,
+  requireAdminPermission("platform:manage"),
+  stripeAdminAuditMiddleware
+);
 
 // Stripe balance details
 router.get("/balance", stripeAdminController.getStripeBalance);

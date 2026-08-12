@@ -34,6 +34,7 @@ const serializeAdmin = (admin) => ({
   name: admin.name,
   email: admin.email,
   role: admin.role,
+  permissions: admin.role === "super-admin" ? [] : admin.permissions || [],
   isActive: admin.isActive,
   lastLogin: admin.lastLogin || null,
   createdAt: admin.createdAt,
@@ -53,6 +54,11 @@ const ensureSuperAdmin = (req, res) => {
 };
 
 const validateAdminRole = (role) => ["admin", "super-admin"].includes(role);
+
+const normalizePermissions = (permissions) =>
+  Array.isArray(permissions)
+    ? [...new Set(permissions.filter((permission) => typeof permission === "string"))]
+    : [];
 
 const countActiveSuperAdminsExcluding = async (adminId) =>
   HorseAdmin.countDocuments({
@@ -99,6 +105,7 @@ exports.signupAdmin = async (req, res, next) => {
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        permissions: admin.role === "super-admin" ? [] : admin.permissions || [],
       },
     });
   } catch (error) {
@@ -148,6 +155,7 @@ exports.loginAdmin = async (req, res, next) => {
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        permissions: admin.role === "super-admin" ? [] : admin.permissions || [],
         isActive: admin.isActive,
       },
     });
@@ -370,7 +378,7 @@ exports.createAdminUser = async (req, res, next) => {
   try {
     if (!ensureSuperAdmin(req, res)) return;
 
-    const { name, email, password, role = "admin" } = req.body;
+    const { name, email, password, role = "admin", permissions = [] } = req.body;
     const normalizedEmail = normalizeEmail(email);
 
     if (!name || !normalizedEmail || !password) {
@@ -400,6 +408,7 @@ exports.createAdminUser = async (req, res, next) => {
       email: normalizedEmail,
       password,
       role,
+      permissions: role === "super-admin" ? [] : normalizePermissions(permissions),
       isActive: true,
     });
 
@@ -421,7 +430,7 @@ exports.updateAdminUser = async (req, res, next) => {
     if (!ensureSuperAdmin(req, res)) return;
 
     const { id } = req.params;
-    const { name, email, role, password } = req.body;
+    const { name, email, role, password, permissions } = req.body;
     const admin = await HorseAdmin.findById(id).select("+password");
 
     if (!admin) {
@@ -478,6 +487,12 @@ exports.updateAdminUser = async (req, res, next) => {
 
     if (name) admin.name = name.trim();
     if (role) admin.role = role;
+    if (permissions !== undefined) {
+      admin.permissions =
+        (role || admin.role) === "super-admin"
+          ? []
+          : normalizePermissions(permissions);
+    }
     if (password) admin.password = password;
 
     await admin.save();

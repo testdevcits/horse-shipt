@@ -3,12 +3,14 @@ const router = express.Router();
 
 const { sexController } = require("../../controllers/admin/horseAttribute.controller");
 const adminAuth = require("../../middleware/admin/adminAuth");
+const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
+const canManageHorseAttributes = requireAdminPermission("horse_attributes:manage");
 
-router.post("/", adminAuth, sexController.create);
-router.get("/", adminAuth, sexController.list);
+router.post("/", adminAuth, canManageHorseAttributes, sexController.create);
+router.get("/", adminAuth, canManageHorseAttributes, sexController.list);
 router.get("/all", sexController.listAll);
-router.put("/:id", adminAuth, sexController.update);
-router.delete("/:id", adminAuth, sexController.remove);
-router.patch("/:id/status", adminAuth, sexController.updateStatus);
+router.put("/:id", adminAuth, canManageHorseAttributes, sexController.update);
+router.delete("/:id", adminAuth, canManageHorseAttributes, sexController.remove);
+router.patch("/:id/status", adminAuth, canManageHorseAttributes, sexController.updateStatus);
 
 module.exports = router;

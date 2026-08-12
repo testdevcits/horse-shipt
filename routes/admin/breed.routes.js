@@ -3,6 +3,8 @@ const router = express.Router();
 
 const breedController = require("../../controllers/admin/breed.controller");
 const adminAuth = require("../../middleware/admin/adminAuth");
+const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
+const canManageHorseAttributes = requireAdminPermission("horse_attributes:manage");
 
 /**
  * =====================================
@@ -15,7 +17,7 @@ const adminAuth = require("../../middleware/admin/adminAuth");
  * @desc    Create a new breed
  * @access  Admin only
  */
-router.post("/", adminAuth, breedController.createBreed);
+router.post("/", adminAuth, canManageHorseAttributes, breedController.createBreed);
 
 /**
  * @route   GET /api/admin/breeds
@@ -23,7 +25,7 @@ router.post("/", adminAuth, breedController.createBreed);
  * @access  Admin only
  * @query   page, limit, showInactive
  */
-router.get("/", adminAuth, breedController.getBreeds);
+router.get("/", adminAuth, canManageHorseAttributes, breedController.getBreeds);
 
 /**
  * @route   GET /api/admin/breeds/all
@@ -37,14 +39,14 @@ router.get("/all", breedController.getAllBreeds);
  * @desc    Update breed name
  * @access  Admin only
  */
-router.put("/:id", adminAuth, breedController.updateBreed);
+router.put("/:id", adminAuth, canManageHorseAttributes, breedController.updateBreed);
 
 /**
  * @route   DELETE /api/admin/breeds/:id
  * @desc    Soft delete breed (sets isActive = false)
  * @access  Admin only
  */
-router.delete("/:id", adminAuth, breedController.deleteBreed);
+router.delete("/:id", adminAuth, canManageHorseAttributes, breedController.deleteBreed);
 
 /**
  * @route   PATCH /api/admin/breeds/:id/status
@@ -52,6 +54,6 @@ router.delete("/:id", adminAuth, breedController.deleteBreed);
  * @access  Admin only
  * @body    { isActive: true/false }
  */
-router.patch("/:id/status", adminAuth, breedController.updateBreedStatus);
+router.patch("/:id/status", adminAuth, canManageHorseAttributes, breedController.updateBreedStatus);
 
 module.exports = router;

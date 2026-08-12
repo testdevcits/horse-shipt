@@ -18,7 +18,9 @@ module.exports = async (req, res, next) => {
     // 🔹 Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    const admin = await HorseAdmin.findById(decoded.id).select("role isActive");
+    const admin = await HorseAdmin.findById(decoded.id).select(
+      "role isActive permissions"
+    );
 
     if (!admin || !admin.isActive) {
       return res.status(401).json({
@@ -39,6 +41,7 @@ module.exports = async (req, res, next) => {
     req.admin = {
       id: admin._id,
       role: admin.role,
+      permissions: admin.permissions || [],
     };
 
     next();

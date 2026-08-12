@@ -31,6 +31,11 @@ const horseAdminSchema = new mongoose.Schema(
       default: "admin",
     },
 
+    permissions: {
+      type: [String],
+      default: [],
+    },
+
     otp: {
       type: String, // hashed OTP
       select: false,
