@@ -4,7 +4,7 @@ const router = express.Router();
 const adminShipmentController = require("../../controllers/admin/admin.shipmentController");
 const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
-const canAccessShipments = requireAdminPermission("shipments:view");
+const canAccessShipments = requireAdminPermission("shipments:list");
 
 router.get("/all", adminAuth, canAccessShipments, adminShipmentController.getAllShipments);
 router.get("/:id/tracking", adminAuth, canAccessShipments, adminShipmentController.getShipmentTracking);

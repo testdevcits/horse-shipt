@@ -3,7 +3,7 @@ const router = express.Router();
 const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
 const privacyController = require("../../controllers/admin/privacyPolicy.controller");
-const canManageLegal = requireAdminPermission("legal:manage");
+const canManageLegal = requireAdminPermission("legal:privacy_policy");
 
 /**
  * =====================================

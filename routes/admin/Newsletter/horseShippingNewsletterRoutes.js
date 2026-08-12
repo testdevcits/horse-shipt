@@ -7,7 +7,7 @@ const {
 } = require("../../../controllers/horseShippingNewsletterController");
 const adminAuth = require("../../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../../middleware/admin/permissionMiddleware");
-const canAccessNewsletter = requireAdminPermission("newsletter:manage");
+const canAccessNewsletter = requireAdminPermission("newsletter:subscribers");
 
 // Get all subscribers (Admin only)
 router.get("/subscribers", adminAuth, canAccessNewsletter, getAllSubscribers);

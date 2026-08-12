@@ -4,7 +4,7 @@ const router = express.Router();
 const adminShipperController = require("../../controllers/admin/admin.shipperController");
 const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
-const canAccessShippers = requireAdminPermission("shippers:view");
+const canAccessShippers = requireAdminPermission("shippers:list");
 
 // ================================
 //  ADMIN SHIPPER ROUTES

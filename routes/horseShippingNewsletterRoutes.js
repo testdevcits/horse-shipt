@@ -10,7 +10,7 @@ const {
 } = require("../controllers/horseShippingNewsletterController");
 const adminAuth = require("../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../middleware/admin/permissionMiddleware");
-const canAccessNewsletter = requireAdminPermission("newsletter:manage");
+const canAccessNewsletter = requireAdminPermission("newsletter:subscribers");
 
 // ------------------- Public Routes ------------------- //
 // Subscribe (user enters email)

@@ -4,7 +4,7 @@ const router = express.Router();
 const breedController = require("../../controllers/admin/breed.controller");
 const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
-const canManageHorseAttributes = requireAdminPermission("horse_attributes:manage");
+const canManageHorseAttributes = requireAdminPermission("horse_attributes:breeds");
 
 /**
  * =====================================

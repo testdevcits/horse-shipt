@@ -5,7 +5,7 @@ const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
 
 const vehicleController = require("../../controllers/admin/vehicleVerificationController");
-const canAccessShippers = requireAdminPermission("shippers:view");
+const canAccessShippers = requireAdminPermission("shippers:list");
 
 // Controller function must be passed
 

@@ -4,7 +4,7 @@ const router = express.Router();
 const platformSettingsController = require("../../../controllers/admin/Payments/platformSettingsController");
 const adminAuth = require("../../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../../middleware/admin/permissionMiddleware");
-const canManagePlatform = requireAdminPermission("platform:manage");
+const canManagePlatform = requireAdminPermission("platform:settings");
 
 // ================================
 //  ADMIN PLATFORM SETTINGS ROUTES

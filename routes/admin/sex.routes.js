@@ -4,7 +4,7 @@ const router = express.Router();
 const { sexController } = require("../../controllers/admin/horseAttribute.controller");
 const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
-const canManageHorseAttributes = requireAdminPermission("horse_attributes:manage");
+const canManageHorseAttributes = requireAdminPermission("horse_attributes:sexes");
 
 router.post("/", adminAuth, canManageHorseAttributes, sexController.create);
 router.get("/", adminAuth, canManageHorseAttributes, sexController.list);

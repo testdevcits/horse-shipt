@@ -8,7 +8,7 @@ const {
   updateSocialMediaSettings,
   deleteSocialMediaSetting,
 } = require("../../controllers/admin/socialMediaSettings.controller");
-const canManageAccountSettings = requireAdminPermission("account:manage");
+const canManageAccountSettings = requireAdminPermission("account:settings");
 
 router.get("/", adminAuth, canManageAccountSettings, getSocialMediaSettings);
 router.post("/", adminAuth, canManageAccountSettings, createSocialMediaSettings);

@@ -4,7 +4,7 @@ const router = express.Router();
 const adminCustomerController = require("../../controllers/admin/admin.customerController");
 const adminAuth = require("../../middleware/admin/adminAuth");
 const { requireAdminPermission } = require("../../middleware/admin/permissionMiddleware");
-const canAccessCustomers = requireAdminPermission("customers:view");
+const canAccessCustomers = requireAdminPermission("customers:list");
 
 router.get("/all", adminAuth, canAccessCustomers, adminCustomerController.getAllCustomers);
 router.get("/:id/payments", adminAuth, canAccessCustomers, adminCustomerController.getCustomerPayments);
