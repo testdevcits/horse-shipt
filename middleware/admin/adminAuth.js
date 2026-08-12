@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
+const HorseAdmin = require("../../models/admin/Admin");
 
-module.exports = (req, res, next) => {
+module.exports = async (req, res, next) => {
   try {
     // 🔹 Expect: Authorization: Bearer <token>
     const authHeader = req.headers.authorization;
@@ -17,8 +18,17 @@ module.exports = (req, res, next) => {
     // 🔹 Verify token
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    const admin = await HorseAdmin.findById(decoded.id).select("role isActive");
+
+    if (!admin || !admin.isActive) {
+      return res.status(401).json({
+        success: false,
+        message: "Admin account is inactive or no longer exists.",
+      });
+    }
+
     // 🔹 Allow admin & super-admin
-    if (!["admin", "super-admin"].includes(decoded.role)) {
+    if (!["admin", "super-admin"].includes(admin.role)) {
       return res.status(403).json({
         success: false,
         message: "Access denied. Admin only.",
@@ -27,8 +37,8 @@ module.exports = (req, res, next) => {
 
     // 🔹 Attach admin info to request
     req.admin = {
-      id: decoded.id,
-      role: decoded.role,
+      id: admin._id,
+      role: admin.role,
     };
 
     next();

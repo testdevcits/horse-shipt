@@ -26,20 +26,68 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.EMAIL_USER, pass: process.env.EMAIL_PASS },
 });
 
+const normalizeEmail = (email = "") => email.toLowerCase().trim();
+
+const serializeAdmin = (admin) => ({
+  id: admin._id,
+  _id: admin._id,
+  name: admin.name,
+  email: admin.email,
+  role: admin.role,
+  isActive: admin.isActive,
+  lastLogin: admin.lastLogin || null,
+  createdAt: admin.createdAt,
+  updatedAt: admin.updatedAt,
+});
+
+const isSuperAdmin = (req) => req.admin?.role === "super-admin";
+
+const ensureSuperAdmin = (req, res) => {
+  if (isSuperAdmin(req)) return true;
+
+  res.status(403).json({
+    success: false,
+    message: "Only super admins can manage admin users.",
+  });
+  return false;
+};
+
+const validateAdminRole = (role) => ["admin", "super-admin"].includes(role);
+
+const countActiveSuperAdminsExcluding = async (adminId) =>
+  HorseAdmin.countDocuments({
+    _id: { $ne: adminId },
+    role: "super-admin",
+    isActive: true,
+  });
+
 // =================================================
 //  ADMIN SIGNUP
 // =================================================
 exports.signupAdmin = async (req, res, next) => {
   try {
     const { name, email, password } = req.body;
+    const existingAdmins = await HorseAdmin.countDocuments();
 
-    const exists = await HorseAdmin.findOne({ email });
+    if (existingAdmins > 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Admin signup is disabled. Ask a super admin to add this account.",
+      });
+    }
+
+    const exists = await HorseAdmin.findOne({ email: normalizeEmail(email) });
     if (exists)
       return res
         .status(400)
         .json({ success: false, message: apiResponse.ADMIN_ALREADY_EXISTS });
 
-    const admin = await HorseAdmin.create({ name, email, password });
+    const admin = await HorseAdmin.create({
+      name,
+      email: normalizeEmail(email),
+      password,
+      role: "super-admin",
+    });
     const token = generateToken(admin);
 
     res.status(201).json({
@@ -64,11 +112,20 @@ exports.signupAdmin = async (req, res, next) => {
 exports.loginAdmin = async (req, res, next) => {
   try {
     const { email, password } = req.body;
-    const admin = await HorseAdmin.findOne({ email }).select("+password");
+    const admin = await HorseAdmin.findOne({ email: normalizeEmail(email) }).select(
+      "+password"
+    );
     if (!admin)
       return res
         .status(401)
         .json({ success: false, message: apiResponse.INVALID_EMAIL_OR_PASSWORD });
+
+    if (!admin.isActive) {
+      return res.status(403).json({
+        success: false,
+        message: "This admin account is inactive.",
+      });
+    }
 
     const isMatch = await admin.comparePassword(password);
     if (!isMatch)
@@ -87,9 +144,11 @@ exports.loginAdmin = async (req, res, next) => {
       token,
       admin: {
         id: admin._id,
+        _id: admin._id,
         name: admin.name,
         email: admin.email,
         role: admin.role,
+        isActive: admin.isActive,
       },
     });
   } catch (error) {
@@ -253,7 +312,273 @@ exports.changePassword = async (req, res, next) => {
 exports.getAdminProfile = async (req, res, next) => {
   try {
     const admin = await HorseAdmin.findById(req.admin.id);
-    res.status(200).json({ success: true, admin });
+    res.status(200).json({ success: true, admin: serializeAdmin(admin) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
+//  LIST ADMIN USERS
+// =================================================
+exports.listAdmins = async (req, res, next) => {
+  try {
+    if (!ensureSuperAdmin(req, res)) return;
+
+    const page = Math.max(parseInt(req.query.page || "1", 10), 1);
+    const limit = Math.min(Math.max(parseInt(req.query.limit || "10", 10), 1), 50);
+    const search = String(req.query.search || "").trim();
+    const status = String(req.query.status || "").trim();
+
+    const query = {};
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { email: { $regex: search, $options: "i" } },
+      ];
+    }
+    if (status === "active") query.isActive = true;
+    if (status === "inactive") query.isActive = false;
+
+    const [admins, total] = await Promise.all([
+      HorseAdmin.find(query)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit),
+      HorseAdmin.countDocuments(query),
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: admins.map(serializeAdmin),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.max(Math.ceil(total / limit), 1),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
+//  CREATE ADMIN USER
+// =================================================
+exports.createAdminUser = async (req, res, next) => {
+  try {
+    if (!ensureSuperAdmin(req, res)) return;
+
+    const { name, email, password, role = "admin" } = req.body;
+    const normalizedEmail = normalizeEmail(email);
+
+    if (!name || !normalizedEmail || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Name, email, and password are required.",
+      });
+    }
+
+    if (!validateAdminRole(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid admin role.",
+      });
+    }
+
+    const exists = await HorseAdmin.findOne({ email: normalizedEmail });
+    if (exists) {
+      return res.status(400).json({
+        success: false,
+        message: apiResponse.ADMIN_ALREADY_EXISTS,
+      });
+    }
+
+    const admin = await HorseAdmin.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password,
+      role,
+      isActive: true,
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Admin user created successfully.",
+      admin: serializeAdmin(admin),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
+//  UPDATE ADMIN USER
+// =================================================
+exports.updateAdminUser = async (req, res, next) => {
+  try {
+    if (!ensureSuperAdmin(req, res)) return;
+
+    const { id } = req.params;
+    const { name, email, role, password } = req.body;
+    const admin = await HorseAdmin.findById(id).select("+password");
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.ADMIN_NOT_FOUND,
+      });
+    }
+
+    if (role && !validateAdminRole(role)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid admin role.",
+      });
+    }
+
+    if (
+      admin._id.toString() === req.admin.id.toString() &&
+      admin.role === "super-admin" &&
+      role === "admin"
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot demote your own super-admin account.",
+      });
+    }
+
+    if (admin.role === "super-admin" && role === "admin") {
+      const remainingSuperAdmins = await countActiveSuperAdminsExcluding(admin._id);
+      if (remainingSuperAdmins < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one active super admin is required.",
+        });
+      }
+    }
+
+    if (email) {
+      const normalizedEmail = normalizeEmail(email);
+      const existing = await HorseAdmin.findOne({
+        email: normalizedEmail,
+        _id: { $ne: admin._id },
+      });
+
+      if (existing) {
+        return res.status(400).json({
+          success: false,
+          message: apiResponse.EMAIL_IS_ALREADY_USED_BY_ANOTHER_ADMIN,
+        });
+      }
+
+      admin.email = normalizedEmail;
+    }
+
+    if (name) admin.name = name.trim();
+    if (role) admin.role = role;
+    if (password) admin.password = password;
+
+    await admin.save();
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin user updated successfully.",
+      admin: serializeAdmin(admin),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
+//  TOGGLE ADMIN STATUS
+// =================================================
+exports.toggleAdminStatus = async (req, res, next) => {
+  try {
+    if (!ensureSuperAdmin(req, res)) return;
+
+    const { id } = req.params;
+    const admin = await HorseAdmin.findById(id);
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.ADMIN_NOT_FOUND,
+      });
+    }
+
+    if (admin._id.toString() === req.admin.id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot deactivate your own admin account.",
+      });
+    }
+
+    if (admin.isActive && admin.role === "super-admin") {
+      const remainingSuperAdmins = await countActiveSuperAdminsExcluding(admin._id);
+      if (remainingSuperAdmins < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one active super admin is required.",
+        });
+      }
+    }
+
+    admin.isActive = !admin.isActive;
+    await admin.save();
+
+    return res.status(200).json({
+      success: true,
+      message: `Admin user ${admin.isActive ? "activated" : "deactivated"} successfully.`,
+      admin: serializeAdmin(admin),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// =================================================
+//  DELETE ADMIN USER
+// =================================================
+exports.deleteAdminUser = async (req, res, next) => {
+  try {
+    if (!ensureSuperAdmin(req, res)) return;
+
+    const { id } = req.params;
+    const admin = await HorseAdmin.findById(id);
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.ADMIN_NOT_FOUND,
+      });
+    }
+
+    if (admin._id.toString() === req.admin.id.toString()) {
+      return res.status(400).json({
+        success: false,
+        message: "You cannot delete your own admin account.",
+      });
+    }
+
+    if (admin.role === "super-admin" && admin.isActive) {
+      const remainingSuperAdmins = await countActiveSuperAdminsExcluding(admin._id);
+      if (remainingSuperAdmins < 1) {
+        return res.status(400).json({
+          success: false,
+          message: "At least one active super admin is required.",
+        });
+      }
+    }
+
+    await admin.deleteOne();
+
+    return res.status(200).json({
+      success: true,
+      message: "Admin user deleted successfully.",
+    });
   } catch (error) {
     next(error);
   }

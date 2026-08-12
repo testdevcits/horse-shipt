@@ -4,6 +4,17 @@ const router = express.Router();
 const adminController = require("../../controllers/admin/admin.controller");
 const adminAuth = require("../../middleware/admin/adminAuth");
 
+const superAdminOnly = (req, res, next) => {
+  if (req.admin?.role !== "super-admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Only super admins can access this resource.",
+    });
+  }
+
+  next();
+};
+
 // ================================
 //  AUTH ROUTES
 // ================================
@@ -35,6 +46,23 @@ router.put("/profile", adminAuth, adminController.updateAdminProfile);
 
 // Change password (logged-in admin)
 router.post("/change-password", adminAuth, adminController.changePassword);
+
+// Admin user management (super-admin only)
+router.get("/users", adminAuth, superAdminOnly, adminController.listAdmins);
+router.post("/users", adminAuth, superAdminOnly, adminController.createAdminUser);
+router.put("/users/:id", adminAuth, superAdminOnly, adminController.updateAdminUser);
+router.patch(
+  "/users/:id/status",
+  adminAuth,
+  superAdminOnly,
+  adminController.toggleAdminStatus
+);
+router.delete(
+  "/users/:id",
+  adminAuth,
+  superAdminOnly,
+  adminController.deleteAdminUser
+);
 
 // Logout (JWT handled on frontend)
 router.post("/logout", adminAuth, adminController.logoutAdmin);
