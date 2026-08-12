@@ -49,6 +49,24 @@ const getPlatformFeeForQuote = (quote, settings) => {
   return totalPrice * (platformPercent / 100) + platformFlat;
 };
 
+const getSubscriptionLedgerDate = (subscription) =>
+  subscription.lastPaymentDate ||
+  subscription.currentPeriodStart ||
+  subscription.createdAt ||
+  subscription.updatedAt ||
+  null;
+
+const isDateInWindow = (date, window) => {
+  if (!window) return true;
+  if (!date) return false;
+
+  const value = new Date(date);
+  if (Number.isNaN(value.getTime())) return false;
+  if (window.$gte && value < window.$gte) return false;
+  if (window.$lte && value > window.$lte) return false;
+  return true;
+};
+
 /* =====================================================
    GET STRIPE BALANCE
    - Show total pending & available
@@ -498,10 +516,28 @@ exports.getTransferAvailability = async (req, res) => {
         .select("totalPrice platformFee currency paymentStatus payoutStatus tripStatus")
         .lean(),
       Subscription.find({
-        status: { $in: ["active", "trialing"] },
-        lastPaymentDate: ledgerDateWindow || { $ne: null },
+        status: "active",
+        amount: { $gt: 0 },
+        ...(ledgerDateWindow
+          ? {
+              $or: [
+                { lastPaymentDate: ledgerDateWindow },
+                {
+                  lastPaymentDate: { $in: [null, undefined] },
+                  currentPeriodStart: ledgerDateWindow,
+                },
+                {
+                  lastPaymentDate: { $in: [null, undefined] },
+                  currentPeriodStart: { $in: [null, undefined] },
+                  createdAt: ledgerDateWindow,
+                },
+              ],
+            }
+          : {}),
       })
-        .select("amount currency interval planType status lastPaymentDate")
+        .select(
+          "amount currency interval planType status lastPaymentDate currentPeriodStart createdAt updatedAt"
+        )
         .lean(),
     ]);
 
@@ -518,7 +554,11 @@ exports.getTransferAvailability = async (req, res) => {
       0
     );
 
-    const subscriptionFees = paidSubscriptions.reduce(
+    const countedPaidSubscriptions = paidSubscriptions.filter((subscription) =>
+      isDateInWindow(getSubscriptionLedgerDate(subscription), ledgerDateWindow)
+    );
+
+    const subscriptionFees = countedPaidSubscriptions.reduce(
       (sum, subscription) => sum + Number(subscription.amount || 0),
       0
     );
@@ -561,6 +601,7 @@ exports.getTransferAvailability = async (req, res) => {
           pendingShipperTransfers,
           completedPaidTransferredShipments: completedPaidQuotes.length,
           completedPaidPendingTransferShipments: pendingTransferQuotes.length,
+          paidSubscriptions: countedPaidSubscriptions.length,
         },
         recommendedTransferToClientBank,
         recentCompletedShipmentFees,
