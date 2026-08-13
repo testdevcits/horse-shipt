@@ -194,6 +194,36 @@ const attachQuestionSummary = async (shipments) => {
   }));
 };
 
+const normalizeCustomerShipmentStatus = ({ shipment, acceptedQuote = null }) => {
+  if (!shipment) return shipment;
+
+  const plainShipment =
+    typeof shipment.toObject === "function" ? shipment.toObject() : shipment;
+  const isCompletedByShipment =
+    plainShipment.status === "delivered" ||
+    Boolean(plainShipment.deliveredAt) ||
+    plainShipment.deliveryOtpVerified === true;
+  const isCompletedByQuote =
+    acceptedQuote?.tripStatus === "completed" ||
+    Boolean(acceptedQuote?.deliveredAt) ||
+    Boolean(acceptedQuote?.taxInvoices?.customer?.url) ||
+    acceptedQuote?.payoutStatus === "transferred";
+  const normalizedStatus =
+    isCompletedByShipment || isCompletedByQuote
+      ? "delivered"
+      : plainShipment.status;
+
+  return {
+    ...plainShipment,
+    status: normalizedStatus,
+    quoteId: acceptedQuote?._id || plainShipment.quoteId || null,
+    taxInvoices: acceptedQuote?.taxInvoices || plainShipment.taxInvoices || null,
+    quoteTripStatus:
+      acceptedQuote?.tripStatus || plainShipment.quoteTripStatus || null,
+    isCompleted: normalizedStatus === "delivered",
+  };
+};
+
 // ---------------- Helper: Fetch Shipment By ID ----------------
 exports.fetchShipmentById = async (shipmentId, userId) => {
   if (!mongoose.Types.ObjectId.isValid(shipmentId)) return null;
@@ -443,28 +473,7 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
     const shipmentsWithQuestions = await attachQuestionSummary(shipments);
     const normalizedShipments = shipmentsWithQuestions.map((shipment) => {
       const acceptedQuote = quoteMap[shipment._id.toString()];
-      const isCompletedByShipment =
-        shipment.status === "delivered" ||
-        Boolean(shipment.deliveredAt) ||
-        shipment.deliveryOtpVerified === true;
-      const isCompletedByQuote =
-        acceptedQuote?.tripStatus === "completed" ||
-        Boolean(acceptedQuote?.deliveredAt) ||
-        Boolean(acceptedQuote?.taxInvoices?.customer?.url) ||
-        acceptedQuote?.payoutStatus === "transferred";
-      const normalizedStatus =
-        isCompletedByShipment || isCompletedByQuote
-          ? "delivered"
-          : shipment.status;
-
-      return {
-        ...shipment,
-        status: normalizedStatus,
-        quoteId: acceptedQuote?._id || null,
-        taxInvoices: acceptedQuote?.taxInvoices || null,
-        quoteTripStatus: acceptedQuote?.tripStatus || null,
-        isCompleted: normalizedStatus === "delivered",
-      };
+      return normalizeCustomerShipmentStatus({ shipment, acceptedQuote });
     });
 
     res.status(200).json({ success: true, shipments: normalizedShipments });
@@ -489,7 +498,18 @@ exports.getShipmentById = async (req, res) => {
         .status(404)
         .json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
     }
-    res.status(200).json({ success: true, shipment });
+
+    const acceptedQuote = await ShipmentQuote.findOne({
+      shipment: shipment._id,
+      status: "accepted",
+    })
+      .select("_id shipment taxInvoices totalPrice paymentStatus payoutStatus tripStatus deliveredAt")
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      shipment: normalizeCustomerShipmentStatus({ shipment, acceptedQuote }),
+    });
   } catch (err) {
     console.error("[GET SHIPMENT BY ID ERROR]", err);
     res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
@@ -537,17 +557,13 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
 
     const finalShipments = shipmentsWithQuestions.map((s) => {
       const acceptedQuote = quoteMap[s._id.toString()];
-      const isCompletedByQuote =
-        acceptedQuote?.tripStatus === "completed" ||
-        Boolean(acceptedQuote?.deliveredAt) ||
-        Boolean(acceptedQuote?.taxInvoices?.customer?.url) ||
-        acceptedQuote?.payoutStatus === "transferred";
-      const normalizedStatus =
-        s.status === "delivered" || isCompletedByQuote ? "delivered" : s.status;
+      const normalizedShipment = normalizeCustomerShipmentStatus({
+        shipment: s,
+        acceptedQuote,
+      });
 
       return {
-        ...s,
-        status: normalizedStatus,
+        ...normalizedShipment,
 
         // IMPORTANT (ADD THIS)
         quoteId: acceptedQuote?._id || null,
@@ -555,10 +571,10 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
         quoteTripStatus: acceptedQuote?.tripStatus || null,
 
         // FLAGS
-        isCompleted: normalizedStatus === "delivered",
-        isPending: normalizedStatus === "pending",
+        isCompleted: normalizedShipment.status === "delivered",
+        isPending: normalizedShipment.status === "pending",
         isInProgress: ["assigned", "picked", "in_transit"].includes(
-          normalizedStatus
+          normalizedShipment.status
         ),
 
         // OPTIONAL
