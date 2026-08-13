@@ -175,7 +175,7 @@ const isInvoiceReadyQuote = (quote) =>
   quote?.shipment?.status === "completed";
 
 const hasQuoteSubmissionAccess = async (shipper) => {
-  if (["active", "trialing", "past_due"].includes(shipper?.subscriptionStatus)) {
+  if (["active", "trialing"].includes(shipper?.subscriptionStatus)) {
     return true;
   }
 
@@ -183,15 +183,20 @@ const hasQuoteSubmissionAccess = async (shipper) => {
   const subscription = await Subscription.findOne({
     shipperId: shipper._id,
     status: { $in: ["active", "trialing", "past_due"] },
-    $or: [
-      { currentPeriodEnd: { $exists: false } },
-      { currentPeriodEnd: null },
-      { currentPeriodEnd: { $gte: now } },
-      { trialEnd: { $gte: now } },
-    ],
-  }).lean();
+  })
+    .sort({ updatedAt: -1, createdAt: -1 })
+    .lean();
 
-  return Boolean(subscription);
+  if (!subscription) return false;
+
+  if (["active", "trialing"].includes(subscription.status)) {
+    return true;
+  }
+
+  return (
+    subscription.status === "past_due" &&
+    (subscription.currentPeriodEnd >= now || subscription.trialEnd >= now)
+  );
 };
 
 const streamPdfBuffer = ({ res, buffer, filename }) => {
