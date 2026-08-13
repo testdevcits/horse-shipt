@@ -423,9 +423,51 @@ exports.getUpcomingShipmentsByCustomer = async (req, res) => {
   try {
     const shipments = await CustomerShipment.find({
       customer: req.user._id,
-    }).sort({ createdAt: -1 });
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const shipmentIds = shipments.map((shipment) => shipment._id);
+    const acceptedQuotes = await ShipmentQuote.find({
+      shipment: { $in: shipmentIds },
+      status: "accepted",
+    })
+      .select("_id shipment taxInvoices totalPrice paymentStatus payoutStatus tripStatus deliveredAt")
+      .lean();
+
+    const quoteMap = acceptedQuotes.reduce((acc, quote) => {
+      acc[quote.shipment.toString()] = quote;
+      return acc;
+    }, {});
+
     const shipmentsWithQuestions = await attachQuestionSummary(shipments);
-    res.status(200).json({ success: true, shipments: shipmentsWithQuestions });
+    const normalizedShipments = shipmentsWithQuestions.map((shipment) => {
+      const acceptedQuote = quoteMap[shipment._id.toString()];
+      const isCompletedByShipment =
+        shipment.status === "delivered" ||
+        Boolean(shipment.deliveredAt) ||
+        shipment.deliveryOtpVerified === true;
+      const isCompletedByQuote =
+        acceptedQuote?.tripStatus === "completed" ||
+        Boolean(acceptedQuote?.deliveredAt) ||
+        Boolean(acceptedQuote?.taxInvoices?.customer?.url) ||
+        acceptedQuote?.payoutStatus === "transferred";
+      const normalizedStatus =
+        isCompletedByShipment || isCompletedByQuote
+          ? "delivered"
+          : shipment.status;
+
+      return {
+        ...shipment,
+        status: normalizedStatus,
+        quoteId: acceptedQuote?._id || null,
+        taxInvoices: acceptedQuote?.taxInvoices || null,
+        quoteTripStatus: acceptedQuote?.tripStatus || null,
+        isCompleted: normalizedStatus === "delivered",
+      };
+    });
+
+    res.status(200).json({ success: true, shipments: normalizedShipments });
   } catch (err) {
     console.error("[GET SHIPMENTS ERROR]", err);
     res.status(500).json({ success: false, message: apiResponse.SERVER_ERROR_2 });
