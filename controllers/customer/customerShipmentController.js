@@ -480,7 +480,9 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
     const quotes = await ShipmentQuote.find({
       shipment: { $in: shipmentIds },
       status: "accepted", // only accepted quote
-    }).select("_id shipment taxInvoices totalPrice paymentStatus payoutStatus");
+    }).select(
+      "_id shipment taxInvoices totalPrice paymentStatus payoutStatus tripStatus deliveredAt"
+    );
 
     // Map shipmentId -> quoteId
     const quoteMap = {};
@@ -492,24 +494,37 @@ exports.getCompletedShipmentsByCustomer = async (req, res) => {
     const shipmentsWithQuestions = await attachQuestionSummary(shipments);
 
     const finalShipments = shipmentsWithQuestions.map((s) => {
+      const acceptedQuote = quoteMap[s._id.toString()];
+      const isCompletedByQuote =
+        acceptedQuote?.tripStatus === "completed" ||
+        Boolean(acceptedQuote?.deliveredAt) ||
+        Boolean(acceptedQuote?.taxInvoices?.customer?.url) ||
+        acceptedQuote?.payoutStatus === "transferred";
+      const normalizedStatus =
+        s.status === "delivered" || isCompletedByQuote ? "delivered" : s.status;
+
       return {
         ...s,
+        status: normalizedStatus,
 
         // IMPORTANT (ADD THIS)
-        quoteId: quoteMap[s._id.toString()]?._id || null,
-        taxInvoices: quoteMap[s._id.toString()]?.taxInvoices || null,
+        quoteId: acceptedQuote?._id || null,
+        taxInvoices: acceptedQuote?.taxInvoices || null,
+        quoteTripStatus: acceptedQuote?.tripStatus || null,
 
         // FLAGS
-        isCompleted: s.status === "delivered",
-        isPending: s.status === "pending",
-        isInProgress: ["assigned", "picked", "in_transit"].includes(s.status),
+        isCompleted: normalizedStatus === "delivered",
+        isPending: normalizedStatus === "pending",
+        isInProgress: ["assigned", "picked", "in_transit"].includes(
+          normalizedStatus
+        ),
 
         // OPTIONAL
-        totalPrice: quoteMap[s._id.toString()]?.totalPrice || s.totalPrice || null,
+        totalPrice: acceptedQuote?.totalPrice || s.totalPrice || null,
         paymentStatus:
-          quoteMap[s._id.toString()]?.paymentStatus || s.paymentStatus || "pending",
+          acceptedQuote?.paymentStatus || s.paymentStatus || "pending",
         payoutStatus:
-          quoteMap[s._id.toString()]?.payoutStatus || s.payoutStatus || "pending",
+          acceptedQuote?.payoutStatus || s.payoutStatus || "pending",
         transportType: s.transportType || null,
         pickupTime: s.pickupTime || null,
         estimatedArrivalTime: s.estimatedArrivalTime || null,
