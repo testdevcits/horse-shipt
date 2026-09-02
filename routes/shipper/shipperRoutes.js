@@ -173,6 +173,11 @@ const {
 const {
   getMyInvitations,
 } = require("../../controllers/shipper/invitationController");
+const {
+  getMySupportTickets,
+  createSupportTicket,
+  addSupportMessage,
+} = require("../../controllers/common/supportTicketController");
 
 // ====================================================
 // SHIPPER PROFILE ROUTES
@@ -186,6 +191,14 @@ router.put(
 );
 
 router.get("/profile", shipperAuth, getShipperProfile);
+
+router.get("/support", shipperAuth, getMySupportTickets("shipper"));
+router.post("/support", shipperAuth, createSupportTicket("shipper"));
+router.post(
+  "/support/:ticketId/messages",
+  shipperAuth,
+  addSupportMessage("shipper")
+);
 
 router.put(
   "/update-profile-image",

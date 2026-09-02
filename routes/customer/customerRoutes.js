@@ -92,12 +92,25 @@ const {
   toggleWishlistShipper,
   removeWishlistShipper,
 } = require("../../controllers/customer/customerWishlistController");
+const {
+  getMySupportTickets,
+  createSupportTicket,
+  addSupportMessage,
+} = require("../../controllers/common/supportTicketController");
 
 // ====================================================
 // CUSTOMER PROFILE
 // ====================================================
 
 router.put("/profile-details", customerAuth, updateCustomerDetails);
+
+router.get("/support", customerAuth, getMySupportTickets("customer"));
+router.post("/support", customerAuth, createSupportTicket("customer"));
+router.post(
+  "/support/:ticketId/messages",
+  customerAuth,
+  addSupportMessage("customer")
+);
 
 // ---------------- Reviews ----------------
 const {

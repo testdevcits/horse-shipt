@@ -214,6 +214,7 @@ const adminSocialMediaSettingsRoutes = require("./routes/admin/socialMediaSettin
 const publicSocialMediaSettingsRoutes = require("./routes/common/socialMediaSettings.routes");
 const platformStatsRoutes = require("./routes/common/platformStats.routes");
 const adminNotificationRoutes = require("./routes/admin/adminNotification.routes");
+const adminSupportRoutes = require("./routes/admin/support.routes");
 
 const horseShippingNewsletterRoutes = require("./routes/horseShippingNewsletterRoutes");
 
@@ -246,6 +247,7 @@ app.use("/api/admin/terms-condition", termsConditionRoutes);
 app.use("/api/admin/horse-newsletter", horseShippingNewsletterRoutes);
 app.use("/api/admin/social-media-settings", adminSocialMediaSettingsRoutes);
 app.use("/api/admin/notifications", adminNotificationRoutes);
+app.use("/api/admin/support", adminSupportRoutes);
 
 app.use("/api/horse-newsletter", horseShippingNewsletterRoutes);
 

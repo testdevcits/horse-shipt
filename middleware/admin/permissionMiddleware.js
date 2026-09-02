@@ -9,6 +9,7 @@ const legacyPermissionGrants = {
   ],
   "newsletter:manage": ["newsletter:subscribers"],
   "notifications:view": ["notifications:list"],
+  "support:manage": ["support:list"],
   "platform:manage": [
     "platform:settings",
     "platform:stripe_payments",
