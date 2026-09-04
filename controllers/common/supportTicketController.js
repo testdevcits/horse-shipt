@@ -135,10 +135,11 @@ exports.addSupportMessage = (role) => async (req, res) => {
       return res.status(404).json({ success: false, message: "Support ticket not found" });
     }
 
-    if (ticket.status === "resolved" && role !== "admin") {
-      ticket.status = "open";
-      ticket.resolvedAt = null;
-      ticket.resolvedBy = null;
+    if (ticket.status === "resolved") {
+      return res.status(400).json({
+        success: false,
+        message: "Resolved tickets are closed and cannot receive new messages.",
+      });
     }
 
     const sender = getRequester(req, role);
@@ -220,6 +221,13 @@ exports.adminReplySupportTicket = async (req, res) => {
     const ticket = await SupportTicket.findById(req.params.ticketId);
     if (!ticket) {
       return res.status(404).json({ success: false, message: "Support ticket not found" });
+    }
+
+    if (ticket.status === "resolved") {
+      return res.status(400).json({
+        success: false,
+        message: "Resolved tickets are closed and cannot receive new messages.",
+      });
     }
 
     ticket.messages.push({
