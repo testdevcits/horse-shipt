@@ -11,6 +11,7 @@ const { emitToUser } = require("../../sockets/realtimeSocket");
 const { notifyChatReceiver } = require("../../utils/chatNotificationService");
 
 const CHAT_ALLOWED_STATUSES = [
+  "open_for_offers",
   "assigned",
   "picked",
   "in_transit",
@@ -51,12 +52,8 @@ const ensureRoomParticipant = async ({ roomId, userId, role }) => {
   return isParticipant ? room : null;
 };
 
-const canChatOnShipment = (shipment) =>
-  Boolean(
-    shipment?.shipper &&
-      shipment?.customer &&
-      CHAT_ALLOWED_STATUSES.includes(shipment.status)
-  );
+const getRoomParticipantId = (room, role) =>
+  room?.participants?.find((participant) => participant.role === role)?.userId;
 
 const isShipmentChatLocked = async (shipment) => {
   if (["delivered", "completed"].includes(shipment?.status)) return true;
@@ -77,7 +74,25 @@ const isShipmentChatLocked = async (shipment) => {
   );
 };
 
-const getChatShipment = async ({ shipmentId, userId, role }) => {
+const findEligibleQuote = async ({ shipmentId, shipperId }) => {
+  if (!shipmentId || !shipperId) return null;
+
+  return ShipmentQuote.findOne({
+    shipment: shipmentId,
+    shipper: shipperId,
+    status: { $in: ["pending", "accepted"] },
+    isCancelled: { $ne: true },
+  })
+    .select("_id status shipper")
+    .lean();
+};
+
+const getChatShipment = async ({
+  shipmentId,
+  userId,
+  role,
+  requestedShipperId,
+}) => {
   if (!shipmentId) {
     const error = new Error("shipmentId is required to open chat.");
     error.statusCode = 400;
@@ -94,11 +109,11 @@ const getChatShipment = async ({ shipmentId, userId, role }) => {
     throw error;
   }
 
-  if (!canChatOnShipment(shipment)) {
+  if (!shipment.customer || !CHAT_ALLOWED_STATUSES.includes(shipment.status)) {
     const error = new Error(
       shipment?.status === "delivered"
         ? "Chat is locked after shipment completion."
-        : "Chat is available only after the shipment is accepted."
+        : "Chat is available only after a shipper has sent a quote."
     );
     error.statusCode = 403;
     throw error;
@@ -106,7 +121,15 @@ const getChatShipment = async ({ shipmentId, userId, role }) => {
   const isChatLocked = await isShipmentChatLocked(shipment);
 
   const customerId = shipment.customer?._id || shipment.customer;
-  const shipperId = shipment.shipper?._id || shipment.shipper;
+  const shipperId = shipment.shipper?._id || shipment.shipper || requestedShipperId;
+  const eligibleQuote = await findEligibleQuote({ shipmentId, shipperId });
+
+  if (!shipment.shipper && !eligibleQuote) {
+    const error = new Error("Chat is available only after this shipper has sent a quote.");
+    error.statusCode = 403;
+    throw error;
+  }
+
   const allowed =
     (role === "customer" && customerId?.toString() === userId.toString()) ||
     (role === "shipper" && shipperId?.toString() === userId.toString());
@@ -177,11 +200,13 @@ const uploadChatMedia = async (file) => {
 
 exports.getOrCreateRoom = async (req, res) => {
   try {
-    const { role, userId, shipmentId } = getParticipantIds(req);
+    const { role, userId, shipmentId, shipperId: requestedShipperId } =
+      getParticipantIds(req);
     const { shipment, customerId, shipperId, isChatLocked } = await getChatShipment({
       shipmentId,
       userId,
       role,
+      requestedShipperId,
     });
 
     if (!customerId || !shipperId) {
@@ -275,6 +300,7 @@ exports.sendRoomMessage = async (req, res) => {
         shipmentId: room.shipment,
         userId: req.user._id,
         role: requestRole,
+        requestedShipperId: getRoomParticipantId(room, "shipper"),
       });
 
       if (shipment.isChatLocked) {
@@ -325,8 +351,8 @@ exports.sendRoomMessage = async (req, res) => {
           payload: {
             message: chatMessage,
             shipmentId: room.shipment,
-            customerId: room.customer,
-            shipperId: room.shipper,
+            customerId: getRoomParticipantId(room, "customer"),
+            shipperId: getRoomParticipantId(room, "shipper"),
           },
           notification: {
             type: "chat_message",
@@ -395,6 +421,7 @@ exports.editRoomMessage = async (req, res) => {
         shipmentId: room.shipment,
         userId: req.user._id,
         role: requestRole,
+        requestedShipperId: getRoomParticipantId(room, "shipper"),
       });
 
       if (shipment.isChatLocked) {
@@ -489,6 +516,7 @@ exports.deleteRoomMessage = async (req, res) => {
         shipmentId: room.shipment,
         userId: req.user._id,
         role: requestRole,
+        requestedShipperId: getRoomParticipantId(room, "shipper"),
       });
 
       if (shipment.isChatLocked) {

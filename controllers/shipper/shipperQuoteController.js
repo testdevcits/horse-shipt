@@ -8,7 +8,10 @@ const ShipperSettings = require("../../models/shipper/shipperSettingsModel");
 const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 const Shipper = require("../../models/shipper/shipperModel");
 const Subscription = require("../../models/shipper/subscriptionModel");
-const { sendQuoteEmail } = require("../../utils/sendQuoteEmail");
+const {
+  sendCustomerQuoteReceivedEmail,
+  sendQuoteEmail,
+} = require("../../utils/sendQuoteEmail");
 const { sendQuoteSms } = require("../../utils/sendQuoteSms");
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
@@ -831,6 +834,28 @@ exports.addQuote = async (req, res) => {
         );
       } catch (emailError) {
         console.error("[QUOTE MAIL ERROR]", emailError.message);
+      }
+    }
+
+    if (shipmentExists.customer?.email) {
+      try {
+        await sendCustomerQuoteReceivedEmail(
+          shipmentExists.customer,
+          "New Quote Received",
+          {
+            shipmentId: shipmentExists._id.toString(),
+            shipmentCode: shipmentExists.shipmentCode,
+            shipperName: shipper.name,
+            totalPrice,
+            currency,
+            pickupLocation: shipmentExists.pickupLocation,
+            deliveryLocation: shipmentExists.deliveryLocation,
+            paymentMethod,
+            paymentDue,
+          }
+        );
+      } catch (emailError) {
+        console.error("[CUSTOMER QUOTE MAIL ERROR]", emailError.message);
       }
     }
 

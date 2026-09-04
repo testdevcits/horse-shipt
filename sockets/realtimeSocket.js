@@ -80,6 +80,11 @@ module.exports = (io) => {
       socket.join(getShipmentRoom(shipmentId));
     });
 
+    socket.on("horse_shipt:join_chat_room", ({ roomId }) => {
+      if (!roomId) return;
+      socket.join(roomId.toString());
+    });
+
     socket.on("horse_shipt:join_admin_room", () => {
       socket.join(ADMIN_ROOM);
     });

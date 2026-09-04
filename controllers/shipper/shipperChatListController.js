@@ -4,6 +4,7 @@ const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const formatChatUser = require("../../utils/formatChatUser");
 
 const CHAT_ALLOWED_STATUSES = [
+  "open_for_offers",
   "assigned",
   "picked",
   "in_transit",
@@ -30,11 +31,32 @@ const getChatLockState = async (shipment) => {
   );
 };
 
+const buildChatItem = async ({ shipment, customer, quoteStatus }) => {
+  const formatted = formatChatUser(customer, "customer");
+  const isChatLocked = await getChatLockState(shipment);
+
+  return {
+    ...formatted,
+    isOnline: Boolean(customer.isLogin),
+    shipmentId: shipment._id,
+    shipmentCode: shipment.shipmentCode,
+    shipmentStatus: shipment.status,
+    quoteStatus,
+    isChatLocked,
+    pickupLocation: shipment.pickupLocation,
+    deliveryLocation: shipment.deliveryLocation,
+    chatTitle: `${shipment.shipmentCode || "Shipment"} - ${
+      customer.name || "Customer"
+    }`,
+  };
+};
+
 /**
- * Shipper → accepted shipment chats
+ * Shipper -> accepted and quoted shipment chats.
  */
 exports.getCustomersForChat = async (req, res) => {
   try {
+    const byShipmentAndCustomer = new Map();
     const shipments = await CustomerShipment.find({
       shipper: req.user._id,
       customer: { $ne: null },
@@ -46,29 +68,49 @@ exports.getCustomersForChat = async (req, res) => {
       .populate("customer", "_id name email profileImage profilePicture isLogin")
       .sort({ updatedAt: -1 });
 
-    const formattedCustomers = await Promise.all(
-      shipments
+    const quotedShipments = await ShipmentQuote.find({
+      shipper: req.user._id,
+      status: { $in: ["pending", "accepted"] },
+      isCancelled: { $ne: true },
+    })
+      .populate({
+        path: "shipment",
+        match: {
+          customer: { $ne: null },
+          status: { $in: CHAT_ALLOWED_STATUSES },
+        },
+        select: "_id shipmentCode status pickupLocation deliveryLocation customer updatedAt",
+        populate: {
+          path: "customer",
+          select: "_id name email profileImage profilePicture isLogin",
+        },
+      })
+      .sort({ updatedAt: -1 });
+
+    const formattedCustomers = await Promise.all([
+      ...shipments
         .filter((shipment) => shipment.customer)
         .map(async (shipment) => {
-          const customer = shipment.customer;
-          const formatted = formatChatUser(customer, "customer");
-          const isChatLocked = await getChatLockState(shipment);
-
-          return {
-            ...formatted,
-            isOnline: Boolean(customer.isLogin),
-            shipmentId: shipment._id,
-            shipmentCode: shipment.shipmentCode,
-            shipmentStatus: shipment.status,
-            isChatLocked,
-            pickupLocation: shipment.pickupLocation,
-            deliveryLocation: shipment.deliveryLocation,
-            chatTitle: `${shipment.shipmentCode || "Shipment"} - ${
-              customer.name || "Customer"
-            }`,
-          };
+          const key = `${shipment._id}:${shipment.customer._id}`;
+          byShipmentAndCustomer.set(key, true);
+          return buildChatItem({ shipment, customer: shipment.customer });
+        }),
+      ...quotedShipments
+        .filter((quote) => quote.shipment && quote.shipment.customer)
+        .filter((quote) => {
+          const key = `${quote.shipment._id}:${quote.shipment.customer._id}`;
+          if (byShipmentAndCustomer.has(key)) return false;
+          byShipmentAndCustomer.set(key, true);
+          return true;
         })
-    );
+        .map((quote) =>
+          buildChatItem({
+            shipment: quote.shipment,
+            customer: quote.shipment.customer,
+            quoteStatus: quote.status,
+          })
+        ),
+    ]);
 
     res.status(200).json({
       success: true,
