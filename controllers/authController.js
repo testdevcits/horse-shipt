@@ -6,6 +6,7 @@ const Driver = require("../models/shipper/Driver");
 const PendingSignup = require("../models/PendingSignup");
 const PasswordResetOtp = require("../models/PasswordResetOtp");
 const generateToken = require("../utils/generateToken");
+const { verifyFirebaseIdToken } = require("../utils/firebaseAuth");
 const { sendOtpMail, sendPasswordResetOtpMail } = require("../utils/mailService");
 const { sendNewUserSignupAdminNotification } = require("../utils/adminNotifications");
 const { isBlockedEmail } = require("../utils/emailDomainPolicy");
@@ -497,6 +498,158 @@ exports.login = async (req, res) => {
     return res.status(500).json({
       success: false,
       errors: [apiResponse.SERVER_ERROR_2],
+    });
+  }
+};
+
+// ----------------- Firebase Google Auth (Mobile) -----------------
+exports.firebaseGoogleAuth = async (req, res) => {
+  try {
+    const {
+      idToken,
+      role,
+      intent = "login",
+      deviceId,
+      location,
+    } = req.body;
+
+    if (!idToken || !role) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Firebase ID token and role are required"],
+      });
+    }
+
+    if (!["customer", "shipper"].includes(role)) {
+      return res.status(400).json({
+        success: false,
+        errors: [apiResponse.INVALID_ROLE],
+      });
+    }
+
+    if (!["login", "signup"].includes(intent)) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Invalid auth intent"],
+      });
+    }
+
+    const firebaseUser = await verifyFirebaseIdToken(idToken);
+    const provider = firebaseUser.firebase?.sign_in_provider;
+    const googleProviderId =
+      firebaseUser.firebase?.identities?.["google.com"]?.[0] ||
+      firebaseUser.user_id;
+
+    if (provider !== "google.com") {
+      return res.status(400).json({
+        success: false,
+        errors: ["Firebase token must be from Google sign-in"],
+      });
+    }
+
+    const email = normalizeEmail(firebaseUser.email);
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        errors: ["Google account email is required"],
+      });
+    }
+
+    const Model = getModel(role);
+    const OtherModel = role === "customer" ? getModel("shipper") : getModel("customer");
+    const existingOtherRole = await OtherModel.findOne({ email });
+
+    if (existingOtherRole) {
+      return res.status(409).json({
+        success: false,
+        errors: ["Email already registered as another role"],
+      });
+    }
+
+    let user = await Model.findOne({ email });
+    let isNewUser = false;
+
+    if (!user) {
+      if (intent !== "signup") {
+        return res.status(404).json({
+          success: false,
+          errors: ["No account found. Please sign up first."],
+        });
+      }
+
+      const uniqueId = await generateUniqueId(role);
+      user = new Model({
+        uniqueId,
+        name: firebaseUser.name || email.split("@")[0],
+        email,
+        provider: "google",
+        providerId: googleProviderId,
+        role,
+        isLogin: true,
+        emailVerified: Boolean(firebaseUser.email_verified),
+        profilePicture: firebaseUser.picture || null,
+        rawProfile: {
+          uid: firebaseUser.user_id,
+          signInProvider: provider,
+        },
+      });
+      isNewUser = true;
+    } else {
+      if (intent === "signup") {
+        return res.status(409).json({
+          success: false,
+          errors: ["Account already exists. Please login."],
+        });
+      }
+
+      if (user.providerId && user.providerId !== googleProviderId) {
+        return res.status(401).json({
+          success: false,
+          errors: [apiResponse.GOOGLE_ACCOUNT_MISMATCH],
+        });
+      }
+
+      if (user.isActive === false) {
+        return res.status(403).json({
+          success: false,
+          errors: [apiResponse.ACCOUNT_IS_DEACTIVATED],
+        });
+      }
+
+      user.provider = "google";
+      user.providerId = user.providerId || googleProviderId;
+      user.profilePicture = user.profilePicture || firebaseUser.picture || null;
+      user.emailVerified = user.emailVerified || Boolean(firebaseUser.email_verified);
+      user.isLogin = true;
+    }
+
+    user.currentDevice = deviceId || user.currentDevice;
+    user.currentLocation = location || user.currentLocation;
+    user.loginHistory.push({
+      deviceId: deviceId || null,
+      ip: req.ip,
+      loginAt: new Date(),
+    });
+
+    if (isNewUser) {
+      await createStripeCustomer(user);
+    }
+
+    await user.save();
+
+    if (isNewUser) {
+      await notifyAdminAboutNewUser(user, role);
+    }
+
+    return res.status(isNewUser ? 201 : 200).json({
+      success: true,
+      data: buildAuthResponse(user),
+    });
+  } catch (err) {
+    console.error("[FIREBASE GOOGLE AUTH ERROR]", err);
+    return res.status(401).json({
+      success: false,
+      errors: [err.message || "Firebase authentication failed"],
     });
   }
 };

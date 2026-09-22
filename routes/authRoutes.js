@@ -27,6 +27,7 @@ router.post("/signup", signupValidation, authController.signup);
 router.post("/signup/verify-otp", authController.verifySignupOtp);
 router.post("/signup/resend-otp", authController.resendSignupOtp);
 router.post("/login", loginValidation, authController.login);
+router.post("/firebase/google", authController.firebaseGoogleAuth);
 router.post("/logout", authController.logout);
 router.post("/forgot-password", authController.forgotPassword);
 router.post("/verify-reset-otp", authController.verifyResetOtp);
