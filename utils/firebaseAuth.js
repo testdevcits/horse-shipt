@@ -9,9 +9,9 @@ const getFirebaseProjectId = () =>
   process.env.GOOGLE_CLOUD_PROJECT ||
   process.env.GCLOUD_PROJECT;
 
-const getFirebaseCerts = async () => {
+const getFirebaseCerts = async ({ forceRefresh = false } = {}) => {
   const now = Date.now();
-  if (cachedCerts && cachedCertsExpiresAt > now) {
+  if (!forceRefresh && cachedCerts && cachedCertsExpiresAt > now) {
     return cachedCerts;
   }
 
@@ -35,15 +35,29 @@ const verifyFirebaseIdToken = async (idToken) => {
   }
 
   const decodedHeader = jwt.decode(idToken, { complete: true });
+  const decodedPayload = jwt.decode(idToken);
   const kid = decodedHeader?.header?.kid;
   if (!kid) {
     throw new Error("Invalid Firebase token");
   }
 
-  const certs = await getFirebaseCerts();
-  const cert = certs[kid];
+  if (decodedPayload?.iss && decodedPayload.iss !== `https://securetoken.google.com/${projectId}`) {
+    throw new Error(
+      "Invalid token issuer. Send Firebase Auth ID token, not Google Sign-In ID token"
+    );
+  }
+
+  let certs = await getFirebaseCerts();
+  let cert = certs[kid];
   if (!cert) {
-    throw new Error("Invalid Firebase token certificate");
+    certs = await getFirebaseCerts({ forceRefresh: true });
+    cert = certs[kid];
+  }
+
+  if (!cert) {
+    throw new Error(
+      "Invalid Firebase token certificate. Send Firebase Auth ID token from FirebaseAuth currentUser"
+    );
   }
 
   const decoded = jwt.verify(idToken, cert, {
