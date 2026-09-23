@@ -41,9 +41,10 @@ const verifyFirebaseIdToken = async (idToken) => {
     throw new Error("Invalid Firebase token");
   }
 
-  if (decodedPayload?.iss && decodedPayload.iss !== `https://securetoken.google.com/${projectId}`) {
+  const expectedIssuer = `https://securetoken.google.com/${projectId}`;
+  if (decodedPayload?.iss && decodedPayload.iss !== expectedIssuer) {
     throw new Error(
-      "Invalid token issuer. Send Firebase Auth ID token, not Google Sign-In ID token"
+      `Firebase project mismatch. Token issuer is ${decodedPayload.iss}, expected ${expectedIssuer}`
     );
   }
 
