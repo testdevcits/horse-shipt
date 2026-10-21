@@ -72,6 +72,11 @@ const hasExistingAccount = async (email) => {
 };
 
 const sendPendingSignupOtp = async (pending) => {
+  // Temporary diagnostics shared by signup and resend; no OTP or password.
+  console.info("[SIGNUP OTP] Preparing", {
+    pendingId: String(pending._id),
+    role: pending.role,
+  });
   const otp = generateOtp();
 
   pending.otpHash = await hashOtp(otp);
@@ -81,7 +86,14 @@ const sendPendingSignupOtp = async (pending) => {
   pending.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   await pending.save();
+  console.info("[SIGNUP OTP] Saved; requesting mail", {
+    pendingId: String(pending._id),
+    expiresAt: pending.otpExpiresAt,
+  });
   await sendOtpMail(pending.email, otp);
+  console.info("[SIGNUP OTP] Mail step completed", {
+    pendingId: String(pending._id),
+  });
 };
 
 const buildAuthResponse = (user) => {

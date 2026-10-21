@@ -1,4 +1,5 @@
 const nodemailer = require("nodemailer");
+const { randomUUID } = require("crypto");
 const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
 
 // -------------------- TRANSPORTER (USE WORKING SMTP CONFIG) --------------------
@@ -24,8 +25,22 @@ transporter.verify((error) => {
 
 // -------------------- SEND OTP MAIL --------------------
 exports.sendOtpMail = async (email, otp) => {
+  // Temporary signup mail diagnostics. Never log the OTP, password or HTML.
+  const traceId = randomUUID();
+  const startedAt = Date.now();
+  const maskedEmail = String(email).replace(/^([^@])[^@]*@/, "$1***@");
+  console.info("[SIGNUP OTP MAIL] Sending", {
+    traceId,
+    recipient: maskedEmail,
+    host: process.env.EMAIL_HOST,
+    port: Number(process.env.EMAIL_PORT) || 465,
+    secure: Number(process.env.EMAIL_PORT) === 465,
+    user: process.env.EMAIL_USER,
+    passwordConfigured: Boolean(process.env.EMAIL_PASS),
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+  });
   try {
-    await transporter.sendMail({
+    const result = await transporter.sendMail({
       from:
         process.env.EMAIL_FROM || `"HorseShipt" <${process.env.EMAIL_USER}>`,
       to: email,
@@ -41,8 +56,23 @@ exports.sendOtpMail = async (email, otp) => {
         note: "If you did not request this, you can safely ignore this email.",
       }),
     });
+    console.info("[SIGNUP OTP MAIL] SMTP result", {
+      traceId,
+      elapsedMs: Date.now() - startedAt,
+      messageId: result.messageId,
+      acceptedCount: result.accepted?.length || 0,
+      rejectedCount: result.rejected?.length || 0,
+    });
   } catch (error) {
-    console.error("OTP MAIL ERROR:", error.message);
+    console.error("[SIGNUP OTP MAIL] Failed", {
+      traceId,
+      elapsedMs: Date.now() - startedAt,
+      code: error.code,
+      responseCode: error.responseCode,
+      command: error.command,
+      // Avoid dumping the error object, which may contain message content.
+      response: String(error.response || "").split(String(otp)).join("[REDACTED]"),
+    });
     throw error;
   }
 };
