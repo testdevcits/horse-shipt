@@ -1,4 +1,7 @@
+const { buildFrontendUrl } = require("../frontendUrl");
+
 const brandColor = "#BF9B53";
+const logoUrl = buildFrontendUrl("/defultlogo.png");
 
 const escapeHtml = (value = "") =>
   String(value)
@@ -64,9 +67,16 @@ const baseTemplate = ({
       <td align="center">
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;max-width:560px;background:#ffffff;border:1px solid #eadfca;border-collapse:collapse;">
           <tr>
-            <td align="center" style="background:${brandColor};padding:28px 24px;">
-              <p style="margin:0;color:#ffffff;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">HORSESHIPT</p>
-              <h1 style="margin:6px 0 0;color:#ffffff;font-size:20px;line-height:1.35;font-weight:800;">${escapeHtml(title || "HorseShipt Notification")}</h1>
+            <td align="center" style="background:${brandColor};padding:20px 24px;">
+              <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto 8px;border-collapse:collapse;">
+                <tr>
+                  <td valign="middle" style="padding-right:9px;">
+                    <img src="${logoUrl}" width="36" height="36" alt="HorseShipt" style="display:block;width:36px;height:36px;border:0;background:#ffffff;object-fit:contain;" />
+                  </td>
+                  <td valign="middle" style="color:#ffffff;font-size:13px;font-weight:700;letter-spacing:2px;text-transform:uppercase;">HORSESHIPT</td>
+                </tr>
+              </table>
+              <h1 style="margin:0;color:#ffffff;font-size:20px;line-height:1.35;font-weight:800;">${escapeHtml(title || "HorseShipt Notification")}</h1>
             </td>
           </tr>
           <tr>
