@@ -226,26 +226,40 @@ exports.getAvailableShipments = async (req, res) => {
       deliveryStart,
       deliveryEnd,
       preferredAreaOnly,
+      page: requestedPage,
+      limit: requestedLimit,
+      search,
     } = req.query;
+    const shouldPaginate = requestedPage !== undefined || requestedLimit !== undefined;
+    const page = Math.max(1, Number.parseInt(requestedPage, 10) || 1);
+    const limit = Math.min(50, Math.max(1, Number.parseInt(requestedLimit, 10) || 10));
+    const paginationMeta = (total) => ({
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
 
     /* ===============================
        GET SHIPPER LOCATION (FIXED)
     =================================*/
     let shipperLocation = null;
 
-    if (lat && lng) {
-      shipperLocation = {
-        lat: Number(lat),
-        lng: Number(lng),
-      };
-    } else {
-      const shipper = await shipperModel.findById(req.user.id);
-
-      if (shipper?.currentLocation) {
+    if (pickupDistance || dropoffDistance) {
+      if (lat && lng) {
         shipperLocation = {
-          lat: shipper.currentLocation.latitude,
-          lng: shipper.currentLocation.longitude,
+          lat: Number(lat),
+          lng: Number(lng),
         };
+      } else {
+        const shipper = await shipperModel.findById(req.user.id);
+
+        if (shipper?.currentLocation) {
+          shipperLocation = {
+            lat: shipper.currentLocation.latitude,
+            lng: shipper.currentLocation.longitude,
+          };
+        }
       }
     }
 
@@ -267,33 +281,128 @@ exports.getAvailableShipments = async (req, res) => {
         deliveryStart,
         deliveryEnd,
         preferredAreaOnly,
+        search,
       });
 
     const cachedData = cache.get(cacheKey);
     if (cachedData) {
+      const total = cachedData.length;
+      const pageData = shouldPaginate
+        ? cachedData.slice((page - 1) * limit, page * limit)
+        : cachedData;
       const shipmentsWithFreshQuestions = await attachShipperQuestionSummary(
-        cachedData,
+        pageData,
         req.user.id
       );
-      return res
-        .status(200)
-        .json({ success: true, shipments: shipmentsWithFreshQuestions });
+      return res.status(200).json({
+        success: true,
+        shipments: shipmentsWithFreshQuestions,
+        ...(shouldPaginate ? { pagination: paginationMeta(total) } : {}),
+      });
     }
 
     /* ===============================
        EXCLUDE ASSIGNED SHIPMENTS
     =================================*/
-    const assignedShipments = await ShipperShipment.find({}, "shipment");
-    const assignedIds = assignedShipments.map((s) => s.shipment);
+    const assignedIds = await ShipperShipment.distinct("shipment");
+
+    const availableQuery = {
+      publish: true,
+      status: { $in: ["pending", "open_for_offers"] },
+      _id: { $nin: assignedIds },
+    };
+
+    if (minHorses && Number.isFinite(Number(minHorses))) {
+      availableQuery.numberOfHorses = { $gte: Number(minHorses) };
+    }
+    if (stallSize) {
+      availableQuery.horses = {
+        $elemMatch: { requestedStallSize: stallSize },
+      };
+    }
+    if (pickupStart && pickupEnd) {
+      const start = new Date(pickupStart);
+      const end = new Date(pickupEnd);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        availableQuery["pickupDateRange.start"] = { $lte: end };
+        availableQuery["pickupDateRange.end"] = { $gte: start };
+      }
+    }
+    if (deliveryStart && deliveryEnd) {
+      const start = new Date(deliveryStart);
+      const end = new Date(deliveryEnd);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) {
+        availableQuery["deliveryDateRange.start"] = { $lte: end };
+        availableQuery["deliveryDateRange.end"] = { $gte: start };
+      }
+    }
+
+    if (search?.trim() && preferredAreaOnly !== "true") {
+      const escapedSearch = search.trim().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const searchRegex = new RegExp(escapedSearch, "i");
+      availableQuery.$or = [
+        { shipmentCode: searchRegex },
+        { pickupLocation: searchRegex },
+        { deliveryLocation: searchRegex },
+      ];
+    }
+
+    const hasJsFilters = Boolean(
+      ((pickupDistance || dropoffDistance) && shipperLocation) ||
+        preferredAreaOnly === "true"
+    );
+
+    // Keep the unfiltered list fast by paginating before loading shipment details.
+    if (shouldPaginate && !hasJsFilters) {
+      const [total, pageShipments] = await Promise.all([
+        CustomerShipment.countDocuments(availableQuery),
+        CustomerShipment.find(availableQuery)
+          .populate("customer", "name email phone")
+          .select(
+            "shipmentCode customer pickupLocation pickupCoords pickupDateRange deliveryLocation deliveryCoords deliveryDateRange horses numberOfHorses additionalInfo publishedAt status"
+          )
+          .sort({ publishedAt: -1, _id: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+      ]);
+
+      const shipmentsWithDistance = pageShipments.map((shipment) => {
+        const pickup = shipment.pickupCoords;
+        const delivery = shipment.deliveryCoords;
+        const distanceKm = pickup && delivery
+          ? calculateDistance(
+              pickup.latitude,
+              pickup.longitude,
+              delivery.latitude,
+              delivery.longitude
+            )
+          : 0;
+        return {
+          ...shipment,
+          estimatedDistance: {
+            km: Number(distanceKm.toFixed(2)),
+            miles: Number((distanceKm * 0.621371).toFixed(2)),
+          },
+          matchedPreferredAreas: [],
+        };
+      });
+      const shipmentsWithQuestions = await attachShipperQuestionSummary(
+        shipmentsWithDistance,
+        req.user.id
+      );
+
+      return res.status(200).json({
+        success: true,
+        shipments: shipmentsWithQuestions,
+        pagination: paginationMeta(total),
+      });
+    }
 
     /* ===============================
        FETCH SHIPMENTS
     =================================*/
-    let shipments = await CustomerShipment.find({
-      publish: true,
-      status: { $in: ["pending", "open_for_offers"] },
-      _id: { $nin: assignedIds },
-    })
+    let shipments = await CustomerShipment.find(availableQuery)
       .populate("customer", "name email phone")
       .select(
         `
@@ -366,6 +475,20 @@ exports.getAvailableShipments = async (req, res) => {
         preferredAreaOk = matchedPreferredAreas.length > 0;
       }
 
+      if (search?.trim()) {
+        const term = search.trim().toLowerCase();
+        const searchableText = [
+          shipment.pickupLocation,
+          shipment.deliveryLocation,
+          shipment.shipmentCode,
+          ...matchedPreferredAreas.map((area) => area.locationName),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        if (!searchableText.includes(term)) return false;
+      }
+
       if (pickupDistance && shipperLocation) {
         const dist = calculateDistance(
           shipperLocation.lat,
@@ -431,16 +554,21 @@ exports.getAvailableShipments = async (req, res) => {
     /* ===============================
        CACHE SAVE
     =================================*/
-    shipmentsWithDistance = await attachShipperQuestionSummary(
-      shipmentsWithDistance,
+    cache.set(cacheKey, shipmentsWithDistance);
+
+    const total = shipmentsWithDistance.length;
+    const responseShipments = shouldPaginate
+      ? shipmentsWithDistance.slice((page - 1) * limit, page * limit)
+      : shipmentsWithDistance;
+    const shipmentsWithQuestions = await attachShipperQuestionSummary(
+      responseShipments,
       req.user.id
     );
 
-    cache.set(cacheKey, shipmentsWithDistance);
-
     res.status(200).json({
       success: true,
-      shipments: shipmentsWithDistance,
+      shipments: shipmentsWithQuestions,
+      ...(shouldPaginate ? { pagination: paginationMeta(total) } : {}),
     });
   } catch (err) {
     console.error("[GET AVAILABLE SHIPMENTS] Error:", err);
