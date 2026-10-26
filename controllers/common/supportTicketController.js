@@ -1,4 +1,5 @@
 const SupportTicket = require("../../models/common/SupportTicket");
+const { sendAdminNotification } = require("../../utils/adminNotifications");
 
 const ROLE_MODEL = {
   customer: "Customer",
@@ -104,6 +105,25 @@ exports.createSupportTicket = (role) => async (req, res) => {
           message,
         },
       ],
+    });
+
+    const requesterName = requester.name || requester.email || "A user";
+    sendAdminNotification({
+      title: "New Support Ticket",
+      message: `${requesterName} (${role}) submitted a support ticket: ${subject}`,
+      event: "support_ticket_created",
+      type: "support",
+      data: {
+        ticketId: ticket._id,
+        ticketNumber: `HS-${ticket._id.toString().slice(-6).toUpperCase()}`,
+        requesterId: requester._id,
+        requesterRole: role,
+        subject,
+        category,
+        priority,
+      },
+    }).catch((error) => {
+      console.error("[SUPPORT TICKET ADMIN NOTIFICATION ERROR]", error);
     });
 
     return res.status(201).json({
