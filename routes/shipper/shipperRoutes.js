@@ -35,6 +35,7 @@ const {
 const {
   getAssignedShipments,
   getShipmentById,
+  streamHorseDocument,
   updateShipmentStatus,
   getAvailableShipments,
   acceptShipment,
@@ -230,6 +231,11 @@ router.patch(
 
 // Shipper map – all available shipments
 router.get("/shipments/map", shipperAuth, getAllPublishedShipmentsForMap);
+router.get(
+  "/shipments/:shipmentId/horses/:horseIndex/documents/:documentType",
+  shipperAuth,
+  streamHorseDocument
+);
 router.get("/shipments/:shipmentId", shipperAuth, getShipmentById);
 router.patch("/shipments/:shipmentId/accept", shipperAuth, acceptShipment);
 

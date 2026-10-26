@@ -1,5 +1,8 @@
 const { apiResponse } = require("../../responses/api.response");
 const mongoose = require("mongoose");
+const axios = require("axios");
+const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
+const ShipmentInvitation = require("../../models/common/ShipmentInvitation");
 
 // --------------------------- imports ---------------------------
 const NodeCache = require("node-cache");
@@ -119,6 +122,81 @@ exports.getShipmentById = async (req, res) => {
       success: false,
       message: apiResponse.INVALID_SHIPMENT_ID,
     });
+  }
+};
+
+exports.streamHorseDocument = async (req, res) => {
+  try {
+    const { shipmentId, horseIndex, documentType } = req.params;
+    const documentFields = ["coggins", "healthCertificate", "other"];
+    const index = Number.parseInt(horseIndex, 10);
+
+    if (!Number.isInteger(index) || index < 0 || !documentFields.includes(documentType)) {
+      return res.status(400).json({ success: false, message: "Invalid horse document request" });
+    }
+
+    const shipment = await CustomerShipment.findById(shipmentId).select("publish shipper horses");
+    if (!shipment) {
+      return res.status(404).json({ success: false, message: apiResponse.SHIPMENT_NOT_FOUND });
+    }
+
+    const shipperId = req.user?._id || req.user?.id;
+    const isAssignedShipper = shipment.shipper?.toString() === shipperId?.toString();
+    const [hasQuote, hasInvitation] = shipperId
+      ? await Promise.all([
+          ShipmentQuote.exists({ shipment: shipment._id, shipper: shipperId }),
+          ShipmentInvitation.exists({ shipment: shipment._id, shipper: shipperId }),
+        ])
+      : [false, false];
+    if (!shipment.publish && !isAssignedShipper && !hasQuote && !hasInvitation) {
+      return res.status(403).json({ success: false, message: apiResponse.UNAUTHORIZED });
+    }
+
+    const horse = shipment.horses?.[index];
+    const document = horse?.documents?.[documentType];
+    if (!document?.url) {
+      return res.status(404).json({ success: false, message: "Horse document not found" });
+    }
+
+    const documentUrl = new URL(document.url);
+    if (documentUrl.protocol !== "https:" || documentUrl.hostname !== "res.cloudinary.com") {
+      return res.status(400).json({ success: false, message: "Unsupported document source" });
+    }
+
+    const upstream = await axios.get(documentUrl.toString(), {
+      responseType: "stream",
+      timeout: 20000,
+      maxRedirects: 3,
+    });
+    const upstreamContentType = upstream.headers["content-type"] || "";
+    const contentType =
+      upstreamContentType.startsWith("application/octet-stream") &&
+      documentUrl.pathname.toLowerCase().endsWith(".pdf")
+        ? "application/pdf"
+        : upstreamContentType || "application/pdf";
+    if (!contentType.startsWith("application/pdf") && !contentType.startsWith("image/")) {
+      upstream.data.destroy();
+      return res.status(415).json({ success: false, message: "Unsupported document type" });
+    }
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Content-Disposition", 'inline; filename="horse-document.pdf"');
+    res.setHeader("Cache-Control", "private, no-store");
+    upstream.data.on("error", (error) => {
+      console.error("[HORSE DOCUMENT STREAM ERROR]", error.message);
+      if (!res.headersSent) res.status(502);
+      res.end();
+    });
+    upstream.data.pipe(res);
+  } catch (error) {
+    if (error.response?.status === 404) {
+      return res.status(404).json({ success: false, message: "Horse document not found" });
+    }
+    console.error("[HORSE DOCUMENT STREAM ERROR]", error.message);
+    if (!res.headersSent) {
+      return res.status(502).json({ success: false, message: "Could not load horse document" });
+    }
+    res.end();
   }
 };
 
