@@ -132,11 +132,16 @@ const makeAttributeController = ({ Model, singular, defaultItems, otherNames = [
     try {
       await ensureDefaults();
 
-      let { page = 1, limit = 10, showInactive = false } = req.query;
-      page = parseInt(page);
-      limit = parseInt(limit);
+      let { page = 1, limit = 10, showInactive = false, status, search = "" } = req.query;
+      page = Math.max(1, parseInt(page, 10) || 1);
+      limit = Math.min(100, Math.max(1, parseInt(limit, 10) || 10));
 
-      const filter = showInactive === "true" ? {} : { isActive: true };
+      const filter = {};
+      if (status === "active") filter.isActive = true;
+      else if (status === "inactive") filter.isActive = false;
+      else if (status !== "all" && showInactive !== "true") filter.isActive = true;
+      const query = search.trim();
+      if (query) filter.name = { $regex: escapeRegExp(query), $options: "i" };
       const total = await Model.countDocuments(filter);
       const items = await Model.find(filter)
         .sort({ name: 1 })
