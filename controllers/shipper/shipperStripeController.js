@@ -494,6 +494,44 @@ exports.stripeWebhook = async (req, res) => {
             .populate("shipment", "shipmentCode customer pickupLocation deliveryLocation")
             .populate("shipper", "name email companyName");
 
+          // Record the actual Stripe processing fee as soon as the payment succeeds.
+          // This is accounting-only; the existing payout calculation still runs later.
+          if (quote && Number(quote.stripeFee || 0) === 0) {
+            try {
+              const paymentIntent = await stripe.paymentIntents.retrieve(data.id, {
+                expand: ["latest_charge.balance_transaction"],
+              });
+              const balanceTransaction =
+                paymentIntent.latest_charge?.balance_transaction;
+
+              if (
+                balanceTransaction &&
+                typeof balanceTransaction === "object" &&
+                Number.isFinite(balanceTransaction.fee)
+              ) {
+                await ShipmentQuote.updateOne(
+                  { _id: quoteId, stripeFee: 0 },
+                  {
+                    $set: {
+                      stripeFee: balanceTransaction.fee / 100,
+                      payoutCurrency:
+                        balanceTransaction.currency?.toUpperCase?.() ||
+                        quote.currency ||
+                        "USD",
+                    },
+                  }
+                );
+              }
+            } catch (feeError) {
+              // Don't fail/retry a successful payment webhook because fee lookup failed.
+              // Existing payout processing also retrieves and stores the actual fee.
+              console.warn(
+                "[STRIPE FEE CAPTURE] Could not record fee at payment time:",
+                feeError.message
+              );
+            }
+          }
+
           sendAdminNotification({
             title: "Payment received",
             message: `Payment received for shipment ${
