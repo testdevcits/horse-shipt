@@ -575,7 +575,7 @@ exports.getDriverDashboard = async (req, res) => {
       .populate("vehicle", "_id vehicleNumber vehicleType transportType")
       .populate(
         "shipment",
-        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation pickupCoords deliveryCoords"
+        "_id pickupLocation deliveryLocation pickupDate deliveryDate pickupDateRange deliveryDateRange numberOfHorses horses currentLocation pickupCoords deliveryCoords"
       );
 
     // ================= ACTIVE SHIPMENT =================
@@ -589,7 +589,7 @@ exports.getDriverDashboard = async (req, res) => {
       .populate("vehicle", "_id vehicleNumber vehicleType transportType")
       .populate(
         "shipment",
-        "_id pickupLocation deliveryLocation pickupDate deliveryDate numberOfHorses horses currentLocation pickupCoords deliveryCoords"
+        "_id pickupLocation deliveryLocation pickupDate deliveryDate pickupDateRange deliveryDateRange numberOfHorses horses currentLocation pickupCoords deliveryCoords"
       );
 
     // ================= MAP-FRIENDLY FORMAT =================
