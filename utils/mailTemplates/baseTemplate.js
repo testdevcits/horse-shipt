@@ -1,6 +1,7 @@
 const { buildFrontendUrl } = require("../frontendUrl");
 
 const brandColor = "#BF9B53";
+const supportEmail = process.env.SUPPORT_EMAIL || "info@horseshipt.com";
 const logoUrl = buildFrontendUrl("/defultlogo.png");
 
 const escapeHtml = (value = "") =>
@@ -97,7 +98,8 @@ const baseTemplate = ({
           <tr>
             <td style="padding:20px 24px;background:#faf7f0;border-top:1px solid #eadfca;text-align:center;">
               <p style="margin:0 0 5px;font-size:12px;color:#9ca3af;">&copy; ${new Date().getFullYear()} HorseShipt. All rights reserved.</p>
-              <p style="margin:0;font-size:12px;color:#9ca3af;">This is an automated message, please don't reply directly to this email.</p>
+              <p style="margin:0 0 6px;font-size:12px;color:#9ca3af;">This is an automated message, please don't reply directly to this email.</p>
+              <p style="margin:0;font-size:12px;color:#6b7280;">Need help? Contact <a href="mailto:${escapeHtml(supportEmail)}" style="color:${brandColor};font-weight:700;text-decoration:none;">${escapeHtml(supportEmail)}</a>.</p>
             </td>
           </tr>
         </table>

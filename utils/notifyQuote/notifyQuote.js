@@ -47,21 +47,29 @@ const notifyQuote = async ({
             <p style="margin:0 0 10px;">Hello <strong>${escapeHtml(
               shipment.shipper?.name || "Shipper"
             )}</strong>,</p>
-            <p style="margin:0;">${escapeHtml(customerName)} accepted your quote.</p>
+            <p style="margin:0 0 12px;">Good news! <strong>${escapeHtml(customerName || "A customer")}</strong> has accepted your quote. The shipment is ready for you to review and prepare for the next steps.</p>
             ${detailTable([
               {
                 label: "Shipment Code",
                 value: escapeHtml(shipment.shipmentCode || "N/A"),
               },
               {
-                label: "Amount",
+                label: "Pickup",
+                value: escapeHtml(shipment.pickupLocation || shipment.pickupAddress || "See shipment details"),
+              },
+              {
+                label: "Delivery",
+                value: escapeHtml(shipment.deliveryLocation || shipment.deliveryAddress || "See shipment details"),
+              },
+              {
+                label: "Accepted Quote",
                 value: `${escapeHtml(quote.totalPrice || 0)} ${escapeHtml(
                   quote.currency || "USD"
                 )}`,
               },
             ])}
           `,
-          note: "Please check your dashboard for next steps.",
+          note: "Open your HorseShipt dashboard to review the shipment, confirm the details, and coordinate with the customer. Please verify the pickup, delivery, and accepted amount before proceeding.",
         });
 
         await sendEmail({
