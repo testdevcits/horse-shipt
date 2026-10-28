@@ -252,6 +252,13 @@ exports.startTrip = async (req, res) => {
       });
     }
 
+    if (quote.isCancelled) {
+      return res.status(400).json({
+        success: false,
+        message: "This shipment was cancelled and cannot be started.",
+      });
+    }
+
     // ✅ FIX: allow if already started / inTransit
     if (["started", "inTransit"].includes(quote.tripStatus)) {
 
@@ -569,8 +576,9 @@ exports.getDriverDashboard = async (req, res) => {
 
     // ================= ALL SHIPMENTS =================
     let allShipments = await ShipmentQuote.find({ assignedDriver: driverId })
+      .sort({ updatedAt: -1 })
       .select(
-        "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status"
+        "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status isCancelled cancelledAt cancelReason"
       )
       .populate("vehicle", "_id vehicleNumber vehicleType transportType")
       .populate(
@@ -581,10 +589,11 @@ exports.getDriverDashboard = async (req, res) => {
     // ================= ACTIVE SHIPMENT =================
     let activeShipment = await ShipmentQuote.findOne({
       assignedDriver: driverId,
+      isCancelled: { $ne: true },
       tripStatus: { $in: ["notStarted", "started", "inTransit"] },
     })
       .select(
-        "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status"
+        "_id tripStatus totalPrice paymentStatus pickupTime estimatedArrivalTime transportType stallsRequired notes status isCancelled cancelledAt cancelReason"
       )
       .populate("vehicle", "_id vehicleNumber vehicleType transportType")
       .populate(
@@ -609,6 +618,18 @@ exports.getDriverDashboard = async (req, res) => {
     };
 
     allShipments = allShipments.map(mapCoords);
+    const lastCancelledQuoteId = allShipments
+      .filter((quote) => quote.isCancelled)
+      .sort(
+        (a, b) =>
+          new Date(b.cancelledAt || b.updatedAt || 0) -
+          new Date(a.cancelledAt || a.updatedAt || 0)
+      )[0]?._id?.toString();
+    allShipments = allShipments.map((quote) => ({
+      ...quote,
+      isLatestCancelledAssignment:
+        Boolean(quote.isCancelled) && quote._id?.toString() === lastCancelledQuoteId,
+    }));
     activeShipment = mapCoords(activeShipment);
 
     return res.json({

@@ -7,6 +7,7 @@ const CustomerShipment = require("../../models/customer/CustomerShipment");
 const ShipmentQuote = require("../../models/shipper/ShipmentQuote");
 const PlatformSettings = require("../../models/admin/payment/platformSettings");
 const Shipper = require("../../models/shipper/shipperModel");
+const ShipperVehicle = require("../../models/shipper/ShipperVehicle");
 
 const cloudinary = require("../../utils/cloudinary");
 const streamifier = require("streamifier");
@@ -1091,10 +1092,42 @@ exports.cancelQuote = async (req, res) => {
       });
     }
 
+    const wasAcceptedQuote = quote.status === "accepted";
+
+    if (wasAcceptedQuote) {
+      const shipmentStatus = String(quote.shipment?.status || "").toLowerCase();
+      const tripHasStarted =
+        ["started", "intransit", "in_transit", "completed"].includes(
+          String(quote.tripStatus || "").toLowerCase()
+        ) ||
+        Boolean(quote.tripStartedAt) ||
+        ["picked", "in_transit", "delivered", "completed"].includes(
+          shipmentStatus
+        );
+
+      if (tripHasStarted) {
+        return res.status(400).json({
+          success: false,
+          message: "This shipment can no longer be cancelled because the driver has started the trip.",
+        });
+      }
+
+      if (quote.paymentStatus !== "paid") {
+        return res.status(400).json({
+          success: false,
+          message: "Shipment cancellation is available after payment is completed.",
+        });
+      }
+    }
+
     const now = new Date();
 
     /* ---------------- CANCELLATION WINDOW CHECK ---------------- */
-    if (quote.cancellationLastDate && now > quote.cancellationLastDate) {
+    if (
+      !wasAcceptedQuote &&
+      quote.cancellationLastDate &&
+      now > quote.cancellationLastDate
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -1117,11 +1150,12 @@ exports.cancelQuote = async (req, res) => {
 
     const flatFee = settings.platformFeeFlat || 0;
 
-    const platformFee = percentFee + flatFee;
+    let platformFee = percentFee + flatFee;
 
-    const refundAmount = Math.max(quote.totalPrice - platformFee, 0);
+    let refundAmount = Math.max(quote.totalPrice - platformFee, 0);
 
     let refundStatus = "not_required";
+    let refundId = null;
 
     /* ---------------- STRIPE HANDLING ---------------- */
     if (quote.stripePaymentIntentId) {
@@ -1135,18 +1169,30 @@ exports.cancelQuote = async (req, res) => {
 
           await stripe.paymentIntents.cancel(paymentIntent.id);
 
+          // The authorization was never captured, so voiding it releases the
+          // full hold; there is no captured amount to refund or fee to retain.
+          platformFee = 0;
+          refundAmount = 0;
           refundStatus = "processed";
         } else if (paymentIntent.status === "succeeded") {
           /* -------- CAPTURED -------- */
 
-          await stripe.refunds.create({
+          const refund = await stripe.refunds.create({
             payment_intent: paymentIntent.id,
             amount: Math.round(refundAmount * 100),
+            metadata: {
+              type: "customer_refund",
+              quoteId: quote._id.toString(),
+              shipmentId: quote.shipment._id.toString(),
+              reason: "customer_cancelled",
+            },
           });
-
-          refundStatus = "processed";
+          refundId = refund.id;
+          refundStatus = refund.status === "succeeded" ? "processed" : "pending";
         } else if (paymentIntent.status === "requires_payment_method") {
           /* -------- NOT PAID -------- */
+          platformFee = 0;
+          refundAmount = 0;
           refundStatus = "not_required";
         } else {
           refundStatus = "pending";
@@ -1156,17 +1202,38 @@ exports.cancelQuote = async (req, res) => {
         refundStatus = "failed";
       }
     } else {
+      platformFee = 0;
+      refundAmount = 0;
     }
 
     /* ---------------- UPDATE QUOTE ---------------- */
     quote.isCancelled = true;
     quote.cancelledAt = now;
+    const customerCancelReason = String(req.body?.reason || "").trim();
+    quote.cancelReason = `Cancelled by customer${
+      customerCancelReason ? `: ${customerCancelReason}` : ""
+    }`;
     quote.refundAmount = refundAmount;
     quote.platformFee = platformFee;
     quote.refundStatus = refundStatus;
+    quote.refundId = refundId;
     quote.status = "rejected";
 
     await quote.save();
+
+    // Cancelling an accepted quote cancels the shipment; rejecting a pending
+    // offer must not cancel the customer's entire shipment request.
+    if (wasAcceptedQuote) {
+      quote.shipment.status = "cancelled";
+      await quote.shipment.save();
+
+      if (quote.vehicle) {
+        await ShipperVehicle.findOneAndUpdate(
+          { _id: quote.vehicle, currentShipment: quote._id },
+          { $set: { currentShipment: null, driverStatus: "AVAILABLE" } }
+        );
+      }
+    }
 
     emitToUser(req.app.get("io"), {
       role: "shipper",
@@ -1240,16 +1307,45 @@ exports.getCustomerStripePayments = async (req, res) => {
         charge.metadata?.customerEmail === customerEmail
     );
 
+    const refundPage = await stripe.refunds.list({ limit: 100 });
+    let customerRefunds = refundPage.data.filter((refund) => {
+      const quoteId = refund.metadata?.quoteId;
+      return quoteId && refund.metadata?.type === "customer_refund";
+    });
+
     // ---------------- GET UNIQUE IDS ----------------
-    const shipperIds = [
+    const quoteIds = [
       ...new Set(
-        customerCharges.map((c) => c.metadata?.shipperId).filter(Boolean)
+        [
+          ...customerCharges.map((c) => c.metadata?.quoteId),
+          ...customerRefunds.map((refund) => refund.metadata?.quoteId),
+        ].filter(Boolean)
       ),
     ];
 
-    const quoteIds = [
+    const quoteOwners = quoteIds.length
+      ? await ShipmentQuote.find({ _id: { $in: quoteIds } })
+          .populate({ path: "shipment", select: "customer" })
+          .select("_id shipper shipment")
+          .lean()
+      : [];
+    const ownedQuoteIds = new Set(
+      quoteOwners
+        .filter((quote) => quote.shipment?.customer?.toString() === req.user._id.toString())
+        .map((quote) => quote._id.toString())
+    );
+    customerRefunds = customerRefunds.filter((refund) =>
+      ownedQuoteIds.has(refund.metadata.quoteId)
+    );
+    const shipperIdByQuote = new Map(
+      quoteOwners.map((quote) => [quote._id.toString(), quote.shipper?.toString()])
+    );
+    const shipperIds = [
       ...new Set(
-        customerCharges.map((c) => c.metadata?.quoteId).filter(Boolean)
+        [
+          ...customerCharges.map((charge) => charge.metadata?.shipperId),
+          ...customerRefunds.map((refund) => shipperIdByQuote.get(refund.metadata?.quoteId)),
+        ].filter(Boolean)
       ),
     ];
 
@@ -1284,7 +1380,7 @@ exports.getCustomerStripePayments = async (req, res) => {
     });
 
     // ---------------- FORMAT RESPONSE ----------------
-    const formatted = customerCharges.map((charge) => {
+    const formattedPayments = customerCharges.map((charge) => {
       const createdDate = new Date(charge.created * 1000);
 
       const metadata = charge.metadata || {};
@@ -1358,6 +1454,65 @@ exports.getCustomerStripePayments = async (req, res) => {
           shipment?.deliveryLocation || shipment?.destination || "N/A",
       };
     });
+
+    const formattedRefunds = customerRefunds.map((refund) => {
+      const metadata = refund.metadata || {};
+      const quote = quoteMap[metadata.quoteId];
+      const shipment = quote?.shipment;
+      const createdDate = new Date(refund.created * 1000);
+      return {
+        transactionId: refund.id,
+        amount: refund.amount / 100,
+        currency: refund.currency,
+        status: refund.status === "succeeded" ? "refunded" : refund.status,
+        paid: refund.status === "succeeded",
+        receiptUrl: null,
+        createdAt: createdDate,
+        paymentDate: createdDate.toLocaleDateString("en-US", {
+          timeZone: "America/New_York",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }),
+        paymentTime: createdDate.toLocaleTimeString("en-US", {
+          timeZone: "America/New_York",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        paymentDateTime: createdDate.toLocaleString("en-US", {
+          timeZone: "America/New_York",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+        shipper: {
+          id: shipperIdByQuote.get(metadata.quoteId) || null,
+          ...(shipperMap[shipperIdByQuote.get(metadata.quoteId)] || {}),
+        },
+        customerEmail,
+        customerName: "N/A",
+        paymentMethod: "refund",
+        cardBrand: null,
+        last4: null,
+        pickupLocation: shipment?.pickupLocation || shipment?.origin || "N/A",
+        deliveryLocation:
+          shipment?.deliveryLocation || shipment?.destination || "N/A",
+        metadata: {
+          type: "customer_refund",
+          quoteId: metadata.quoteId,
+          shipmentId: metadata.shipmentId || shipment?._id?.toString() || null,
+          reason: metadata.reason || "cancellation",
+        },
+      };
+    });
+
+    const formatted = [...formattedPayments, ...formattedRefunds].sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
 
     // ---------------- RESPONSE ----------------
     return res.status(200).json({

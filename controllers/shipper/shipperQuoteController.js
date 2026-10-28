@@ -386,6 +386,13 @@ exports.shipperCancelQuote = async (req, res) => {
         .json({ success: false, message: apiResponse.QUOTE_NOT_FOUND });
     }
 
+    if (quote.shipper?.toString() !== shipperId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: apiResponse.UNAUTHORIZED,
+      });
+    }
+
     if (quote.status !== "accepted") {
       return res.status(400).json({
         success: false,
@@ -402,14 +409,22 @@ exports.shipperCancelQuote = async (req, res) => {
 
     const shipment = await CustomerShipment.findById(quote.shipment._id);
 
-    if (
-      quote.tripStatus === "completed" ||
-      shipment?.status === "delivered" ||
-      shipment?.status === "completed"
-    ) {
+    const normalizedTripStatus = String(quote.tripStatus || "").toLowerCase();
+    const normalizedShipmentStatus = String(shipment?.status || "").toLowerCase();
+    const tripHasStarted =
+      ["started", "intransit", "in_transit", "completed"].includes(
+        normalizedTripStatus
+      ) ||
+      Boolean(quote.tripStartedAt) ||
+      ["picked", "in_transit", "delivered", "completed"].includes(
+        normalizedShipmentStatus
+      );
+
+    if (tripHasStarted) {
       return res.status(400).json({
         success: false,
-        message: "Completed shipment cannot be cancelled.",
+        message:
+          "This shipment can no longer be cancelled because the driver has started the trip.",
       });
     }
 
@@ -512,6 +527,13 @@ exports.shipperCancelQuote = async (req, res) => {
 
     shipment.status = "cancelled";
     await shipment.save();
+
+    if (quote.vehicle) {
+      await ShipperVehicle.findOneAndUpdate(
+        { _id: quote.vehicle, currentShipment: quote._id },
+        { $set: { currentShipment: null, driverStatus: "AVAILABLE" } }
+      );
+    }
 
     emitToUser(req.app.get("io"), {
       role: "customer",
@@ -969,7 +991,7 @@ exports.assignVehicleToQuote = async (req, res) => {
     }
 
     // ---------------- CHECK STATUS ----------------
-    if (quote.status !== "accepted") {
+    if (quote.status !== "accepted" || quote.isCancelled) {
       return res.status(400).json({
         success: false,
         message: apiResponse.VEHICLE_CAN_ONLY_BE_ASSIGNED_AFTER_QUOTE_IS_ACCEPTED,
