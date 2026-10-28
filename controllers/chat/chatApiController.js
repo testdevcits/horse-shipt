@@ -55,6 +55,28 @@ const ensureRoomParticipant = async ({ roomId, userId, role }) => {
 const getRoomParticipantId = (room, role) =>
   room?.participants?.find((participant) => participant.role === role)?.userId;
 
+const getRelatedRoomIds = async (room) => {
+  if (!room?.shipment) return [room._id];
+
+  const customerId = getRoomParticipantId(room, "customer");
+  const shipperId = getRoomParticipantId(room, "shipper");
+  if (!customerId || !shipperId) return [room._id];
+
+  const relatedRooms = await ChatRoom.find({
+    shipment: room.shipment,
+    participants: {
+      $all: [
+        { $elemMatch: { userId: customerId, role: "customer" } },
+        { $elemMatch: { userId: shipperId, role: "shipper" } },
+      ],
+    },
+  })
+    .select("_id")
+    .lean();
+
+  return [...new Set([room._id.toString(), ...relatedRooms.map((item) => item._id.toString())])];
+};
+
 const isShipmentChatLocked = async (shipment) => {
   if (["delivered", "completed"].includes(shipment?.status)) return true;
 
@@ -269,13 +291,17 @@ exports.getRoomMessages = async (req, res) => {
       });
     }
 
-    const messages = await Message.find({ chatRoom: roomId }).sort({
+    const relatedRoomIds = await getRelatedRoomIds(room);
+    const messages = await Message.find({ chatRoom: { $in: relatedRoomIds } }).sort({
       createdAt: 1,
     });
 
     return res.status(200).json({
       success: true,
-      messages,
+      messages: messages.map((message) => ({
+        ...message.toObject(),
+        chatRoom: roomId,
+      })),
     });
   } catch (error) {
     console.error("getRoomMessages error:", error);
@@ -350,7 +376,13 @@ exports.sendRoomMessage = async (req, res) => {
 
     const io = req.app.get("io");
     if (io) {
-      io.to(roomId).emit("receiveMessage", chatMessage);
+      const relatedRoomIds = await getRelatedRoomIds(room);
+      relatedRoomIds.forEach((relatedRoomId) => {
+        io.to(relatedRoomId).emit("receiveMessage", {
+          ...chatMessage.toObject(),
+          chatRoom: relatedRoomId,
+        });
+      });
 
       if (receiver) {
         emitToUser(io, {
@@ -441,9 +473,10 @@ exports.editRoomMessage = async (req, res) => {
       }
     }
 
+    const relatedRoomIds = await getRelatedRoomIds(room);
     const message = await Message.findOne({
       _id: messageId,
-      chatRoom: roomId,
+      chatRoom: { $in: relatedRoomIds },
     });
 
     if (!message) {
@@ -485,7 +518,12 @@ exports.editRoomMessage = async (req, res) => {
 
     const io = req.app.get("io");
     if (io) {
-      io.to(roomId).emit("messageEdited", message);
+      relatedRoomIds.forEach((relatedRoomId) => {
+        io.to(relatedRoomId).emit("messageEdited", {
+          ...message.toObject(),
+          chatRoom: relatedRoomId,
+        });
+      });
     }
 
     return res.status(200).json({
@@ -536,9 +574,10 @@ exports.deleteRoomMessage = async (req, res) => {
       }
     }
 
+    const relatedRoomIds = await getRelatedRoomIds(room);
     const message = await Message.findOne({
       _id: messageId,
-      chatRoom: roomId,
+      chatRoom: { $in: relatedRoomIds },
     });
 
     if (!message) {
@@ -582,7 +621,12 @@ exports.deleteRoomMessage = async (req, res) => {
 
     const io = req.app.get("io");
     if (io) {
-      io.to(roomId).emit("messageDeleted", message);
+      relatedRoomIds.forEach((relatedRoomId) => {
+        io.to(relatedRoomId).emit("messageDeleted", {
+          ...message.toObject(),
+          chatRoom: relatedRoomId,
+        });
+      });
     }
 
     return res.status(200).json({
