@@ -816,25 +816,53 @@ exports.sendDriverRoomMessage = async (req, res) => {
 // ====================================================
 exports.updateDriverProfileImage = async (req, res) => {
   try {
-    const driverId = req.driver._id;
-
     if (!req.file) {
       return res.status(400).json({
         success: false,
         message: apiResponse.IMAGE_IS_REQUIRED,
       });
     }
+    if (!req.file.mimetype?.startsWith("image/")) {
+      return res.status(400).json({
+        success: false,
+        message: "Only image files are allowed",
+      });
+    }
+    if (req.file.size > 5 * 1024 * 1024) {
+      return res.status(400).json({
+        success: false,
+        message: "Image must be smaller than 5 MB",
+      });
+    }
 
-    const driver = await Driver.findByIdAndUpdate(
-      driverId,
-      { profileImage: req.file.path },
-      { new: true }
-    );
+    const driver = await Driver.findById(req.driver._id);
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.DRIVER_NOT_FOUND,
+      });
+    }
+
+    const uploadedImage = await cloudinary.uploader.upload(req.file.path, {
+      folder: "driversImg",
+      resource_type: "image",
+    });
+    const oldPublicId = driver.profileImage?.public_id;
+    driver.profileImage = {
+      url: uploadedImage.secure_url,
+      public_id: uploadedImage.public_id,
+    };
+    await driver.save();
+
+    if (oldPublicId && oldPublicId !== uploadedImage.public_id) {
+      await cloudinary.uploader.destroy(oldPublicId);
+    }
 
     res.json({
       success: true,
       message: apiResponse.PROFILE_IMAGE_UPDATED,
-      driver,
+      driver: publicDriver(driver),
+      profileImage: driver.profileImage,
     });
   } catch (error) {
     console.error("[UPDATE DRIVER IMAGE]", error);
@@ -847,18 +875,22 @@ exports.updateDriverProfileImage = async (req, res) => {
 // ====================================================
 exports.deleteDriverProfileImage = async (req, res) => {
   try {
-    const driverId = req.driver._id;
-
-    const driver = await Driver.findByIdAndUpdate(
-      driverId,
-      { profileImage: null },
-      { new: true }
-    );
+    const driver = await Driver.findById(req.driver._id);
+    if (!driver) {
+      return res.status(404).json({
+        success: false,
+        message: apiResponse.DRIVER_NOT_FOUND,
+      });
+    }
+    const oldPublicId = driver.profileImage?.public_id;
+    driver.profileImage = { url: null, public_id: null };
+    await driver.save();
+    if (oldPublicId) await cloudinary.uploader.destroy(oldPublicId);
 
     res.json({
       success: true,
       message: apiResponse.PROFILE_IMAGE_REMOVED,
-      driver,
+      driver: publicDriver(driver),
     });
   } catch (error) {
     console.error("[DELETE DRIVER IMAGE]", error);

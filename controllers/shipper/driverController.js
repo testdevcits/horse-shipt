@@ -342,19 +342,32 @@ exports.updateDriverProfileImage = async (req, res) => {
         .status(400)
         .json({ success: false, message: apiResponse.PROFILE_IMAGE_IS_REQUIRED });
 
-    if (driver.profileImage?.public_id) {
-      await cloudinary.uploader.destroy(driver.profileImage.public_id);
+    if (!req.file.mimetype?.startsWith("image/")) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Only image files are allowed" });
+    }
+    if (req.file.size > 5 * 1024 * 1024) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Image must be smaller than 5 MB" });
     }
 
     const result = await cloudinary.uploader.upload(req.file.path, {
-      folder: "driver_profiles",
+      folder: "driversImg",
+      resource_type: "image",
     });
 
+    const previousPublicId = driver.profileImage?.public_id;
     driver.profileImage = {
       url: result.secure_url,
       public_id: result.public_id,
     };
     await driver.save();
+
+    if (previousPublicId && previousPublicId !== result.public_id) {
+      await cloudinary.uploader.destroy(previousPublicId);
+    }
 
     res.json({
       success: true,
