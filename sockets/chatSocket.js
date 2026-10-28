@@ -1,5 +1,6 @@
 const Message = require("../models/chat/messageModel");
 const ChatRoom = require("../models/chat/chatRoomModel");
+const ShipmentQuote = require("../models/shipper/ShipmentQuote");
 const { getOrCreateChatRoom } = require("../controllers/chat/chatController");
 const { emitToUser } = require("./realtimeSocket");
 const sharp = require("sharp");
@@ -71,6 +72,25 @@ module.exports = (io) => {
           return;
         }
 
+        const identity = socket.handshake.auth || {};
+        const isParticipant =
+          (identity.role === "customer" &&
+            identity.userId?.toString() === customerId?.toString()) ||
+          (identity.role === "shipper" &&
+            identity.userId?.toString() === shipperId?.toString());
+        const acceptedQuote = await ShipmentQuote.exists({
+          shipment: shipmentId,
+          shipper: shipperId,
+          status: "accepted",
+          isCancelled: { $ne: true },
+        });
+        if (!isParticipant || !acceptedQuote) {
+          const message = "Chat is available only after the quote is accepted.";
+          if (ack) ack({ success: false, message });
+          socket.emit("chatError", { message });
+          return;
+        }
+
         const room = await getOrCreateChatRoom({
           customerId,
           shipperId,
@@ -89,6 +109,43 @@ module.exports = (io) => {
     socket.on("sendMessage", async (data, ack) => {
       try {
         const { roomId, senderId, senderRole, message, attachment } = data;
+
+        const identity = socket.handshake.auth || {};
+        const room = await ChatRoom.findById(roomId).lean();
+        const isRoomParticipant = room?.participants?.some(
+          (participant) =>
+            participant.userId.toString() === identity.userId?.toString() &&
+            participant.role === identity.role
+        );
+        const isSender =
+          identity.userId?.toString() === senderId?.toString() &&
+          identity.role === senderRole;
+        if (!room || !isRoomParticipant || !isSender) {
+          if (ack) ack({ success: false, message: "Not authorized to send." });
+          return;
+        }
+        if (room.shipment) {
+          const shipper = room.participants.find(
+            (participant) => participant.role === "shipper"
+          );
+          const acceptedQuote = shipper
+            ? await ShipmentQuote.exists({
+                shipment: room.shipment,
+                shipper: shipper.userId,
+                status: "accepted",
+                isCancelled: { $ne: true },
+              })
+            : null;
+          if (!acceptedQuote) {
+            if (ack) {
+              ack({
+                success: false,
+                message: "Chat is available only after the quote is accepted.",
+              });
+            }
+            return;
+          }
+        }
 
         const trimmedMessage = (message || "").trim();
         if (!trimmedMessage && !attachment?.dataUrl) {
@@ -110,7 +167,6 @@ module.exports = (io) => {
 
         io.to(roomId).emit("receiveMessage", msg);
 
-        const room = await ChatRoom.findById(roomId).lean();
         const receiver = room?.participants?.find(
           (participant) =>
             participant.userId.toString() !== senderId.toString() ||

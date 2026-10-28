@@ -2,6 +2,8 @@ const getUserRoom = ({ role, userId }) => `horse_shipt:${role}:${userId}`;
 const getShipmentRoom = (shipmentId) => `horse_shipt:shipment:${shipmentId}`;
 const ADMIN_ROOM = "horse_shipt:admin";
 const UserNotification = require("../models/common/UserNotification");
+const ChatRoom = require("../models/chat/chatRoomModel");
+const ShipmentQuote = require("../models/shipper/ShipmentQuote");
 const {
   isInAppNotificationEnabled,
 } = require("../utils/notificationPreferences");
@@ -80,9 +82,37 @@ module.exports = (io) => {
       socket.join(getShipmentRoom(shipmentId));
     });
 
-    socket.on("horse_shipt:join_chat_room", ({ roomId }) => {
-      if (!roomId) return;
-      socket.join(roomId.toString());
+    socket.on("horse_shipt:join_chat_room", async ({ roomId } = {}) => {
+      if (!roomId || !userId || !role) return;
+
+      try {
+        const room = await ChatRoom.findById(roomId).lean();
+        const isParticipant = room?.participants?.some(
+          (participant) =>
+            participant.userId.toString() === userId.toString() &&
+            participant.role === role
+        );
+        if (!isParticipant) return;
+
+        if (room.shipment) {
+          const shipper = room.participants.find(
+            (participant) => participant.role === "shipper"
+          );
+          const acceptedQuote = shipper
+            ? await ShipmentQuote.exists({
+                shipment: room.shipment,
+                shipper: shipper.userId,
+                status: "accepted",
+                isCancelled: { $ne: true },
+              })
+            : null;
+          if (!acceptedQuote) return;
+        }
+
+        socket.join(roomId.toString());
+      } catch (error) {
+        console.error("Socket chat room join error:", error.message);
+      }
     });
 
     socket.on("horse_shipt:join_admin_room", () => {

@@ -80,7 +80,7 @@ const findEligibleQuote = async ({ shipmentId, shipperId }) => {
   return ShipmentQuote.findOne({
     shipment: shipmentId,
     shipper: shipperId,
-    status: { $in: ["pending", "accepted"] },
+    status: "accepted",
     isCancelled: { $ne: true },
   })
     .select("_id status shipper")
@@ -260,6 +260,15 @@ exports.getRoomMessages = async (req, res) => {
       });
     }
 
+    if (room.shipment) {
+      await getChatShipment({
+        shipmentId: room.shipment,
+        userId: req.user._id,
+        role: inferRole(req),
+        requestedShipperId: getRoomParticipantId(room, "shipper"),
+      });
+    }
+
     const messages = await Message.find({ chatRoom: roomId }).sort({
       createdAt: 1,
     });
@@ -270,9 +279,9 @@ exports.getRoomMessages = async (req, res) => {
     });
   } catch (error) {
     console.error("getRoomMessages error:", error);
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
-      message: apiResponse.FAILED_TO_LOAD_MESSAGES,
+      message: error.message || apiResponse.FAILED_TO_LOAD_MESSAGES,
     });
   }
 };

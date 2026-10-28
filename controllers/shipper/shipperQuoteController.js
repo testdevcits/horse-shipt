@@ -21,6 +21,7 @@ const generateTaxInvoicePDF = require("../../utils/pdf/generateTaxInvoicePDF");
 const { emitToUser } = require("../../sockets/realtimeSocket");
 const { sendAdminNotification } = require("../../utils/adminNotifications");
 const { isValidSignatureDataUrl } = require("../../utils/signatureValidation");
+const sendDriverShipmentAssignmentEmail = require("../../utils/sendDriverShipmentAssignmentEmail");
 
 const sanitizePdfPublicId = (value = "document") => {
   const baseName = String(value)
@@ -1035,7 +1036,22 @@ exports.assignVehicleToQuote = async (req, res) => {
 
     const shipmentForQuote = await CustomerShipment.findById(
       quote.shipment
-    ).select("customer shipmentCode");
+    ).select(
+      "customer shipmentCode pickupLocation pickupTimeOption pickupDateRange deliveryLocation deliveryTimeOption deliveryDateRange numberOfHorses horses additionalInfo"
+    );
+
+    if (shipmentForQuote && vehicle.driver?.email) {
+      try {
+        await sendDriverShipmentAssignmentEmail({
+          driver: vehicle.driver,
+          shipment: shipmentForQuote,
+          vehicle,
+        });
+      } catch (error) {
+        // Email delivery should not undo a successfully saved assignment.
+        console.error("[DRIVER SHIPMENT ASSIGNMENT EMAIL] Failed:", error.message);
+      }
+    }
 
     emitToUser(req.app.get("io"), {
       role: "customer",

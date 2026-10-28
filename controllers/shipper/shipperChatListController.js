@@ -52,7 +52,7 @@ const buildChatItem = async ({ shipment, customer, quoteStatus }) => {
 };
 
 /**
- * Shipper -> accepted and quoted shipment chats.
+ * Shipper -> accepted shipment chats only.
  */
 exports.getCustomersForChat = async (req, res) => {
   try {
@@ -70,7 +70,7 @@ exports.getCustomersForChat = async (req, res) => {
 
     const quotedShipments = await ShipmentQuote.find({
       shipper: req.user._id,
-      status: { $in: ["pending", "accepted"] },
+      status: "accepted",
       isCancelled: { $ne: true },
     })
       .populate({
@@ -87,9 +87,23 @@ exports.getCustomersForChat = async (req, res) => {
       })
       .sort({ updatedAt: -1 });
 
+    const acceptedShipmentIds = new Set(
+      quotedShipments
+        .filter((quote) => quote.shipment && quote.shipment.customer)
+        .map((quote) =>
+          `${quote.shipment._id}:${quote.shipment.customer._id}`
+        )
+    );
+
     const formattedCustomers = await Promise.all([
       ...shipments
-        .filter((shipment) => shipment.customer)
+        .filter(
+          (shipment) =>
+            shipment.customer &&
+            acceptedShipmentIds.has(
+              `${shipment._id}:${shipment.customer._id}`
+            )
+        )
         .map(async (shipment) => {
           const key = `${shipment._id}:${shipment.customer._id}`;
           byShipmentAndCustomer.set(key, true);
