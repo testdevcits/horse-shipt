@@ -82,8 +82,11 @@ module.exports = (io) => {
       socket.join(getShipmentRoom(shipmentId));
     });
 
-    socket.on("horse_shipt:join_chat_room", async ({ roomId } = {}) => {
-      if (!roomId || !userId || !role) return;
+    socket.on("horse_shipt:join_chat_room", async ({ roomId } = {}, ack) => {
+      if (!roomId || !userId || !role) {
+        ack?.({ success: false, message: "Room and authenticated user are required." });
+        return;
+      }
 
       try {
         const room = await ChatRoom.findById(roomId).lean();
@@ -92,7 +95,10 @@ module.exports = (io) => {
             participant.userId.toString() === userId.toString() &&
             participant.role === role
         );
-        if (!isParticipant) return;
+        if (!isParticipant) {
+          ack?.({ success: false, message: "Not authorized to join this chat." });
+          return;
+        }
 
         if (room.shipment) {
           const shipper = room.participants.find(
@@ -106,12 +112,17 @@ module.exports = (io) => {
                 isCancelled: { $ne: true },
               })
             : null;
-          if (!acceptedQuote) return;
+          if (!acceptedQuote) {
+            ack?.({ success: false, message: "Chat is unavailable for this shipment." });
+            return;
+          }
         }
 
         socket.join(roomId.toString());
+        ack?.({ success: true, roomId: roomId.toString() });
       } catch (error) {
         console.error("Socket chat room join error:", error.message);
+        ack?.({ success: false, message: "Failed to join chat room." });
       }
     });
 
