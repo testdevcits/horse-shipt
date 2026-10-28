@@ -320,6 +320,13 @@ require("./sockets/invitationSocket")(io);
 // -------------------------
 const PORT = process.env.PORT || 5000;
 
-server.listen(PORT);
+// AWS and local deployments keep the existing standalone server behavior.
+// Vercel uses vercel-entry.js, which exports this HTTP server as a Function
+// handler instead of opening a long-lived listener itself.
+if (!process.env.VERCEL) {
+  server.listen(PORT);
+}
 
 module.exports = app;
+// Expose the attached HTTP server for the isolated Vercel Function entry point.
+module.exports.server = server;
