@@ -376,6 +376,13 @@ exports.sendRoomMessage = async (req, res) => {
 
     const io = req.app.get("io");
     if (io) {
+      const sharedAdapterReady = await req.app.get("ioAdapterReady");
+      if (process.env.REDIS_URL && !sharedAdapterReady) {
+        // Persisted messages still succeed; socket connections are rejected
+        // until the shared adapter returns.
+        console.error("Chat socket adapter is unavailable.");
+      }
+
       const relatedRoomIds = await getRelatedRoomIds(room);
       relatedRoomIds.forEach((relatedRoomId) => {
         io.to(relatedRoomId).emit("receiveMessage", {

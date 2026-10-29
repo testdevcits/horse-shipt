@@ -12,6 +12,8 @@ const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const { Server } = require("socket.io");
+const { createAdapter } = require("@socket.io/redis-adapter");
+const { createClient } = require("redis");
 
 const connectDB = require("./config/db");
 const {
@@ -298,6 +300,49 @@ const io = new Server(server, {
   pingInterval: 25000,
 });
 
+// Vercel may run the WebSocket and REST invocations on different Function
+// instances. A shared Socket.IO adapter lets those instances reach the same
+// user/chat rooms. Without REDIS_URL, local/AWS development keeps the default
+// in-memory adapter.
+let ioAdapterReady = Promise.resolve(false);
+if (process.env.REDIS_URL) {
+  const redisPublisher = createClient({ url: process.env.REDIS_URL });
+  const redisSubscriber = redisPublisher.duplicate();
+
+  redisPublisher.on("error", (error) => {
+    console.error("[SOCKET REDIS] publisher error:", error.message);
+  });
+  redisSubscriber.on("error", (error) => {
+    console.error("[SOCKET REDIS] subscriber error:", error.message);
+  });
+
+  ioAdapterReady = Promise.all([
+    redisPublisher.connect(),
+    redisSubscriber.connect(),
+  ]).then(() => {
+    io.adapter(createAdapter(redisPublisher, redisSubscriber));
+    console.info("[SOCKET REDIS] shared Socket.IO adapter ready");
+    return true;
+  }).catch((error) => {
+    console.error("[SOCKET REDIS] adapter initialization failed:", error.message);
+    return false;
+  });
+} else if (process.env.VERCEL) {
+  console.warn(
+    "[SOCKET REDIS] REDIS_URL is missing; Socket.IO rooms are local to each Function instance"
+  );
+}
+
+io.use((socket, next) => {
+  ioAdapterReady.then((adapterReady) => {
+    if (process.env.REDIS_URL && !adapterReady) {
+      next(new Error("Realtime service is temporarily unavailable."));
+      return;
+    }
+    next();
+  });
+});
+
 io.engine.on("connection_error", (err) => {
   console.warn("[SOCKET CONNECTION ERROR]", {
     code: err.code,
@@ -308,6 +353,7 @@ io.engine.on("connection_error", (err) => {
 
 // Make io accessible
 app.set("io", io);
+app.set("ioAdapterReady", ioAdapterReady);
 require("./utils/adminNotifications").setAdminNotificationIo(io);
 
 // Attach socket logic
