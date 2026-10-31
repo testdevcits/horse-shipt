@@ -126,6 +126,21 @@ module.exports = (io) => {
       }
     });
 
+    // Only relay typing for a room this socket has already been allowed to join.
+    const typingRooms = new Set();
+    socket.on("horse_shipt:typing", ({ roomId, isTyping } = {}) => {
+      if (typeof roomId !== "string" || typeof isTyping !== "boolean" ||
+          !userId || !role || !socket.rooms.has(roomId)) return;
+      if (isTyping) typingRooms.add(roomId);
+      else typingRooms.delete(roomId);
+      socket.to(roomId).emit("horse_shipt:typing", { roomId, userId, role, isTyping });
+    });
+    socket.on("disconnecting", () => {
+      typingRooms.forEach((roomId) => socket.to(roomId).emit("horse_shipt:typing", {
+        roomId, userId, role, isTyping: false,
+      }));
+    });
+
     socket.on("horse_shipt:join_admin_room", () => {
       socket.join(ADMIN_ROOM);
     });
