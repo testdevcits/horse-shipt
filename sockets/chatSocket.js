@@ -1,3 +1,4 @@
+const { chatLog, traceChatSocket } = require("../utils/chatDiagnostics");
 const Message = require("../models/chat/messageModel");
 const ChatRoom = require("../models/chat/chatRoomModel");
 const ShipmentQuote = require("../models/shipper/ShipmentQuote");
@@ -62,6 +63,7 @@ const uploadChatImage = async (attachment) => {
 
 module.exports = (io) => {
   io.on("connection", (socket) => {
+    traceChatSocket(socket);
 
     socket.on("joinRoom", async ({ customerId, shipperId, shipmentId }, ack) => {
       try {
@@ -165,6 +167,7 @@ module.exports = (io) => {
           media: mediaItem ? [mediaItem] : [],
         });
 
+        chatLog("socket.message.saved", { socketId: socket.id, roomId, messageId: msg._id, hasMedia: Boolean(mediaItem) });
         io.to(roomId).emit("receiveMessage", msg);
 
         const receiver = room?.participants?.find(

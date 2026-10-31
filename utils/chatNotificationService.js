@@ -1,3 +1,4 @@
+const { chatLog } = require("./chatDiagnostics");
 const nodemailer = require("nodemailer");
 const twilio = require("twilio");
 const Customer = require("../models/customer/customerModel");
@@ -81,12 +82,15 @@ const getShipmentLabel = async (shipmentId) => {
 
 const notifyCustomer = async ({ customerId, title, body, emailText, smsText }) => {
   const enabled = await isCustomerNotificationEnabled(customerId, "newMessage");
-  if (!enabled) return;
+  if (!enabled) {
+    chatLog("notification.skipped", { role: "customer", userId: customerId, reason: "preferences" });
+    return;
+  }
 
   const customer = await Customer.findById(customerId).select("email phone").lean();
   if (!customer) return;
 
-  await Promise.allSettled([
+  const results = await Promise.allSettled([
     sendCustomerNotification(customerId, "newMessage", { title, body }),
     sendCustomerEmail({
       to: customer.email,
@@ -98,6 +102,11 @@ const notifyCustomer = async ({ customerId, title, body, emailText, smsText }) =
       body: smsText,
     }),
   ]);
+  results.forEach((result, index) => chatLog("notification.channel.result", {
+    role: "customer", userId: customerId, channel: ["push", "email", "sms"][index],
+    outcome: result.status === "rejected" ? "failed" : result.value === false ? "skipped" : "completed",
+    errorCode: result.reason?.code,
+  }));
 };
 
 const notifyShipper = async ({ shipperId, title, emailText, smsText }) => {
@@ -111,7 +120,8 @@ const notifyShipper = async ({ shipperId, title, emailText, smsText }) => {
     tasks.push(sendShipperSms(shipperId, smsText));
   }
 
-  await Promise.allSettled(tasks);
+  const results = await Promise.allSettled(tasks);
+  chatLog("notification.shipper.tasks.settled", { userId: shipperId, emailEnabled: messageSettings.email, smsEnabled: messageSettings.sms, tasks: results.length, rejected: results.filter((result) => result.status === "rejected").length });
 };
 
 const notifyChatReceiver = async ({
@@ -122,6 +132,7 @@ const notifyChatReceiver = async ({
   shipmentId,
 }) => {
   try {
+    chatLog("notification.start", { receiverRole, receiverId, shipmentId });
     const senderLabel = senderRole === "customer" ? "Customer" : "Shipper";
     const shipmentLabel = await getShipmentLabel(shipmentId);
     const preview = messageText || "Image";
@@ -153,6 +164,7 @@ const notifyChatReceiver = async ({
       });
     }
   } catch (error) {
+    chatLog("notification.failed", { receiverRole, receiverId, shipmentId, errorCode: error.code });
     console.error("Chat notification error:", error.message);
   }
 };

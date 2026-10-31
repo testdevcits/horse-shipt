@@ -1,3 +1,4 @@
+const { chatLog } = require("./chatDiagnostics");
 const twilio = require("twilio");
 const Shipper = require("../models/shipper/shipperModel");
 
@@ -10,9 +11,11 @@ const client = twilio(process.env.TWILIO_SID, process.env.TWILIO_AUTH_TOKEN);
  */
 const sendShipperSms = async (shipperId, message) => {
   try {
+    chatLog("notification.channel.start", { role: "shipper", userId: shipperId, channel: "sms" });
     const shipper = await Shipper.findById(shipperId);
     if (!shipper) {
       console.warn("Shipper not found:", shipperId);
+      chatLog("notification.channel.skipped", { role: "shipper", userId: shipperId, channel: "sms", reason: "missing_recipient" });
       return;
     }
 
@@ -20,6 +23,7 @@ const sendShipperSms = async (shipperId, message) => {
 
     if (!phone || !phone.startsWith("+")) {
       console.warn(`Invalid or missing phone for shipper: ${shipper._id}`);
+      chatLog("notification.channel.skipped", { role: "shipper", userId: shipperId, channel: "sms", reason: "missing_recipient" });
       return;
     }
 
@@ -28,7 +32,9 @@ const sendShipperSms = async (shipperId, message) => {
       to: phone,
       body: message,
     });
+    chatLog("notification.channel.sent", { role: "shipper", userId: shipperId, channel: "sms" });
   } catch (error) {
+    chatLog("notification.channel.failed", { role: "shipper", userId: shipperId, channel: "sms", errorCode: error.code, status: error.status });
     console.error("Error sending shipper SMS:", error.message);
   }
 };

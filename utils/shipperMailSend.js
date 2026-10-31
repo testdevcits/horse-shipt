@@ -1,3 +1,4 @@
+const { chatLog } = require("./chatDiagnostics");
 const nodemailer = require("nodemailer");
 const Shipper = require("../models/shipper/shipperModel");
 const { baseTemplate, escapeHtml } = require("./mailTemplates/baseTemplate");
@@ -11,9 +12,11 @@ const { getFrontendUrl } = require("./frontendUrl");
  */
 const sendShipperEmail = async (shipperId, subject, text) => {
   try {
+    chatLog("notification.channel.start", { role: "shipper", userId: shipperId, channel: "email" });
     const shipper = await Shipper.findById(shipperId);
     if (!shipper || !shipper.email) {
       console.warn("No valid email for shipper:", shipperId);
+      chatLog("notification.channel.skipped", { role: "shipper", userId: shipperId, channel: "email", reason: "missing_recipient" });
       return;
     }
 
@@ -42,7 +45,9 @@ const sendShipperEmail = async (shipperId, subject, text) => {
         buttonUrl: getFrontendUrl(),
       }),
     });
+    chatLog("notification.channel.sent", { role: "shipper", userId: shipperId, channel: "email" });
   } catch (error) {
+    chatLog("notification.channel.failed", { role: "shipper", userId: shipperId, channel: "email", errorCode: error.code, status: error.status });
     console.error("Error sending shipper email:", error);
   }
 };

@@ -1,3 +1,4 @@
+const { traceChatRequest } = require("../../utils/chatDiagnostics");
 const { apiResponse } = require("../../responses/api.response");
 const sharp = require("sharp");
 const streamifier = require("streamifier");
@@ -221,6 +222,7 @@ const uploadChatMedia = async (file) => {
 };
 
 exports.getOrCreateRoom = async (req, res) => {
+  const trace = traceChatRequest(req, res, "getOrCreateRoom");
   try {
     const { role, userId, shipmentId, shipperId: requestedShipperId } =
       getParticipantIds(req);
@@ -267,6 +269,7 @@ exports.getOrCreateRoom = async (req, res) => {
 };
 
 exports.getRoomMessages = async (req, res) => {
+  const trace = traceChatRequest(req, res, "getRoomMessages");
   try {
     const { roomId } = req.params;
     const room = await ensureRoomParticipant({
@@ -296,6 +299,7 @@ exports.getRoomMessages = async (req, res) => {
       createdAt: 1,
     });
 
+    trace("history.loaded", { count: messages.length });
     return res.status(200).json({
       success: true,
       messages: messages.map((message) => ({
@@ -313,6 +317,7 @@ exports.getRoomMessages = async (req, res) => {
 };
 
 exports.sendRoomMessage = async (req, res) => {
+  const trace = traceChatRequest(req, res, "sendRoomMessage");
   try {
     const { roomId } = req.params;
     const requestRole = inferRole(req);
@@ -353,7 +358,9 @@ exports.sendRoomMessage = async (req, res) => {
       });
     }
 
+    trace("media.upload.start", { hasFile: Boolean(req.file) });
     const mediaItem = req.file ? await uploadChatMedia(req.file) : null;
+    trace("media.upload.finish", { hasMedia: Boolean(mediaItem) });
 
     const chatMessage = await Message.create({
       chatRoom: roomId,
@@ -363,6 +370,7 @@ exports.sendRoomMessage = async (req, res) => {
       media: mediaItem ? [mediaItem] : [],
     });
 
+    trace("message.saved", { messageId: chatMessage._id, roomId });
     await ChatRoom.findByIdAndUpdate(roomId, {
       lastMessage: messageText || (mediaItem?.type === "pdf" ? "PDF" : "Image"),
       lastMessageAt: new Date(),
@@ -385,6 +393,7 @@ exports.sendRoomMessage = async (req, res) => {
 
       const relatedRoomIds = await getRelatedRoomIds(room);
       relatedRoomIds.forEach((relatedRoomId) => {
+        trace("message.broadcast", { messageId: chatMessage._id, targetRoomId: relatedRoomId });
         io.to(relatedRoomId).emit("receiveMessage", {
           ...chatMessage.toObject(),
           chatRoom: relatedRoomId,
@@ -439,6 +448,7 @@ exports.sendRoomMessage = async (req, res) => {
 };
 
 exports.editRoomMessage = async (req, res) => {
+  const trace = traceChatRequest(req, res, "editRoomMessage");
   try {
     const { roomId, messageId } = req.params;
     const requestRole = inferRole(req);
@@ -548,6 +558,7 @@ exports.editRoomMessage = async (req, res) => {
 };
 
 exports.deleteRoomMessage = async (req, res) => {
+  const trace = traceChatRequest(req, res, "deleteRoomMessage");
   try {
     const { roomId, messageId } = req.params;
     const requestRole = inferRole(req);
