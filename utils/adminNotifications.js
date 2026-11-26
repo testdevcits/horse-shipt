@@ -152,8 +152,8 @@ const sendNewUserSignupAdminNotification = async ({ user, role }) => {
   if (!user) return { inApp: false, email: false };
 
   const roleLabel = formatRole(role || user.role);
-  const title = `New ${roleLabel} Account Created`;
-  const message = `${user.name || user.email} (${user.email}) created a new ${roleLabel.toLowerCase()} account.`;
+  const title = `New ${roleLabel} Signup Completed`;
+  const message = `A new ${roleLabel.toLowerCase()} account was created after email verification. User: ${user.name || user.email} (${user.email}).`;
   const data = {
     userId: user._id,
     uniqueId: user.uniqueId,
