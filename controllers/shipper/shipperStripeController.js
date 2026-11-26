@@ -264,10 +264,16 @@ const getPlatformCountry = async () => {
 // CREATE STRIPE CONNECT ACCOUNT (EXPRESS)
 // ==========================================================
 exports.createStripeAccount = async (req, res) => {
+  console.log("[STRIPE CREATE ACCOUNT] request", {
+    userId: req.user?.id,
+  });
   try {
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper) {
+      console.warn("[STRIPE CREATE ACCOUNT] shipper not found", {
+        userId: req.user?.id,
+      });
       return res.status(404).json({
         success: false,
         message: apiResponse.SHIPPER_NOT_FOUND,
@@ -276,6 +282,10 @@ exports.createStripeAccount = async (req, res) => {
 
     // Already exists
     if (shipper.stripeAccountId) {
+      console.log("[STRIPE CREATE ACCOUNT] already exists", {
+        userId: shipper._id.toString(),
+        stripeAccountId: shipper.stripeAccountId,
+      });
       return res.status(200).json({
         success: true,
         message: apiResponse.STRIPE_ACCOUNT_ALREADY_EXISTS,
@@ -317,6 +327,12 @@ exports.createStripeAccount = async (req, res) => {
 
     await shipper.save();
 
+    console.log("[STRIPE CREATE ACCOUNT] created", {
+      userId: shipper._id.toString(),
+      stripeAccountId: account.id,
+      accountCountry,
+    });
+
     res.status(200).json({
       success: true,
       message: apiResponse.STRIPE_ACCOUNT_CREATED_SUCCESSFULLY,
@@ -324,7 +340,12 @@ exports.createStripeAccount = async (req, res) => {
       accountCountry,
     });
   } catch (error) {
-    console.error("Stripe Account Creation Error:", error);
+    console.error("[STRIPE CREATE ACCOUNT] failed", {
+      userId: req.user?.id,
+      type: error.type,
+      code: error.code,
+      message: error.message,
+    });
 
     res.status(500).json({
       success: false,
@@ -338,10 +359,17 @@ exports.createStripeAccount = async (req, res) => {
 // CREATE STRIPE ONBOARDING LINK
 // ==========================================================
 exports.createOnboardingLink = async (req, res) => {
+  console.log("[STRIPE ONBOARDING] request", {
+    userId: req.user?.id,
+  });
   try {
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper || !shipper.stripeAccountId) {
+      console.warn("[STRIPE ONBOARDING] account missing", {
+        userId: req.user?.id,
+        hasShipper: Boolean(shipper),
+      });
       return res.status(400).json({
         success: false,
         message: apiResponse.STRIPE_ACCOUNT_NOT_CREATED,
@@ -370,12 +398,24 @@ exports.createOnboardingLink = async (req, res) => {
       collect: "eventually_due",
     });
 
+    console.log("[STRIPE ONBOARDING] link created", {
+      userId: shipper._id.toString(),
+      stripeAccountId: shipper.stripeAccountId,
+      refreshUrl,
+      returnUrl,
+    });
+
     res.json({
       success: true,
       onboardingUrl: accountLink.url,
     });
   } catch (error) {
-    console.error("Onboarding Error:", error);
+    console.error("[STRIPE ONBOARDING] failed", {
+      userId: req.user?.id,
+      type: error.type,
+      code: error.code,
+      message: error.message,
+    });
 
     res.status(500).json({
       success: false,
@@ -389,10 +429,17 @@ exports.createOnboardingLink = async (req, res) => {
 // CHECK STRIPE ACCOUNT STATUS
 // ==========================================================
 exports.checkStripeStatus = async (req, res) => {
+  console.log("[STRIPE STATUS] request", {
+    userId: req.user?.id,
+  });
   try {
     const shipper = await Shipper.findById(req.user.id);
 
     if (!shipper || !shipper.stripeAccountId) {
+      console.warn("[STRIPE STATUS] account missing", {
+        userId: req.user?.id,
+        hasShipper: Boolean(shipper),
+      });
       return res.status(400).json({
         success: false,
         message: apiResponse.STRIPE_ACCOUNT_NOT_CREATED,
@@ -412,6 +459,15 @@ exports.checkStripeStatus = async (req, res) => {
 
     await shipper.save();
 
+    console.log("[STRIPE STATUS] result", {
+      userId: shipper._id.toString(),
+      stripeAccountId: shipper.stripeAccountId,
+      detailsSubmitted: account.details_submitted,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled,
+      currentlyDueCount: account.requirements?.currently_due?.length || 0,
+    });
+
     res.json({
       success: true,
       verified: shipper.stripeVerified,
@@ -422,7 +478,12 @@ exports.checkStripeStatus = async (req, res) => {
       requirements: account.requirements,
     });
   } catch (error) {
-    console.error("Stripe Status Error:", error);
+    console.error("[STRIPE STATUS] failed", {
+      userId: req.user?.id,
+      type: error.type,
+      code: error.code,
+      message: error.message,
+    });
 
     res.status(500).json({
       success: false,
